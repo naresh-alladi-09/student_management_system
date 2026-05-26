@@ -1,0 +1,49 @@
+.student_form_cont input{
+    width:210px;
+    height:30px;
+    border-radius: 10px;
+    border: 2px solid navy;
+
+}
+.form_cont{
+
+    display: flex;
+    
+    background-color:white;
+    gap:15px;
+    padding: 15px;
+    border:3px solid navy;
+    border-radius: 10px;
+    
+}
+.form_cont select{
+    width: 217px;
+    height:35px;
+    border-radius: 10px;
+    border:2px solid navy;
+    
+}
+.student_form_cont{
+    display: flex;
+    flex-direction: column;
+    width:100%;
+    align-items: center;
+    
+}
+.form_cont button{
+    width:70%;
+    padding: 10px;
+    margin: auto;
+    background-color:  rgb(24, 24, 180);
+    color: aliceblue;
+    cursor: pointer;
+}
+.cont{
+    display: flex;
+    flex-direction: column;
+    gap:10px;
+}
+
+.form_cont button:hover{
+    background-color: blue;
+}
