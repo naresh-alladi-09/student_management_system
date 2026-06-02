@@ -11,6 +11,7 @@
 .login-left{
     background:linear-gradient( rgb(1, 1, 82),black);
     width:100%;
+    color: white;
     height:90vh;
     display: flex;
     flex-direction: column;
@@ -32,11 +33,11 @@
     justify-content: center;
     gap:20px;
 }
-input{
+.login-form input{
     width:70%;
     
 }
-button{
+.login-form button{
     padding:2% 30%;
     background-color: rgb(24, 24, 180);
     color: white;
@@ -67,7 +68,7 @@ button{
 #rem{
     width: 20px;
 }
-label{
+.login-form label{
     font-size: small;
 }
 .rem-cont{
@@ -80,7 +81,7 @@ a{
     text-decoration: none;
     font-size: small;
 }
-button:hover{
+.login-form button:hover{
     background-color: rgb(116, 116, 247);
     cursor: pointer;
 }
