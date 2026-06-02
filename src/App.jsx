@@ -10,6 +10,7 @@ import Attendence from './pages/Attendence';
 import Performance from './pages/Performance';
 import StudentForm from './components/StudentForm';
 import Navbar from "./components/Navbar";
+import Sidebar from './components/Sidebar';
 function App() {
 
   return (
@@ -25,6 +26,7 @@ function App() {
       <Route path="/Performance" element={<Performance/>}/>
       <Route path="/StudentForm" element={<StudentForm/>}/>
       <Route path="/Navbar" element={<Navbar/>}/>
+      <Route path="/Sidebar" element={<Sidebar/>}/>
     </Routes>
     </BrowserRouter>
   )
