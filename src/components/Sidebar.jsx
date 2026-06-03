@@ -2,22 +2,53 @@ import React from 'react'
 import "../styles/sidebar.css";
 const Sidebar = () => {
   return (
-    <nav>
-    <div>
-        <h2>Dashboard</h2>
+ 
+
+    <div class="sidebar">
+        <div class="logo">
+            <i class="fa-solid fa-shield-heart"></i>
+            <span>SMS</span>
+        </div>
+
+        <ul class="menu">
+            <li class="active">
+                <a href="#">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="#">
+                    <i class="fa-solid fa-user"></i>
+                    <span>Students</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="#">
+                    <i class="fa-regular fa-calendar"></i>
+                    <span>Attendance</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="#">
+                    <i class="fa-solid fa-chart-simple"></i>
+                    <span>Performance</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="#">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Logout</span>
+                </a>
+            </li>
+        </ul>
     </div>
-    <ul>
-        <li><a href="#">Home</a></li>
-        <li><a href="#">Students</a></li>
-        <li><a href="#">Attendance</a></li>
-        <li><a href="#">Performance</a></li>
-        <li><a href="#">Logout</a></li>
-    </ul>
-    <div>
-        <span>🔔</span>
-        <span>Admin</span>
-    </div>
-</nav>
+
+
   )
 }
 
