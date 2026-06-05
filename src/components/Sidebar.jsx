@@ -1,5 +1,6 @@
 import React from 'react'
 import "../styles/sidebar.css";
+import {Link} from "react-router-dom";
 const Sidebar = () => {
   return (
  
@@ -7,43 +8,43 @@ const Sidebar = () => {
     <div class="sidebar">
         <div class="logo">
             <i class="fa-solid fa-shield-heart"></i>
-            <span>SMS</span>
+            <span>S M S</span>
         </div>
 
         <ul class="menu">
             <li class="active">
-                <a href="#">
+                <Link to="/dashboard">
                     <i class="fa-solid fa-house"></i>
                     <span>Dashboard</span>
-                </a>
+                </Link>
             </li>
 
             <li>
-                <a href="#">
+                <Link to="/students">
                     <i class="fa-solid fa-user"></i>
                     <span>Students</span>
-                </a>
+                </Link>
             </li>
 
             <li>
-                <a href="#">
+                <Link to="/attendence">
                     <i class="fa-regular fa-calendar"></i>
                     <span>Attendance</span>
-                </a>
+                </Link>
             </li>
 
             <li>
-                <a href="#">
+                <Link to="/performance">
                     <i class="fa-solid fa-chart-simple"></i>
                     <span>Performance</span>
-                </a>
+                </Link>
             </li>
 
             <li>
-                <a href="#">
+                <Link to="/Login">
                     <i class="fa-solid fa-right-from-bracket"></i>
                     <span>Logout</span>
-                </a>
+                </Link>
             </li>
         </ul>
     </div>
