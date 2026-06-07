@@ -8,21 +8,17 @@
 body{
     background:#f5f5f5;
     padding:30px;
+    margin:0px;
 }
 
 .container{
     width:100%;
+    max-width:1080px;
+    margin:0px ;
+    
 }
 
-.title{
-    width:320px;
-    margin:0 auto 20px;
-    background:#0b2d73;
-    color:white;
-    text-align:center;
-    padding:12px;
-    border-radius:12px;
-}
+
 
 .performance-box{
     background:white;

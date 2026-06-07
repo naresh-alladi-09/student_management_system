@@ -11,13 +11,14 @@ body{
     justify-content:center;
     align-items:center;
     height:100vh;
+    margin:0px;
 }
 
 .sidebar{
-    width:320px;
+    width:322px;
     background:#001f54;
     padding:30px 20px;
-    border-radius:20px;
+    
     color:white;
     height:100vh;
 }

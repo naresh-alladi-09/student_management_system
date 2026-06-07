@@ -1,0 +1,21 @@
+.sidebarindashboard{
+    height:100vh;
+    width:320px;
+    flex-shrink:0;
+}
+.sideandmain{
+    display:flex;
+    gap:10px;
+   min-height:100vh;
+    width:100%;
+    margin:0;
+}
+.main-content{
+    height:100%;
+    flex:1;
+    gap:10px;
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    margin: 10px 10px 0px 10px;
+}

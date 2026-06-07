@@ -4,9 +4,7 @@ import "../styles/performance.css";
 function Performance() {
   return (
     <div className="container">
-      <div className="title">
-        <h2> PERFORMANCE PAGE</h2>
-      </div>
+      
 
       <div className="performance-box">
         <h1>Performance</h1>
