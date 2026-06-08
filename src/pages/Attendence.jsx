@@ -11,29 +11,40 @@ function Attendance() {
     setStudents(data);
   }, []);
 
- return (
-  <div>
-    <h2>Attendance Page</h2>
+  return (
+    <div className="attendance-container">
+      <h2>Attendance Page</h2>
 
-    <table border="1">
-      <thead>
-        <tr>
-          <th>Name</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {students.map((student, index) => (
-          <tr key={index}>
-            <td>{student.name}</td>
+      <table className="attendance-table">
+        <thead>
+          <tr>
+            <th>S.No</th>
+            <th>Name</th>
+            <th>Attendance</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+        </thead>
+
+        <tbody>
+          {students.map((student, index) => (
+            <tr key={index}>
+              <td>{index + 1}</td>
+              <td>{student.name}</td>
+              <td>
+                <select className="status-select">
+                  <option>Present</option>
+                  <option>Absent</option>
+                </select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <button className="save-btn">
+        Save Attendance
+      </button>
+    </div>
+  );
 }
-
-
 
 export default Attendance;
