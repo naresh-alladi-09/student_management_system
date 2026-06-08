@@ -1,6 +1,6 @@
 import React from 'react'
 import "../styles/attendence.css";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 function Attendance() {
   const [students, setStudents] = useState([]);
