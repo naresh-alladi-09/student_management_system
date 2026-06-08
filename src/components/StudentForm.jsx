@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import css from "../styles/studentform.css";
+import "../styles/studentform.css";
 const StudentForm = () => {
 
   const [name, setname] = useState("");
@@ -45,7 +45,9 @@ const StudentForm = () => {
 
   return (
     <form onSubmit={handleSubmit}>
-
+<div className="stu-form-cont">
+  <h2>ADD STUDENTS</h2>
+   <div className="input-cont">
       <input
         type="text"
         placeholder="Name"
@@ -59,7 +61,8 @@ const StudentForm = () => {
         value={year}
         onChange={(e) => setyear(e.target.value)}
       />
-
+      </div>
+<div className="input-cont">
       <input
         type="email"
         placeholder="Email"
@@ -73,7 +76,8 @@ const StudentForm = () => {
         value={phone}
         onChange={(e) => setphone(e.target.value)}
       />
-
+</div>
+<div className="input-cont">
       <select
         value={branch}
         onChange={(e) => setbranch(e.target.value)}
@@ -83,11 +87,22 @@ const StudentForm = () => {
         <option value="ECE">ECE</option>
         <option value="AIML">AIML</option>
       </select>
-
+</div>
+<div className="buttoonns">
+     <button type="reset" onClick={() => {
+      setname("");
+      setyear("");
+      setemail("");
+      setphone("");
+      setbranch("");
+     }}>
+        clear form
+      </button>
       <button type="submit">
         Add Student
       </button>
-
+      </div>
+</div>
     </form>
   );
 };
