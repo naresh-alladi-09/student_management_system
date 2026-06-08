@@ -1,10 +1,21 @@
+import react from "react";
+import Navbar from "../components/Navbar";
+import Sidebar from "../components/Sidebar";
+import StudentForm from "../components/StudentForm";
+
 import React from 'react'
-import StudentForm from '../components/StudentForm'
 
 const Addstudent = () => {
   return (
-    <div>aad students</div>
-    
+    <div className="sideandmain">
+    <div className="Sidebarindashboard">
+      <Sidebar/>
+      </div>
+      <div className="main-content">
+        <Navbar/>
+        <StudentForm/> 
+    </div>
+    </div>
   )
 }
 

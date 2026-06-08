@@ -1,9 +1,39 @@
-import React from 'react'
+import React, { useEffect, useState } from "react";
+
+import Navbar from "../components/Navbar";
+import Sidebar from "../components/Sidebar";
+import StudentTable from "../components/StudentTable";
 
 const Students = () => {
-  return (
-    <div>Students</div>
-  )
-}
 
-export default Students
+  const [students, setStudents] = useState([]);
+
+  useEffect(() => {
+
+    const data =
+      JSON.parse(localStorage.getItem("students")) || [];
+
+    setStudents(data);
+
+  }, []);
+
+  return (
+
+    <div>
+
+      <Sidebar />
+
+      <div>
+
+        <Navbar />
+
+        <StudentTable students={students} />
+
+      </div>
+
+    </div>
+
+  );
+};
+
+export default Students;

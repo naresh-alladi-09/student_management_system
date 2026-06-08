@@ -18,6 +18,12 @@ const Sidebar = () => {
                     <span>Dashboard</span>
                 </Link>
             </li>
+            <li>
+                <Link to="/AddStudents">
+                    <i class="fa-solid fa-user-plus"></i>
+                    <span>Add Student</span>
+                </Link>
+            </li>
 
             <li>
                 <Link to="/students">
