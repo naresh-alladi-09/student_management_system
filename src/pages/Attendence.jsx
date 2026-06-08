@@ -13,9 +13,12 @@ function Attendance() {
   }, []);
 
   return (
-    <div>
+    <div className="att-cont">
        <div><Sidebar/>
-      <Navbar/></div>
+       </div>
+       <div>
+      <Navbar/>
+      
     <div className="attendance-container">
      
       <h2>Attendance </h2>
@@ -48,6 +51,7 @@ function Attendance() {
       <button className="save-btn">
         Save Attendance
       </button>
+    </div>
     </div>
     </div>
   );

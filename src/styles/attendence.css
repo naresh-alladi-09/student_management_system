@@ -1,12 +1,19 @@
 .attendance-container {
   width: 80%;
-  margin: 50px auto;
+  
+  margin: 30px auto;
   text-align: center;
 }
 
 .attendance-container h2 {
   color: #333;
-  margin-bottom: 20px;
+  margin-bottom: 0px;
+}
+.att-cont{
+  display:flex;
+  margin:0;
+  padding:0;
+  height:100vh;
 }
 
 .attendance-table {
