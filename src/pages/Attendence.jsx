@@ -1,7 +1,8 @@
 import React from 'react'
 import "../styles/attendence.css";
 import { useEffect, useState } from "react";
-
+import Sidebar from "../components/Sidebar";
+import Navbar from "../components/Navbar";
 
 function Attendance() {
   const [students, setStudents] = useState([]);
@@ -12,8 +13,12 @@ function Attendance() {
   }, []);
 
   return (
+    <div>
+       <div><Sidebar/>
+      <Navbar/></div>
     <div className="attendance-container">
-      <h2>Attendance Page</h2>
+     
+      <h2>Attendance </h2>
 
       <table className="attendance-table">
         <thead>
@@ -43,6 +48,7 @@ function Attendance() {
       <button className="save-btn">
         Save Attendance
       </button>
+    </div>
     </div>
   );
 }
