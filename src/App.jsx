@@ -11,6 +11,7 @@ import Performance from './pages/Performance';
 import StudentForm from './components/StudentForm';
 import Navbar from "./components/Navbar";
 import Sidebar from './components/Sidebar';
+import Dashboardcard from './components/Dashboardcard';
 function App() {
 
   return (
@@ -27,6 +28,7 @@ function App() {
       <Route path="/StudentForm" element={<StudentForm/>}/>
       <Route path="/Navbar" element={<Navbar/>}/>
       <Route path="/Sidebar" element={<Sidebar/>}/>
+       <Route path="/dashboardcard" element={<Dashboardcard/>}/>
     </Routes>
     </BrowserRouter>
   )
