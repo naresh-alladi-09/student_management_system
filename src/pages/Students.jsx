@@ -19,11 +19,11 @@ const Students = () => {
 
   return (
 
-    <div>
-
+    <div className="sideandmain">
+      <div className="Sidebarindashboard">
       <Sidebar />
-
-      <div>
+      </div>
+      <div className="main-content">
 
         <Navbar />
 

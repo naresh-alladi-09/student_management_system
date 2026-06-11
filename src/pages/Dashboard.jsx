@@ -1,6 +1,6 @@
 import React from 'react'
 import Sidebar from "../components/Sidebar";
-import Performance from "../pages/Performance";
+import Dashboardcard from "../components/Dashboardcard";
 import Navbar from "../components/Navbar";
 import "../styles/dashboard.css";
 const Dashboard = () => {
@@ -11,7 +11,7 @@ const Dashboard = () => {
       </div>
       <div className="main-content">
         <Navbar/>
-        <Performance/>
+        <Dashboardcard/>
       </div>
     </div>
   )

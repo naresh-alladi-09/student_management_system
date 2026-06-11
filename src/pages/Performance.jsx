@@ -1,8 +1,17 @@
 import React from "react";
 import "../styles/performance.css";
+import Sidebar from "../components/Sidebar";
+import Navbar from "../components/Navbar";
 
 function Performance() {
   return (
+
+    <div className="sideandmain">
+      <div>
+        <Sidebar/>
+      </div>
+      <div className="main-content">
+        <Navbar/>
     <div className="container">
       
 
@@ -88,6 +97,9 @@ function Performance() {
         </table>
       </div>
     </div>
+    </div>
+    </div>
+    
   );
 };
 
