@@ -1,5 +1,5 @@
 import React from "react";
-import "./styles/dashboardcard.css";
+import "../styles/dashboardcard.css";
 
 import { FaUserGraduate } from "react-icons/fa";
 import { FaClipboardCheck } from "react-icons/fa";
@@ -10,41 +10,45 @@ function DashboardCard() {
   return (
     <div className="dashboard-cards">
 
+      {/* Card 1 */}
       <div className="card">
         <div className="icon students">
-          <FaUserGraduate />
+          <FaUserGraduate size={28} color="#fff" />
         </div>
-        <div>
+        <div className="text">
           <h3>Total Students</h3>
           <h1>120</h1>
         </div>
       </div>
 
+      {/* Card 2 */}
       <div className="card">
         <div className="icon attendance">
-          <FaClipboardCheck />
+          <FaClipboardCheck size={28} color="#fff" />
         </div>
-        <div>
+        <div className="text">
           <h3>Present Today</h3>
           <h1>85</h1>
         </div>
       </div>
 
+      {/* Card 3 */}
       <div className="card">
         <div className="icon subjects">
-          <FaBook />
+          <FaBook size={28} color="#fff" />
         </div>
-        <div>
+        <div className="text">
           <h3>Total Subjects</h3>
           <h1>6</h1>
         </div>
       </div>
 
+      {/* Card 4 */}
       <div className="card">
         <div className="icon performance">
-          <FaChartLine />
+          <FaChartLine size={28} color="#fff" />
         </div>
-        <div>
+        <div className="text">
           <h3>Average Score</h3>
           <h1>78%</h1>
         </div>
