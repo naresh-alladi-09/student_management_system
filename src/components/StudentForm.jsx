@@ -7,6 +7,8 @@ const StudentForm = () => {
   const [email, setemail] = useState("");
   const [phone, setphone] = useState("");
   const [branch, setbranch] = useState("");
+  const [Semester,setSemester] = useState("");
+  
 
   const handleSubmit = (e) => {
 
@@ -18,7 +20,8 @@ const StudentForm = () => {
       year,
       email,
       phone,
-      branch
+      branch,
+      Semester
     };
 
     const existingStudents =
@@ -41,6 +44,7 @@ const StudentForm = () => {
     setemail("");
     setphone("");
     setbranch("");
+    setSemester("");
   };
 
   return (
@@ -54,6 +58,7 @@ const StudentForm = () => {
         value={name}
         onChange={(e) => setname(e.target.value)}
       />
+  
 
       <input
         type="text"
@@ -87,6 +92,14 @@ const StudentForm = () => {
         <option value="ECE">ECE</option>
         <option value="AIML">AIML</option>
       </select>
+      
+      <input
+      type="text"
+      placeholder="Semester"
+      value={Semester}
+      onChange={(e) => setSemester(e.target.value)}
+      />
+
 </div>
 <div className="buttoonns">
      <button type="reset" onClick={() => {
@@ -95,6 +108,7 @@ const StudentForm = () => {
       setemail("");
       setphone("");
       setbranch("");
+      setSemester("");
      }}>
         clear form
       </button>
