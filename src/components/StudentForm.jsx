@@ -25,14 +25,14 @@ const StudentForm = () => {
     };
 
     const existingStudents =
-      JSON.parse(localStorage.getItem("students")) || [];
+      JSON.parse(Axios.get("students")) || [];
 
     const updatedStudents = [
       ...existingStudents,
       newStudent
     ];
 
-    localStorage.setItem(
+    axios.post(
       "students",
       JSON.stringify(updatedStudents)
     );

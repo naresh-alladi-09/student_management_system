@@ -11,7 +11,7 @@ const Students = () => {
   useEffect(() => {
 
     const data =
-      JSON.parse(localStorage.getItem("students")) || [];
+      JSON.parse(axios.get("students")) || [];
 
     setStudents(data);
 
