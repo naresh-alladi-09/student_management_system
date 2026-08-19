@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { addStudent } from "../services/studentService";
 import "../styles/studentform.css";
 const StudentForm = () => {
 
@@ -10,32 +11,22 @@ const StudentForm = () => {
   const [Semester,setSemester] = useState("");
   
 
-  const handleSubmit = (e) => {
+  
 
-    e.preventDefault();
+    const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    const newStudent = {
-      id: Date.now(),
-      name,
-      year,
-      email,
-      phone,
-      branch,
-      Semester
-    };
+  const newStudent = {
+    name,
+    year,
+    email,
+    phone,
+    branch,
+    Semester,
+  };
 
-    const existingStudents =
-      JSON.parse(Axios.get("students")) || [];
-
-    const updatedStudents = [
-      ...existingStudents,
-      newStudent
-    ];
-
-    axios.post(
-      "students",
-      JSON.stringify(updatedStudents)
-    );
+  try {
+    await addStudent(newStudent);
 
     alert("Student Added Successfully");
 
@@ -45,7 +36,12 @@ const StudentForm = () => {
     setphone("");
     setbranch("");
     setSemester("");
-  };
+  } catch (error) {
+    console.error(error);
+    alert("Failed to add student");
+  }
+};
+  
 
   return (
     <form onSubmit={handleSubmit}>
