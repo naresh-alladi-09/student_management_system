@@ -7,7 +7,7 @@ class Student(models.Model):
     email=models.EmailField()
     phone=models.CharField(max_length=15)
     branch=models.CharField(max_length=50)
-    semester=models.CharField(max_length=10)
+    sem=models.CharField(max_length=10)
 
     def __str__(self):
         return self.name
