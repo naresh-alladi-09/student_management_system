@@ -22,7 +22,7 @@ const StudentForm = () => {
     email,
     phone,
     branch,
-    semester :Semester,
+    semester ,
   };
 
   try {
