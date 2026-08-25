@@ -19,12 +19,12 @@ function App() {
     <Routes>
       
 
-      <Route path="/Login" element={<Login/>}/>
+      <Route path="/" element={<Login/>}/>
       <Route path="/dashboard" element={<Dashboard/>}/>
       <Route path="/students" element={<Students/>}/>
       <Route path="/AddStudents" element={<Addstudent/>}/>
       <Route path="/attendence" element={<Attendence/>}/>
-      <Route path="/Performance" element={<Performance/>}/>
+      <Route path="/performance" element={<Performance/>}/>
       <Route path="/StudentForm" element={<StudentForm/>}/>
       <Route path="/Navbar" element={<Navbar/>}/>
       <Route path="/Sidebar" element={<Sidebar/>}/>

@@ -8,7 +8,7 @@ function Attendance() {
   const [students, setStudents] = useState([]);
 
   useEffect(() => {
-    const data = JSON.parse(localStorage.getItem("students")) || [];
+    const data = JSON.parse(axios.get("students")) || [];
     setStudents(data);
   }, []);
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { addStudent } from "../services/studentService";
+import { addStudent } from "../services/studentservice";
 import "../styles/studentform.css";
 const StudentForm = () => {
 
@@ -8,7 +8,7 @@ const StudentForm = () => {
   const [email, setemail] = useState("");
   const [phone, setphone] = useState("");
   const [branch, setbranch] = useState("");
-  const [Semester,setSemester] = useState("");
+  const [semester,setSemester] = useState("");
   
 
   
@@ -22,7 +22,7 @@ const StudentForm = () => {
     email,
     phone,
     branch,
-    Semester,
+    semester :Semester,
   };
 
   try {
@@ -92,7 +92,7 @@ const StudentForm = () => {
       <input
       type="text"
       placeholder="Semester"
-      value={Semester}
+      value={semester}
       onChange={(e) => setSemester(e.target.value)}
       />
 

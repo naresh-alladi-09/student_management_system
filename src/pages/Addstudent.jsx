@@ -1,4 +1,4 @@
-import react from "react";
+
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import StudentForm from "../components/StudentForm";

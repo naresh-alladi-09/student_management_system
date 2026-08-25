@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-
+import { getStudents } from "../services/studentservice";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import StudentTable from "../components/StudentTable";
@@ -9,13 +9,12 @@ const Students = () => {
   const [students, setStudents] = useState([]);
 
   useEffect(() => {
-
-    const data =
-      JSON.parse(axios.get("students")) || [];
-
-    setStudents(data);
-
-  }, []);
+  const loadStudents = async () => {
+    const response = await getStudents();
+    setStudents(response.data);
+  };
+  loadStudents();
+}, []);
 
   return (
 
