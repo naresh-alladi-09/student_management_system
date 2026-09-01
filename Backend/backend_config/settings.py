@@ -9,6 +9,13 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
+from pathlib import Path
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
+
 
 from pathlib import Path
 
@@ -78,12 +85,18 @@ WSGI_APPLICATION = 'backend_config.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'student_management_system',
-        'USER': 'root',
-        'PASSWORD': 'Naresh@06',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("AIVEN_DB_NAME"),
+        "USER": os.environ.get("AIVEN_DB_USER"),
+        "PASSWORD": os.environ.get("AIVEN_PASSWORD"),
+        "HOST": os.environ.get("AIVEN_DB_HOST"),
+        "PORT": os.environ.get("AIVEN_DB_PORT"),
+        'options':{
+            'ssl':{
+                'ca': BASE_DIR /'ca.pem',
+            },
+        },
+        
     }
 }
 

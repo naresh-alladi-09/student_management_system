@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 __pycache__/
 *.pyc
+
+.env
+__pycache__/
+*.pyc
+venv/
+Venv/
