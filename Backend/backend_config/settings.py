@@ -85,7 +85,7 @@ WSGI_APPLICATION = 'backend_config.wsgi.application'
 
 DATABASES = {
     'default': {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django.db.backends.mysql",
         "NAME": os.environ.get("AIVEN_DB_NAME"),
         "USER": os.environ.get("AIVEN_DB_USER"),
         "PASSWORD": os.environ.get("AIVEN_PASSWORD"),
