@@ -1,30 +1,62 @@
-import React from 'react'
-import { FaUser,FaBell,FaSearch, FaUserCircle } from 'react-icons/fa'
-import '../styles/navbar.css';
-import {useNavigate} from "react-router-dom";
+import React, { useState } from "react";
+import { FaUserCircle, FaSignOutAlt, FaSearch } from "react-icons/fa";
+import "../styles/navbar.css";
+import { useNavigate, useLocation } from "react-router-dom";
 
 const Navbar = () => {
-  const handlelogout=()=>{
-    Navigate("/Login");
-  }
-  const Navigate = useNavigate();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [navSearch, setNavSearch] = useState("");
+
+  const getPageTitle = () => {
+    const path = location.pathname.toLowerCase();
+    if (path.includes("addstudents")) return "Add New Student";
+    if (path.includes("students")) return "Student Directory";
+    if (path.includes("attendence")) return "Attendance Management";
+    if (path.includes("performance")) return "Academic Performance";
+    return "Dashboard Overview";
+  };
+
+  const handleSearchSubmit = (e) => {
+    if (e.key === "Enter" && navSearch.trim()) {
+      navigate(`/students`);
+    }
+  };
+
+  const handleLogout = () => {
+    navigate("/login");
+  };
 
   return (
     <div className="navbar">
       <div className="title">
-      <h2>Dashboard</h2>
+        <h2>{getPageTitle()}</h2>
       </div>
+
       <div className="nav-links">
-        <FaSearch/>
-        <input type="text" placeholder="search students..."/>
-        <FaBell/>
-        <FaUserCircle/>
-        <button onClick={handlelogout}>Logout</button>
+        <div className="nav-search-wrapper">
+          <FaSearch className="nav-search-icon" />
+          <input
+            type="text"
+            placeholder="Search students..."
+            value={navSearch}
+            onChange={(e) => setNavSearch(e.target.value)}
+            onKeyDown={handleSearchSubmit}
+          />
+        </div>
 
+        <div className="nav-profile-badge">
+          <FaUserCircle size={22} color="#3b82f6" />
+          <span className="teacher-name">Faculty Admin</span>
+        </div>
 
+        <button className="nav-logout-btn" onClick={handleLogout} title="Sign Out">
+          <FaSignOutAlt />
+          <span>Logout</span>
+        </button>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Navbar
+export default Navbar;

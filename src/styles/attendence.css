@@ -1,63 +1,274 @@
-.attendance-container {
-  width: 80%;
-  
-  margin: 30px auto;
-  text-align: center;
+.attendance-page-content {
+  width: 100%;
+  padding: 10px 20px 40px 20px;
+  box-sizing: border-box;
 }
 
-.attendance-container h2 {
-  color: #333;
-  margin-bottom: 0px;
+.attendance-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
 }
-.att-cont{
-  display:flex;
-  margin:0;
-  padding:0;
-  height:100vh;
+
+.attendance-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.attendance-subtitle {
+  color: #64748b;
+  font-size: 14px;
+  margin: 4px 0 0 0;
+}
+
+.date-picker-cont {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  padding: 8px 16px;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.date-picker-cont label {
+  font-weight: 600;
+  color: #334155;
+  font-size: 14px;
+}
+
+.date-input {
+  border: 1px solid #cbd5e1;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.attendance-stats-bar {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  background: white;
+  padding: 16px 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.att-stat-pill {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.att-stat-pill.total {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.att-stat-pill.present {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.att-stat-pill.absent {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.att-stat-pill.rate {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.att-bulk-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+
+.bulk-btn {
+  padding: 7px 14px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  background: #f8fafc;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.bulk-btn:hover {
+  background: #e2e8f0;
+}
+
+.bulk-btn.mark-all-present:hover {
+  background: #22c55e;
+  color: white;
+  border-color: #22c55e;
+}
+
+.bulk-btn.mark-all-absent:hover {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
+}
+
+.attendance-alert-success {
+  background: #dcfce7;
+  color: #166534;
+  padding: 12px 18px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  font-weight: 500;
+  border-left: 4px solid #22c55e;
+}
+
+.attendance-alert-error {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 12px 18px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  border-left: 4px solid #ef4444;
+}
+
+.attendance-loading {
+  padding: 40px;
+  text-align: center;
+  color: #64748b;
+  font-size: 16px;
+}
+
+.attendance-table-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
 }
 
 .attendance-table {
   width: 100%;
   border-collapse: collapse;
-  background-color: white;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  text-align: left;
 }
 
 .attendance-table th {
-  background-color: #4f46e5;
-  color: white;
-  padding: 12px;
+  background: #1e293b;
+  color: #f8fafc;
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .attendance-table td {
-  padding: 12px;
-  border: 1px solid #ddd;
-}
-
-.attendance-table tr:nth-child(even) {
-  background-color: #f5f5f5;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #334155;
+  vertical-align: middle;
 }
 
 .attendance-table tr:hover {
-  background-color: #e8eaf6;
+  background-color: #f8fafc;
 }
 
-.status-select {
-  padding: 6px;
-  border-radius: 5px;
-  border: 1px solid #ccc;
+.student-name-cell {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+}
+
+.student-icon {
+  color: #6366f1;
+  font-size: 16px;
+}
+
+.branch-badge {
+  background: #eff6ff;
+  color: #2563eb;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.status-toggle-group {
+  display: inline-flex;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  overflow: hidden;
+}
+
+.toggle-btn {
+  padding: 6px 14px;
+  border: none;
+  background: white;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.toggle-btn.active-present {
+  background: #16a34a;
+  color: white;
+}
+
+.toggle-btn.active-absent {
+  background: #dc2626;
+  color: white;
+}
+
+.save-btn-container {
+  padding: 20px;
+  display: flex;
+  justify-content: flex-end;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
 }
 
 .save-btn {
-  margin-top: 20px;
-  padding: 10px 20px;
-  background-color: #4f46e5;
+  padding: 12px 28px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
   color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 15px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  transition: all 0.2s;
 }
 
 .save-btn:hover {
-  background-color: #3730a3;
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  transform: translateY(-1px);
+}
+
+.no-records {
+  text-align: center;
+  padding: 40px !important;
+  color: #94a3b8;
+  font-style: italic;
 }

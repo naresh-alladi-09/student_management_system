@@ -12,15 +12,12 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-load_dotenv()
-
-
-
-
-from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Explicitly load .env from Backend folder
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -32,7 +29,7 @@ SECRET_KEY = 'django-insecure-@i3wfc7qtlq#y8^&+l0fvv(15y(2m1ytti=^i4ky#djzg!zyok
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -86,17 +83,16 @@ WSGI_APPLICATION = 'backend_config.wsgi.application'
 DATABASES = {
     'default': {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": os.environ.get("AIVEN_DB_NAME"),
-        "USER": os.environ.get("AIVEN_DB_USER"),
-        "PASSWORD": os.environ.get("AIVEN_PASSWORD"),
-        "HOST": os.environ.get("AIVEN_DB_HOST"),
-        "PORT": os.environ.get("AIVEN_DB_PORT"),
-        'options':{
-            'ssl':{
-                'ca': BASE_DIR /'ca.pem',
+        "NAME": os.environ.get("AIVEN_DB_NAME", "defaultdb"),
+        "USER": os.environ.get("AIVEN_DB_USER", "avnadmin"),
+        "PASSWORD": os.environ.get("AIVEN_PASSWORD", ""),
+        "HOST": os.environ.get("AIVEN_DB_HOST", "mysql-26020f38-alekhyabandaru4-16f1.f.aivencloud.com"),
+        "PORT": int(os.environ.get("AIVEN_DB_PORT", 22125)),
+        'OPTIONS': {
+            'ssl': {
+                'ca': str(BASE_DIR / 'ca.pem'),
             },
         },
-        
     }
 }
 
@@ -137,7 +133,13 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-CORS_ALLOWED_ORIGINS=[
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:8000",
 ]

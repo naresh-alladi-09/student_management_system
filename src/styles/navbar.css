@@ -1,25 +1,89 @@
-.navbar{
-    display:flex;
-    flex-direction:row;
-    justify-content:space-between;
-    align-items:center;
-    background-color:white;
-    padding:10px;
-    margin:auto;
-   min-width:1000px;
-    max-width:1200px;
-    height:100px;
-    box-shadow:0px 2px 4px rgba(0,0,0,0.1);
-    border-radius:10px;
-    border:2px solid rgb(132, 132, 132);
+.navbar {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  background-color: white;
+  padding: 14px 24px;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 20px;
 }
-.nav-links{
-    display:flex;
-    align-items:center;
-    gap:15px
-}
-.title{
-    font-size:25px;
-    padding:20px
 
+.title h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 7px 14px;
+  border-radius: 8px;
+  width: 240px;
+}
+
+.nav-search-icon {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.nav-search-wrapper input {
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1e293b;
+}
+
+.nav-profile-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #eff6ff;
+  padding: 6px 12px;
+  border-radius: 20px;
+}
+
+.teacher-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.nav-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nav-logout-btn:hover {
+  background: #dc2626;
+  color: white;
 }
