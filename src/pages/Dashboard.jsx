@@ -35,18 +35,6 @@ const Dashboard = () => {
         <Navbar />
 
         <div className="dashboard-body">
-          {/* Welcome & Database Status Banner */}
-          <div className="dashboard-welcome-banner">
-            <div>
-              <h2>Welcome to Student Management Portal</h2>
-              <p>Real-time analytics and management system connected with Cloud MySQL</p>
-            </div>
-            <div className="db-status-badge">
-              <span className="pulse-dot"></span>
-              <span>Live DB Connected (Aiven MySQL)</span>
-            </div>
-          </div>
-
           <Dashboardcard studentCount={students.length} />
 
           {/* Quick Actions & Recent Students */}
@@ -60,7 +48,7 @@ const Dashboard = () => {
               </div>
 
               {loading ? (
-                <div className="panel-loading">Loading students from database...</div>
+                <div className="panel-loading">Loading students...</div>
               ) : recentStudents.length > 0 ? (
                 <div className="panel-table-wrap">
                   <table className="recent-table">

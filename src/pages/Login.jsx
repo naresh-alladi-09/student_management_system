@@ -6,8 +6,8 @@ import { FaUser, FaLock } from "react-icons/fa";
 const Login = () => {
   const navigate = useNavigate();
 
-  const [username, setUsername] = useState("madam");
-  const [password, setPassword] = useState("123456");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   const handleLogin = (e) => {
@@ -19,7 +19,7 @@ const Login = () => {
     if ((username === teacherName && password === teacherPassword) || (username === "admin" && password === "admin")) {
       navigate("/dashboard");
     } else {
-      setError("Invalid username or password. Use demo credentials: madam / 123456");
+      setError("Invalid username or password. Please try again.");
     }
   };
 
@@ -31,10 +31,6 @@ const Login = () => {
             <i className="fa-solid fa-graduation-cap login-hero-icon"></i>
             <h2>STUDENT MANAGEMENT SYSTEM</h2>
             <p>Access Dashboard to manage students and academic records in real time</p>
-          </div>
-          <div className="login-demo-pill">
-            <small>Demo Credentials:</small>
-            <span>User: <strong>madam</strong> | Pass: <strong>123456</strong></span>
           </div>
         </div>
 
@@ -79,8 +75,8 @@ const Login = () => {
                 <label htmlFor="rem">Remember me</label>
               </div>
               <div className='forget-pass'>
-                <a href='#login-hint' onClick={(e) => { e.preventDefault(); setUsername("madam"); setPassword("123456"); }}>
-                  Autofill demo login
+                <a href='#forgot' onClick={(e) => { e.preventDefault(); alert("Please contact faculty administration to reset credentials."); }}>
+                  Forgot password?
                 </a>
               </div>
             </div>

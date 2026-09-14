@@ -56,7 +56,7 @@ function DashboardCard({ studentCount: externalCount }) {
         <div className="text">
           <h3>Total Students</h3>
           <h1>{loading ? "..." : studentCount}</h1>
-          <span className="card-subtext">Live database count</span>
+          <span className="card-subtext">Total enrolled</span>
         </div>
       </div>
 
