@@ -1,9 +1,12 @@
 import React from "react";
 import "../styles/sidebar.css";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const Sidebar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const currentPath = location.pathname.toLowerCase();
 
   const navItems = [
@@ -13,6 +16,12 @@ const Sidebar = () => {
     { path: "/attendence", label: "Attendance", icon: "fa-regular fa-calendar-check" },
     { path: "/performance", label: "Performance", icon: "fa-solid fa-chart-simple" },
   ];
+
+  const handleLogout = (e) => {
+    e.preventDefault();
+    logout();
+    navigate("/login/teacher");
+  };
 
   return (
     <div className="sidebar">
@@ -35,10 +44,10 @@ const Sidebar = () => {
         })}
 
         <li className="logout-item">
-          <Link to="/login">
+          <a href="#logout" onClick={handleLogout}>
             <i className="fa-solid fa-right-from-bracket"></i>
             <span>Logout</span>
-          </Link>
+          </a>
         </li>
       </ul>
     </div>
@@ -46,7 +55,3 @@ const Sidebar = () => {
 };
 
 export default Sidebar;
-
-
-  
-

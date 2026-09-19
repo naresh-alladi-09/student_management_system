@@ -2,10 +2,12 @@ import React, { useState } from "react";
 import { FaUserCircle, FaSignOutAlt, FaSearch } from "react-icons/fa";
 import "../styles/navbar.css";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { currentUser, logout } = useAuth();
   const [navSearch, setNavSearch] = useState("");
 
   const getPageTitle = () => {
@@ -24,8 +26,11 @@ const Navbar = () => {
   };
 
   const handleLogout = () => {
-    navigate("/login");
+    logout();
+    navigate("/login/teacher");
   };
+
+  const teacherDisplayName = currentUser?.name || "Faculty Admin";
 
   return (
     <div className="navbar">
@@ -47,7 +52,7 @@ const Navbar = () => {
 
         <div className="nav-profile-badge">
           <FaUserCircle size={22} color="#3b82f6" />
-          <span className="teacher-name">Faculty Admin</span>
+          <span className="teacher-name">{teacherDisplayName}</span>
         </div>
 
         <button className="nav-logout-btn" onClick={handleLogout} title="Sign Out">
