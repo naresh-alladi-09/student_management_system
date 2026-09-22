@@ -116,11 +116,11 @@ function DashboardCard({ studentCount: externalCount }) {
         </div>
         <div className="text">
           <h3>Active Branches</h3>
-          <h1>{loading ? "..." : branchList.length || 3}</h1>
+          <h1>{loading ? "..." : branchList.length}</h1>
           <span className="card-subtext">
             {branchList.length > 0
               ? branchList.slice(0, 4).join(", ")
-              : "CSE, AIML, IT"}
+              : "No active branches"}
           </span>
         </div>
       </div>

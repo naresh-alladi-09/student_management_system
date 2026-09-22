@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from "react";
-import { loginApi, logoutApi } from "../services/studentservice";
+import { loginApi, logoutApi, getMeApi } from "../services/studentservice";
 
 export const AuthContext = createContext(null);
 
@@ -24,78 +24,71 @@ export const AuthProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  // Teacher Login via Real Database API
-  const loginTeacher = async (username, password) => {
-    const trimmedUser = (username || "").trim();
+  // Unified Login for Admin, Teacher, or Student
+  const loginUser = async (identifier, password, roleRequested = null) => {
+    const trimmedId = (identifier || "").trim();
     const trimmedPass = (password || "").trim();
 
     try {
       setLoading(true);
       const res = await loginApi({
-        username: trimmedUser,
+        identifier: trimmedId,
+        username: trimmedId,
         password: trimmedPass,
-        role: "teacher",
+        role: roleRequested,
       });
 
       const data = res.data;
-      const teacherUser = {
-        role: data.role || "teacher",
+      const role = data.role || "teacher";
+
+      let userData = {
+        role: role,
         token: data.token,
+        userId: data.user_id,
         username: data.username,
-        name: data.name || "Faculty Admin",
-        title: "Faculty Advisor",
+        email: data.email,
+        name: data.name || data.username,
         department: data.department || "Academic Operations",
+        isStaff: Boolean(data.is_staff),
       };
-      setCurrentUser(teacherUser);
+
+      if (role === "student" && data.student) {
+        const s = data.student;
+        userData = {
+          ...userData,
+          id: s.id,
+          name: s.name,
+          rollNo: s.rollNo,
+          phone: s.phone,
+          branch: s.branch,
+          year: s.year,
+          semester: s.semester,
+        };
+      }
+
+      setCurrentUser(userData);
       setLoading(false);
-      return { success: true, user: teacherUser };
+      return { success: true, user: userData };
     } catch (err) {
       setLoading(false);
       const errMsg =
         err.response?.data?.detail ||
-        "Invalid teacher credentials. Please check your username and password.";
+        err.response?.data?.error ||
+        "Authentication failed. Please check your credentials.";
       return { success: false, message: errMsg };
     }
   };
 
-  // Student Login via Real Database API
+  const loginTeacher = async (username, password) => {
+    return loginUser(username, password, "teacher");
+  };
+
   const loginStudent = async (identifier, password) => {
-    setLoading(true);
-    const idClean = (identifier || "").trim();
-    const passClean = (password || "").trim();
+    return loginUser(identifier, password, "student");
+  };
 
-    try {
-      const res = await loginApi({
-        identifier: idClean,
-        password: passClean,
-        role: "student",
-      });
-
-      const data = res.data;
-      const studentData = data.student || {};
-      const studentUser = {
-        role: "student",
-        token: data.token,
-        username: data.username,
-        id: studentData.id,
-        name: studentData.name || data.name,
-        rollNo: studentData.rollNo || data.username,
-        email: studentData.email || data.email,
-        phone: studentData.phone || "",
-        branch: studentData.branch || "CSE",
-        year: studentData.year || 1,
-        semester: studentData.semester || "1",
-      };
-      setCurrentUser(studentUser);
-      setLoading(false);
-      return { success: true, user: studentUser };
-    } catch (err) {
-      setLoading(false);
-      const errMsg =
-        err.response?.data?.detail ||
-        "Incorrect student credentials. Use your Roll No / Email and password 'student123'.";
-      return { success: false, message: errMsg };
-    }
+  const loginAdmin = async (username, password) => {
+    return loginUser(username, password, "admin");
   };
 
   const logout = async () => {
@@ -108,16 +101,46 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("sms_auth_user");
   };
 
+  const refreshUser = async () => {
+    try {
+      const res = await getMeApi();
+      const data = res.data;
+      if (currentUser) {
+        const updated = {
+          ...currentUser,
+          role: data.role,
+          name: data.name,
+          department: data.department,
+        };
+        if (data.student) {
+          Object.assign(updated, data.student);
+        }
+        setCurrentUser(updated);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const role = currentUser?.role || null;
+  const isAdmin = role === "admin" || Boolean(currentUser?.isStaff);
+  const isTeacher = role === "teacher" || isAdmin;
+  const isStudent = role === "student";
+
   return (
     <AuthContext.Provider
       value={{
         currentUser,
-        role: currentUser?.role || null,
-        isTeacher: currentUser?.role === "teacher" || currentUser?.role === "admin",
-        isStudent: currentUser?.role === "student",
+        role,
+        isAdmin,
+        isTeacher,
+        isStudent,
+        loginUser,
         loginTeacher,
         loginStudent,
+        loginAdmin,
         logout,
+        refreshUser,
         loading,
       }}
     >

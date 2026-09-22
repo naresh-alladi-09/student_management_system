@@ -2,8 +2,15 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import StudentNavbar from "../components/StudentNavbar";
-import { getStudentReportCard, getStudentAttendance } from "../services/studentservice";
+import {
+  getMyReportCard,
+  getMyAttendance,
+  getTimetable,
+  getAnnouncements,
+  markQrAttendance,
+} from "../services/studentservice";
 import "../styles/studentdashboard.css";
+import { Html5QrcodeScanner } from "html5-qrcode";
 import {
   FaGraduationCap,
   FaCalendarCheck,
@@ -13,11 +20,16 @@ import {
   FaClock,
   FaBell,
   FaCheckCircle,
+  FaExclamationTriangle,
   FaUserTie,
   FaDownload,
   FaEnvelope,
   FaPhone,
   FaBuilding,
+  FaQrcode,
+  FaTimes,
+  FaCamera,
+  FaKeyboard,
 } from "react-icons/fa";
 
 const StudentDashboard = () => {
@@ -39,47 +51,155 @@ const StudentDashboard = () => {
   const studentEmail = currentUser?.email || "—";
   const studentPhone = currentUser?.phone || "—";
 
-  const [subjectsData, setSubjectsData] = useState([]);
+  // Real Database States
+  const [reportData, setReportData] = useState(null);
   const [attendanceData, setAttendanceData] = useState(null);
-  const [cgpaVal, setCgpaVal] = useState(currentUser?.cgpa || 0.0);
+  const [timetableSlots, setTimetableSlots] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  // QR Modal States
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrMode, setQrMode] = useState("camera"); // "camera" | "manual"
+  const [qrInputToken, setQrInputToken] = useState("");
+  const [qrSubmitting, setQrSubmitting] = useState(false);
+  const [qrResult, setQrResult] = useState(null);
+
+  const extractTokenFromInput = (text) => {
+    if (!text) return "";
+    const trimmed = text.trim();
+    if (trimmed.includes("token=")) {
+      try {
+        const url = new URL(trimmed);
+        return url.searchParams.get("token") || trimmed;
+      } catch {
+        const match = trimmed.match(/token=([a-zA-Z0-9_-]+)/);
+        if (match) return match[1];
+      }
+    }
+    return trimmed;
+  };
+
+  const submitTokenDirectly = async (tokenValue) => {
+    const cleanToken = extractTokenFromInput(tokenValue);
+    if (!cleanToken) return;
+
+    setQrSubmitting(true);
+    setQrResult(null);
+
+    try {
+      const res = await markQrAttendance(cleanToken);
+      setQrResult({
+        success: true,
+        message: res.data?.message || "Attendance marked successfully!",
+      });
+      setQrInputToken("");
+      getMyAttendance().then((attRes) => {
+        if (attRes.data) setAttendanceData(attRes.data);
+      });
+    } catch (err) {
+      const errMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.error ||
+        "Failed to mark attendance. Please verify the code or ask faculty.";
+      setQrResult({
+        success: false,
+        message: errMsg,
+      });
+    } finally {
+      setQrSubmitting(false);
+    }
+  };
+
+  // Camera Scanner Lifecycle using Html5QrcodeScanner
   useEffect(() => {
-    if (!currentUser?.id) return;
-    let isMounted = true;
+    if (!showQrModal || qrMode !== "camera") return;
 
-    getStudentReportCard(currentUser.id)
-      .then((res) => {
-        if (!isMounted) return;
-        if (res.data?.subjects && res.data.subjects.length > 0) {
-          setSubjectsData(res.data.subjects);
-        }
-        if (res.data?.cgpa) {
-          setCgpaVal(res.data.cgpa);
-        }
-      })
-      .catch(() => {});
+    let scanner = null;
+    const timer = setTimeout(() => {
+      try {
+        scanner = new Html5QrcodeScanner(
+          "qr-reader-target",
+          {
+            fps: 10,
+            qrbox: { width: 240, height: 240 },
+            rememberLastUsedCamera: true,
+            supportedScanTypes: [0],
+          },
+          false
+        );
 
-    getStudentAttendance(currentUser.id)
-      .then((res) => {
-        if (!isMounted) return;
-        if (res.data) {
-          setAttendanceData(res.data);
-        }
-      })
-      .catch(() => {});
+        scanner.render(
+          (decodedText) => {
+            submitTokenDirectly(decodedText);
+            try {
+              scanner.clear();
+            } catch {}
+          },
+          () => {}
+        );
+      } catch (err) {
+        console.warn("Could not start camera scanner:", err);
+      }
+    }, 150);
 
     return () => {
-      isMounted = false;
+      clearTimeout(timer);
+      if (scanner) {
+        try {
+          scanner.clear();
+        } catch {}
+      }
     };
-  }, [currentUser?.id]);
+  }, [showQrModal, qrMode]);
 
-  const attendanceRate = attendanceData?.attendance_rate ?? 0;
-  const cgpa = cgpaVal;
-  const subjects = subjectsData;
+  const fetchAllData = () => {
+    setLoading(true);
+    Promise.all([
+      getMyReportCard().catch(() => ({ data: null })),
+      getMyAttendance().catch(() => ({ data: null })),
+      getTimetable().catch(() => ({ data: [] })),
+      getAnnouncements().catch(() => ({ data: [] })),
+    ])
+      .then(([repRes, attRes, timeRes, annRes]) => {
+        if (repRes.data) setReportData(repRes.data);
+        if (attRes.data) setAttendanceData(attRes.data);
+        if (timeRes.data) setTimetableSlots(timeRes.data);
+        if (annRes.data) setAnnouncements(annRes.data);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    if (!currentUser) return;
+    fetchAllData();
+  }, [currentUser]);
+
+  const handleMarkQr = async (e) => {
+    if (e) e.preventDefault();
+    submitTokenDirectly(qrInputToken);
+  };
 
   if (!currentUser || !isStudent) {
     return null;
   }
+
+  const attendanceRate = attendanceData?.attendance_rate ?? 0.0;
+  const isShortage = attendanceData?.shortage_warning ?? false;
+  const classesNeeded = attendanceData?.classes_needed_for_75 ?? 0;
+  const subjects = reportData?.subjects || [];
+  const cgpa = reportData?.cgpa ?? 0.0;
+  const sgpa = reportData?.sgpa ?? 0.0;
+  const earnedCredits = reportData?.earned_credits ?? 0;
+  const totalCredits = reportData?.total_credits ?? 0;
+
+  // Filter today's timetable
+  const todayDayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
+  const todaysClasses = timetableSlots.filter(
+    (slot) => (slot.day || "").toLowerCase() === todayDayName.toLowerCase()
+  );
 
   return (
     <div className="student-dashboard-page">
@@ -90,8 +210,8 @@ const StudentDashboard = () => {
         <div className="hero-left">
           <h1>Welcome back, {studentName}! 👋</h1>
           <p>
-            Here is your real-time academic standing, attendance records, course
-            grades, and department notifications for Semester {studentSem}.
+            Here is your live verified academic standing, attendance records, course
+            grades, and department announcements for Semester {studentSem}.
           </p>
           <div className="hero-badges-row">
             <span className="hero-pill">
@@ -106,23 +226,89 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div className="hero-status-box">
-          <small>Current Academic Standing</small>
-          <div className="hero-status-val">Good Standing • Regular</div>
+        <div className="hero-status-box" style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "flex-end" }}>
+          <div>
+            <small>Active Academic Standing</small>
+            <div className="hero-status-val">
+              {isShortage ? (
+                <span style={{ color: "#f87171" }}>⚠️ Shortage Alert</span>
+              ) : attendanceRate >= 75 ? (
+                <span style={{ color: "#34d399" }}>Good Standing • Regular</span>
+              ) : (
+                <span>Enrolled Student</span>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="action-btn-primary"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "#3b82f6",
+              color: "#fff",
+              border: "none",
+              padding: "10px 18px",
+              borderRadius: "8px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            onClick={() => setShowQrModal(true)}
+          >
+            <FaQrcode /> Scan / Enter QR Attendance
+          </button>
         </div>
       </div>
+
+      {/* Shortage Warning Alert Banner if attendance < 75% */}
+      {isShortage && (
+        <div
+          style={{
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: "12px",
+            padding: "16px 20px",
+            marginBottom: "24px",
+            display: "flex",
+            alignItems: "center",
+            gap: "14px",
+            color: "#991b1b",
+          }}
+        >
+          <FaExclamationTriangle size={26} color="#ef4444" />
+          <div>
+            <h4 style={{ margin: "0 0 4px 0", fontSize: "15px", fontWeight: 700 }}>
+              Attendance Shortage Warning: {attendanceRate}%
+            </h4>
+            <p style={{ margin: 0, fontSize: "13px", color: "#b91c1c" }}>
+              Your current attendance is below the mandatory 75% examination threshold.
+              {classesNeeded > 0 && (
+                <strong>
+                  {" "}You must attend the next {classesNeeded} consecutive classes to reach 75% eligibility.
+                </strong>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Key Metric Stats Grid */}
       <div className="student-stats-grid">
         <div className="student-stat-card">
-          <div className="stat-icon-wrap green">
+          <div className={`stat-icon-wrap ${attendanceRate >= 75 ? "green" : "red"}`}>
             <FaCalendarCheck />
           </div>
           <div className="stat-info">
             <small>Overall Attendance</small>
             <div className="stat-number">{attendanceRate}%</div>
-            <span className="stat-badge-tag tag-success">
-              Eligible (&gt;75% required)
+            <span
+              className={`stat-badge-tag ${
+                attendanceRate >= 75 ? "tag-success" : "tag-danger"
+              }`}
+            >
+              {attendanceRate >= 75 ? "Eligible (≥75% required)" : "Shortage Warning"}
             </span>
           </div>
         </div>
@@ -133,8 +319,12 @@ const StudentDashboard = () => {
           </div>
           <div className="stat-info">
             <small>Cumulative CGPA</small>
-            <div className="stat-number">{cgpa} / 10</div>
-            <span className="stat-badge-tag tag-info">Distinction Class</span>
+            <div className="stat-number">
+              {cgpa > 0 ? `${cgpa} / 10` : "No GPA Yet"}
+            </div>
+            <span className="stat-badge-tag tag-info">
+              {sgpa > 0 ? `Current SGPA: ${sgpa}` : "Evaluations in progress"}
+            </span>
           </div>
         </div>
 
@@ -143,9 +333,11 @@ const StudentDashboard = () => {
             <FaBook />
           </div>
           <div className="stat-info">
-            <small>Enrolled Courses</small>
+            <small>Curriculum Courses</small>
             <div className="stat-number">{subjects.length} Subjects</div>
-            <span className="stat-badge-tag tag-info">17 Total Credits</span>
+            <span className="stat-badge-tag tag-info">
+              {totalCredits > 0 ? `${totalCredits} Total Credits` : "Registered"}
+            </span>
           </div>
         </div>
 
@@ -154,9 +346,15 @@ const StudentDashboard = () => {
             <FaAward />
           </div>
           <div className="stat-info">
-            <small>Semester Grade</small>
-            <div className="stat-number">A+</div>
-            <span className="stat-badge-tag tag-success">Top 10% in Branch</span>
+            <small>Earned Credits</small>
+            <div className="stat-number">
+              {earnedCredits} / {totalCredits || "—"}
+            </div>
+            <span className="stat-badge-tag tag-success">
+              {earnedCredits === totalCredits && totalCredits > 0
+                ? "All Courses Cleared"
+                : "Active Semester"}
+            </span>
           </div>
         </div>
       </div>
@@ -183,42 +381,60 @@ const StudentDashboard = () => {
               <div className="attendance-progress-box">
                 <div className="att-header-status">
                   <span className="att-pct-bold">{attendanceRate}%</span>
-                  <span className="att-target-label">
-                    Minimum requirement: 75%
-                  </span>
+                  <span className="att-target-label">Minimum requirement: 75%</span>
                 </div>
                 <div className="progress-track">
                   <div
                     className="progress-bar-fill"
-                    style={{ width: `${attendanceRate}%` }}
+                    style={{
+                      width: `${Math.min(100, attendanceRate)}%`,
+                      backgroundColor: attendanceRate >= 75 ? "#10b981" : "#ef4444",
+                    }}
                   ></div>
                 </div>
                 <div className="att-footer-counts">
-                  <span>{attendanceData?.attended_classes ?? 145} Classes Attended</span>
-                  <span>{attendanceData?.missed_classes ?? 14} Classes Missed</span>
-                  <span>{attendanceData?.total_classes ?? 159} Total Held</span>
+                  <span>
+                    <strong>{attendanceData?.attended_classes ?? 0}</strong> Attended
+                  </span>
+                  <span>
+                    <strong>{attendanceData?.missed_classes ?? 0}</strong> Missed
+                  </span>
+                  <span>
+                    <strong>{attendanceData?.total_classes ?? 0}</strong> Total Held
+                  </span>
                 </div>
               </div>
 
-              {/* Subject attendance mini list */}
+              {/* Subject attendance breakdown */}
               <div className="subject-att-list">
-                {subjects.slice(0, 3).map((sub) => (
-                  <div key={sub.code} className="subject-att-row">
-                    <div className="subj-info">
-                      <span className="subj-name">{sub.name}</span>
-                      <span className="subj-code">{sub.code}</span>
-                    </div>
-                    <div className="subj-bar-wrap">
-                      <div className="progress-track" style={{ margin: 0 }}>
-                        <div
-                          className="progress-bar-fill"
-                          style={{ width: `${sub.attendance}%` }}
-                        ></div>
+                {attendanceData?.subject_breakdown &&
+                attendanceData.subject_breakdown.length > 0 ? (
+                  attendanceData.subject_breakdown.slice(0, 4).map((sub) => (
+                    <div key={sub.code} className="subject-att-row">
+                      <div className="subj-info">
+                        <span className="subj-name">{sub.name}</span>
+                        <span className="subj-code">{sub.code}</span>
                       </div>
-                      <span className="subj-pct">{sub.attendance}%</span>
+                      <div className="subj-bar-wrap">
+                        <div className="progress-track" style={{ margin: 0, width: "110px" }}>
+                          <div
+                            className="progress-bar-fill"
+                            style={{
+                              width: `${Math.min(100, sub.attendance_rate)}%`,
+                              backgroundColor:
+                                sub.attendance_rate >= 75 ? "#10b981" : "#f59e0b",
+                            }}
+                          ></div>
+                        </div>
+                        <span className="subj-pct">{sub.attendance_rate}%</span>
+                      </div>
                     </div>
+                  ))
+                ) : (
+                  <div style={{ padding: "16px", color: "#64748b", textAlign: "center" }}>
+                    No subject-wise attendance recorded yet.
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
@@ -266,8 +482,15 @@ const StudentDashboard = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="5" style={{ textAlign: "center", padding: "20px", color: "#64748b" }}>
-                        No curriculum courses registered in database.
+                      <td
+                        colSpan="5"
+                        style={{
+                          textAlign: "center",
+                          padding: "24px",
+                          color: "#64748b",
+                        }}
+                      >
+                        No academic scores recorded in database.
                       </td>
                     </tr>
                   )}
@@ -281,42 +504,42 @@ const StudentDashboard = () => {
             <div className="student-card">
               <div className="card-title-row">
                 <h3>
-                  <FaClock /> Today's Lecture Schedule
+                  <FaClock /> Today's Classes ({todayDayName})
                 </h3>
+                <button
+                  type="button"
+                  className="card-action-link"
+                  onClick={() => setActiveTab("timetable")}
+                >
+                  Full Timetable →
+                </button>
               </div>
+
               <div className="notice-list">
-                <div className="notice-item alert-info">
-                  <div className="notice-icon-box">
-                    <FaClock />
+                {todaysClasses.length > 0 ? (
+                  todaysClasses.map((slot) => (
+                    <div key={slot.id} className="notice-item alert-info">
+                      <div className="notice-icon-box">
+                        <FaClock />
+                      </div>
+                      <div className="notice-body">
+                        <h4>
+                          {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
+                        </h4>
+                        <p>
+                          {slot.subject_details?.name || slot.subject} • {slot.room}
+                        </p>
+                        <span className="notice-date">
+                          Faculty: {slot.teacher_name || "Assigned Faculty"}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>
+                    No lecture classes scheduled for today ({todayDayName}).
                   </div>
-                  <div className="notice-body">
-                    <h4>09:30 AM - 10:45 AM</h4>
-                    <p>Data Structures & Algorithms • Lecture Hall 102</p>
-                    <span className="notice-date">Faculty: Prof. K. Sharma</span>
-                  </div>
-                </div>
-
-                <div className="notice-item alert-info">
-                  <div className="notice-icon-box">
-                    <FaClock />
-                  </div>
-                  <div className="notice-body">
-                    <h4>11:15 AM - 12:30 PM</h4>
-                    <p>Database Management Systems • Lab 3</p>
-                    <span className="notice-date">Faculty: Dr. Madam</span>
-                  </div>
-                </div>
-
-                <div className="notice-item alert-info">
-                  <div className="notice-icon-box">
-                    <FaClock />
-                  </div>
-                  <div className="notice-body">
-                    <h4>02:00 PM - 03:30 PM</h4>
-                    <p>Web Technologies Practical Session • CS Computer Lab</p>
-                    <span className="notice-date">Faculty: Prof. Ramesh</span>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -326,34 +549,45 @@ const StudentDashboard = () => {
                 <h3>
                   <FaBell /> Department Announcements
                 </h3>
+                <button
+                  type="button"
+                  className="card-action-link"
+                  onClick={() => setActiveTab("announcements")}
+                >
+                  All ({announcements.length}) →
+                </button>
               </div>
-              <div className="notice-list">
-                <div className="notice-item alert-warn">
-                  <div className="notice-icon-box">
-                    <FaBell />
-                  </div>
-                  <div className="notice-body">
-                    <h4>Mid-Term Examinations Timetable</h4>
-                    <p>
-                      Mid-term examinations commence from next Monday. Download
-                      hall tickets from the portal.
-                    </p>
-                    <span className="notice-date">Published 2 days ago</span>
-                  </div>
-                </div>
 
-                <div className="notice-item">
-                  <div className="notice-icon-box">
-                    <FaCheckCircle />
+              <div className="notice-list">
+                {announcements.length > 0 ? (
+                  announcements.slice(0, 3).map((ann) => (
+                    <div
+                      key={ann.id}
+                      className={`notice-item ${
+                        ann.priority === "Urgent"
+                          ? "alert-danger"
+                          : ann.priority === "Important"
+                          ? "alert-warn"
+                          : "alert-info"
+                      }`}
+                    >
+                      <div className="notice-icon-box">
+                        <FaBell />
+                      </div>
+                      <div className="notice-body">
+                        <h4>{ann.title}</h4>
+                        <p>{ann.description}</p>
+                        <span className="notice-date">
+                          {ann.department} • {new Date(ann.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>
+                    No announcements published yet.
                   </div>
-                  <div className="notice-body">
-                    <h4>Project Submission Deadline</h4>
-                    <p>
-                      Mini-project phase 1 code review scheduled for Friday.
-                    </p>
-                    <span className="notice-date">Academic Notice</span>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
@@ -367,7 +601,14 @@ const StudentDashboard = () => {
             <h3>
               <FaCalendarCheck /> Comprehensive Attendance Report
             </h3>
-            <span className="hero-pill" style={{ color: "#065f46", background: "#ecfdf5", border: "1px solid #a7f3d0" }}>
+            <span
+              className="hero-pill"
+              style={{
+                color: attendanceRate >= 75 ? "#065f46" : "#b91c1c",
+                background: attendanceRate >= 75 ? "#ecfdf5" : "#fef2f2",
+                border: `1px solid ${attendanceRate >= 75 ? "#a7f3d0" : "#fecaca"}`,
+              }}
+            >
               <FaCheckCircle /> Overall Attendance: {attendanceRate}%
             </span>
           </div>
@@ -376,20 +617,47 @@ const StudentDashboard = () => {
             <div className="att-header-status">
               <div>
                 <span className="att-pct-bold">{attendanceRate}%</span>
-                <span style={{ marginLeft: "12px", color: "#047857", fontWeight: 600 }}>
-                  ✓ Eligible for Semester End Examinations
+                <span
+                  style={{
+                    marginLeft: "12px",
+                    color: attendanceRate >= 75 ? "#047857" : "#dc2626",
+                    fontWeight: 600,
+                  }}
+                >
+                  {attendanceRate >= 75
+                    ? "✓ Eligible for Semester Examinations"
+                    : "⚠️ Attendance Shortage Warning"}
                 </span>
               </div>
               <span className="att-target-label">
-                Required: 75% | Safe margin: +{(attendanceRate - 75).toFixed(0)}%
+                Required: 75% |{" "}
+                {attendanceRate >= 75
+                  ? `Safe margin: +${(attendanceRate - 75).toFixed(1)}%`
+                  : `Deficit: ${(75 - attendanceRate).toFixed(1)}%`}
               </span>
             </div>
             <div className="progress-track" style={{ height: "16px" }}>
               <div
                 className="progress-bar-fill"
-                style={{ width: `${attendanceRate}%` }}
+                style={{
+                  width: `${Math.min(100, attendanceRate)}%`,
+                  backgroundColor: attendanceRate >= 75 ? "#10b981" : "#ef4444",
+                }}
               ></div>
             </div>
+
+            {isShortage && classesNeeded > 0 && (
+              <div
+                style={{
+                  marginTop: "12px",
+                  fontSize: "13px",
+                  color: "#b91c1c",
+                  fontWeight: 600,
+                }}
+              >
+                * To reach 75%, you need to attend the next {classesNeeded} consecutive classes without absence.
+              </div>
+            )}
           </div>
 
           <h4 style={{ margin: "20px 0 12px 0", color: "#1e293b" }}>
@@ -407,32 +675,48 @@ const StudentDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {subjects.length > 0 ? (
-                subjects.map((sub) => (
+              {attendanceData?.subject_breakdown &&
+              attendanceData.subject_breakdown.length > 0 ? (
+                attendanceData.subject_breakdown.map((sub) => (
                   <tr key={sub.code}>
-                    <td><strong>{sub.code}</strong></td>
+                    <td>
+                      <strong>{sub.code}</strong>
+                    </td>
                     <td>{sub.name}</td>
                     <td>{sub.attended}</td>
-                    <td>{sub.totalClasses}</td>
+                    <td>{sub.total_classes}</td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <div className="progress-track" style={{ width: "100px", margin: 0 }}>
                           <div
                             className="progress-bar-fill"
-                            style={{ width: `${sub.attendance}%` }}
+                            style={{
+                              width: `${Math.min(100, sub.attendance_rate)}%`,
+                              backgroundColor:
+                                sub.attendance_rate >= 75 ? "#10b981" : "#ef4444",
+                            }}
                           ></div>
                         </div>
-                        <strong>{sub.attendance}%</strong>
+                        <strong>{sub.attendance_rate}%</strong>
                       </div>
                     </td>
                     <td>
-                      <span className="stat-badge-tag tag-success">Eligible</span>
+                      <span
+                        className={`stat-badge-tag ${
+                          sub.attendance_rate >= 75 ? "tag-success" : "tag-danger"
+                        }`}
+                      >
+                        {sub.attendance_rate >= 75 ? "Eligible" : "Shortage"}
+                      </span>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: "center", padding: "20px", color: "#64748b" }}>
+                  <td
+                    colSpan="6"
+                    style={{ textAlign: "center", padding: "20px", color: "#64748b" }}
+                  >
                     No subject attendance records found in database.
                   </td>
                 </tr>
@@ -442,12 +726,12 @@ const StudentDashboard = () => {
         </div>
       )}
 
-      {/* Tab 3: My Grades & Academic Performance */}
+      {/* Tab 3: My Grades & SGPA */}
       {activeTab === "performance" && (
         <div className="student-card">
           <div className="card-title-row">
             <h3>
-              <FaAward /> Academic Performance & Grade Report
+              <FaAward /> Authentic Academic Gradebook & SGPA
             </h3>
             <button
               type="button"
@@ -468,19 +752,39 @@ const StudentDashboard = () => {
           >
             <div className="profile-field-box">
               <small>Cumulative CGPA</small>
-              <span style={{ fontSize: "20px", color: "#059669" }}>{cgpa} / 10</span>
+              <span style={{ fontSize: "20px", color: "#059669", fontWeight: 700 }}>
+                {cgpa > 0 ? `${cgpa} / 10` : "N/A"}
+              </span>
             </div>
             <div className="profile-field-box">
-              <small>Semester SGPA (Current)</small>
-              <span style={{ fontSize: "20px", color: "#2563eb" }}>8.90</span>
+              <small>Current Semester SGPA</small>
+              <span style={{ fontSize: "20px", color: "#2563eb", fontWeight: 700 }}>
+                {sgpa > 0 ? `${sgpa} / 10` : "N/A"}
+              </span>
             </div>
             <div className="profile-field-box">
               <small>Earned Credits</small>
-              <span style={{ fontSize: "20px", color: "#0f172a" }}>82 / 160</span>
+              <span style={{ fontSize: "20px", color: "#0f172a", fontWeight: 700 }}>
+                {earnedCredits} / {totalCredits || "—"}
+              </span>
             </div>
             <div className="profile-field-box">
-              <small>Academic Standing</small>
-              <span style={{ fontSize: "20px", color: "#047857" }}>First Class with Distinction</span>
+              <small>Academic Status</small>
+              <span
+                style={{
+                  fontSize: "18px",
+                  color: cgpa >= 7.5 ? "#047857" : cgpa >= 5.0 ? "#2563eb" : "#d97706",
+                  fontWeight: 600,
+                }}
+              >
+                {cgpa >= 8.5
+                  ? "Distinction Level"
+                  : cgpa >= 7.0
+                  ? "First Class Standing"
+                  : cgpa >= 5.0
+                  ? "Good Standing"
+                  : "Regular"}
+              </span>
             </div>
           </div>
 
@@ -490,10 +794,11 @@ const StudentDashboard = () => {
                 <th>Code</th>
                 <th>Course Title</th>
                 <th>Credits</th>
-                <th>Internals (30)</th>
-                <th>End Sem (70)</th>
+                <th>Internals (40)</th>
+                <th>End Sem (60)</th>
                 <th>Total (100)</th>
                 <th>Grade</th>
+                <th>Grade Point</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -501,26 +806,40 @@ const StudentDashboard = () => {
               {subjects.length > 0 ? (
                 subjects.map((sub) => (
                   <tr key={sub.code}>
-                    <td><strong>{sub.code}</strong></td>
+                    <td>
+                      <strong>{sub.code}</strong>
+                    </td>
                     <td>{sub.name}</td>
                     <td>{sub.credits}</td>
                     <td>{sub.internals}</td>
                     <td>{sub.endSem}</td>
-                    <td><strong>{sub.total}</strong></td>
+                    <td>
+                      <strong>{sub.total}</strong>
+                    </td>
                     <td>
                       <span className={`grade-badge ${sub.gradeClass}`}>
                         {sub.grade}
                       </span>
                     </td>
+                    <td>{sub.gradePoint}</td>
                     <td>
-                      <span className="stat-badge-tag tag-success">PASSED</span>
+                      <span
+                        className={`stat-badge-tag ${
+                          sub.isPassed ? "tag-success" : "tag-danger"
+                        }`}
+                      >
+                        {sub.isPassed ? "PASSED" : "FAILED"}
+                      </span>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: "center", padding: "28px", color: "#64748b" }}>
-                    No examination records or report card data found in database.
+                  <td
+                    colSpan="9"
+                    style={{ textAlign: "center", padding: "30px", color: "#64748b" }}
+                  >
+                    No examination records found in database.
                   </td>
                 </tr>
               )}
@@ -529,7 +848,126 @@ const StudentDashboard = () => {
         </div>
       )}
 
-      {/* Tab 4: Student Profile */}
+      {/* Tab 4: Timetable */}
+      {activeTab === "timetable" && (
+        <div className="student-card">
+          <div className="card-title-row">
+            <h3>
+              <FaClock /> Weekly Academic Timetable
+            </h3>
+            <span className="hero-pill">
+              Branch: {studentBranch} • Semester {studentSem}
+            </span>
+          </div>
+
+          <div className="table-responsive" style={{ marginTop: "16px" }}>
+            <table className="grades-table">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Time</th>
+                  <th>Course Code</th>
+                  <th>Course Name</th>
+                  <th>Room / Lab</th>
+                  <th>Faculty Instructor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {timetableSlots.length > 0 ? (
+                  timetableSlots.map((slot) => (
+                    <tr key={slot.id}>
+                      <td>
+                        <strong>{slot.day}</strong>
+                      </td>
+                      <td>
+                        {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
+                      </td>
+                      <td>
+                        <strong>{slot.subject_details?.code || slot.subject}</strong>
+                      </td>
+                      <td>{slot.subject_details?.name || "Course Lecture"}</td>
+                      <td>{slot.room}</td>
+                      <td>{slot.teacher_name || "Faculty"}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan="6"
+                      style={{ textAlign: "center", padding: "28px", color: "#64748b" }}
+                    >
+                      No lecture timetable configured for {studentBranch} Semester {studentSem}.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 5: Announcements */}
+      {activeTab === "announcements" && (
+        <div className="student-card">
+          <div className="card-title-row">
+            <h3>
+              <FaBell /> Department & University Announcements
+            </h3>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
+            {announcements.length > 0 ? (
+              announcements.map((ann) => (
+                <div
+                  key={ann.id}
+                  style={{
+                    padding: "16px 20px",
+                    borderRadius: "10px",
+                    border: "1px solid #e2e8f0",
+                    background: "#f8fafc",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    <h4 style={{ margin: 0, fontSize: "16px", color: "#0f172a" }}>
+                      {ann.title}
+                    </h4>
+                    <span
+                      className={`stat-badge-tag ${
+                        ann.priority === "Urgent"
+                          ? "tag-danger"
+                          : ann.priority === "Important"
+                          ? "tag-info"
+                          : "tag-success"
+                      }`}
+                    >
+                      {ann.priority}
+                    </span>
+                  </div>
+                  <p style={{ margin: "0 0 10px 0", color: "#475569", fontSize: "14px", lineHeight: "1.5" }}>
+                    {ann.description}
+                  </p>
+                  <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+                    Posted by {ann.author_name || ann.author_username} • Department: {ann.department} • Date: {new Date(ann.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ padding: "30px", textAlign: "center", color: "#94a3b8" }}>
+                No active announcements published.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 6: Official Student Profile */}
       {activeTab === "profile" && (
         <div className="student-card">
           <div className="card-title-row">
@@ -541,12 +979,16 @@ const StudentDashboard = () => {
 
           <div className="profile-details-grid">
             <div className="profile-field-box">
-              <small>Full Name</small>
+              <small>Full Legal Name</small>
               <span>{studentName}</span>
             </div>
             <div className="profile-field-box">
-              <small>Roll / Student ID</small>
+              <small>University Roll Number</small>
               <span>{studentRoll}</span>
+            </div>
+            <div className="profile-field-box">
+              <small>System Student ID</small>
+              <span>{currentUser?.studentId || f`STU2024${currentUser?.id || "0001"}`}</span>
             </div>
             <div className="profile-field-box">
               <small>Branch / Department</small>
@@ -557,21 +999,327 @@ const StudentDashboard = () => {
               <span>Year {studentYear} • Semester {studentSem}</span>
             </div>
             <div className="profile-field-box">
-              <small>Email Address</small>
-              <span><FaEnvelope style={{ marginRight: "6px" }} />{studentEmail}</span>
+              <small>Contact Email</small>
+              <span>
+                <FaEnvelope style={{ marginRight: "6px" }} />
+                {studentEmail}
+              </span>
             </div>
             <div className="profile-field-box">
               <small>Contact Phone</small>
-              <span><FaPhone style={{ marginRight: "6px" }} />{studentPhone}</span>
+              <span>
+                <FaPhone style={{ marginRight: "6px" }} />
+                {studentPhone}
+              </span>
             </div>
             <div className="profile-field-box">
-              <small>Faculty Advisor</small>
-              <span>Faculty Admin (madam)</span>
+              <small>Institutional Unit</small>
+              <span>
+                <FaBuilding style={{ marginRight: "6px" }} />
+                College of Engineering & Technology
+              </span>
             </div>
-            <div className="profile-field-box">
-              <small>Institution</small>
-              <span><FaBuilding style={{ marginRight: "6px" }} />EduPortal Institute of Engineering & Technology</span>
+          </div>
+        </div>
+      )}
+
+      {/* QR Attendance Scanner Modal */}
+      {showQrModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              padding: "28px",
+              maxWidth: "460px",
+              width: "100%",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
+              position: "relative",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setShowQrModal(false);
+                setQrResult(null);
+                setQrInputToken("");
+              }}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "none",
+                border: "none",
+                fontSize: "18px",
+                color: "#64748b",
+                cursor: "pointer",
+              }}
+            >
+              <FaTimes />
+            </button>
+
+            <div style={{ textAlign: "center", marginBottom: "16px" }}>
+              <div
+                style={{
+                  width: "52px",
+                  height: "52px",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  borderRadius: "50%",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "22px",
+                  marginBottom: "10px",
+                }}
+              >
+                <FaQrcode />
+              </div>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "19px", color: "#0f172a" }}>
+                Mark Live QR Attendance
+              </h3>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
+                Scan the faculty QR code with your camera, or enter the session token.
+              </p>
             </div>
+
+            {/* Mode Toggle Tabs */}
+            <div
+              style={{
+                display: "flex",
+                background: "#f1f5f9",
+                padding: "4px",
+                borderRadius: "10px",
+                marginBottom: "16px",
+                gap: "4px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setQrMode("camera");
+                  setQrResult(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: qrMode === "camera" ? "#ffffff" : "transparent",
+                  color: qrMode === "camera" ? "#2563eb" : "#64748b",
+                  fontWeight: qrMode === "camera" ? 700 : 500,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  boxShadow: qrMode === "camera" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                }}
+              >
+                <FaCamera /> 📷 Camera Scanner
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setQrMode("manual");
+                  setQrResult(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: qrMode === "manual" ? "#ffffff" : "transparent",
+                  color: qrMode === "manual" ? "#2563eb" : "#64748b",
+                  fontWeight: qrMode === "manual" ? 700 : 500,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  boxShadow: qrMode === "manual" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                }}
+              >
+                <FaKeyboard /> ⌨ Manual Code
+              </button>
+            </div>
+
+            {qrResult && (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: "10px",
+                  marginBottom: "14px",
+                  fontSize: "13px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  background: qrResult.success ? "#ecfdf5" : "#fef2f2",
+                  border: `1px solid ${qrResult.success ? "#a7f3d0" : "#fecaca"}`,
+                  color: qrResult.success ? "#065f46" : "#991b1b",
+                }}
+              >
+                {qrResult.success ? <FaCheckCircle size={18} /> : <FaExclamationTriangle size={18} />}
+                <span>{qrResult.message}</span>
+              </div>
+            )}
+
+            {qrSubmitting && (
+              <div
+                style={{
+                  padding: "16px",
+                  textAlign: "center",
+                  color: "#2563eb",
+                  fontWeight: 600,
+                  fontSize: "14px",
+                  background: "#eff6ff",
+                  borderRadius: "10px",
+                  marginBottom: "14px",
+                }}
+              >
+                Submitting & validating attendance token...
+              </div>
+            )}
+
+            {/* TAB 1: CAMERA SCANNER */}
+            {qrMode === "camera" && !qrResult?.success && (
+              <div style={{ marginBottom: "16px" }}>
+                <div
+                  id="qr-reader-target"
+                  style={{
+                    width: "100%",
+                    borderRadius: "10px",
+                    overflow: "hidden",
+                    border: "1px solid #cbd5e1",
+                  }}
+                />
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#64748b",
+                    textAlign: "center",
+                    marginTop: "8px",
+                    marginBottom: 0,
+                  }}
+                >
+                  💡 Point camera at faculty's QR code. Check-in records automatically upon detection!
+                </p>
+              </div>
+            )}
+
+            {/* TAB 2: MANUAL TOKEN ENTRY */}
+            {qrMode === "manual" && !qrResult?.success && (
+              <form onSubmit={handleMarkQr}>
+                <div style={{ marginBottom: "16px" }}>
+                  <label
+                    htmlFor="qr-token-input"
+                    style={{
+                      display: "block",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "#334155",
+                      marginBottom: "6px",
+                      textAlign: "left",
+                    }}
+                  >
+                    Temporary Session QR Token (or link):
+                  </label>
+                  <input
+                    id="qr-token-input"
+                    type="text"
+                    placeholder="Paste session token or scanned link..."
+                    value={qrInputToken}
+                    onChange={(e) => setQrInputToken(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "12px 14px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "14px",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowQrModal(false)}
+                    style={{
+                      flex: 1,
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      background: "#f8fafc",
+                      color: "#475569",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={qrSubmitting || !qrInputToken.trim()}
+                    style={{
+                      flex: 2,
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "#2563eb",
+                      color: "#ffffff",
+                      fontWeight: 600,
+                      cursor: qrSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {qrSubmitting ? "Validating..." : "Submit Attendance ✓"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* CLOSE BUTTON AFTER SUCCESS */}
+            {qrResult?.success && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowQrModal(false);
+                  setQrResult(null);
+                  setQrInputToken("");
+                }}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#10b981",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "14px",
+                  cursor: "pointer",
+                }}
+              >
+                Close & View Updated Dashboard ✓
+              </button>
+            )}
           </div>
         </div>
       )}

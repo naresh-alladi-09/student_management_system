@@ -6,6 +6,7 @@ import {
   FaLock,
   FaGraduationCap,
   FaChalkboardTeacher,
+  FaUserShield,
   FaIdCard,
   FaBolt,
   FaCheckCircle,
@@ -16,16 +17,20 @@ import { useAuth } from "../context/AuthContext";
 const Login = ({ initialRole }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { loginTeacher, loginStudent } = useAuth();
+  const { loginUser } = useAuth();
 
   // Determine active role directly from URL / props
   const getRoleFromLocation = () => {
     if (initialRole) return initialRole;
     const path = location.pathname.toLowerCase();
     if (path.includes("student")) return "student";
+    if (path.includes("admin")) return "admin";
     if (path.includes("teacher")) return "teacher";
     const searchParams = new URLSearchParams(location.search);
-    if (searchParams.get("role") === "student") return "student";
+    const qRole = searchParams.get("role");
+    if (qRole && ["admin", "teacher", "student"].includes(qRole.toLowerCase())) {
+      return qRole.toLowerCase();
+    }
     return "teacher";
   };
 
@@ -44,11 +49,14 @@ const Login = ({ initialRole }) => {
 
   const handleAutofillDemo = () => {
     setError("");
-    if (activeRole === "teacher") {
+    if (activeRole === "admin") {
+      setUsername("admin");
+      setPassword("admin");
+    } else if (activeRole === "teacher") {
       setUsername("madam");
       setPassword("123456");
     } else {
-      setUsername("STU-2024-009");
+      setUsername("STU-2024-001");
       setPassword("student123");
     }
   };
@@ -58,75 +66,94 @@ const Login = ({ initialRole }) => {
     setError("");
     setIsSubmitting(true);
 
-    if (activeRole === "teacher") {
-      const res = await loginTeacher(username, password);
-      setIsSubmitting(false);
-      if (res.success) {
-        navigate("/dashboard");
-      } else {
-        setError(res.message || "Invalid teacher username or password.");
-      }
-    } else {
-      // Student login
-      const res = await loginStudent(username, password);
-      setIsSubmitting(false);
-      if (res.success) {
+    const res = await loginUser(username, password, activeRole);
+    setIsSubmitting(false);
+
+    if (res.success) {
+      if (res.user.role === "admin") {
+        navigate("/admin");
+      } else if (res.user.role === "student") {
         navigate("/student/dashboard");
       } else {
-        setError(res.message || "Invalid student credentials. Please try again.");
+        navigate("/dashboard");
       }
+    } else {
+      setError(res.message || "Invalid credentials. Please check your username and password.");
     }
   };
 
   const isStudentMode = activeRole === "student";
+  const isAdminMode = activeRole === "admin";
+
+  const getPortalTitle = () => {
+    if (isAdminMode) return "SYSTEM ADMINISTRATION PORTAL";
+    if (isStudentMode) return "STUDENT ACADEMIC PORTAL";
+    return "FACULTY MANAGEMENT SYSTEM";
+  };
+
+  const getPortalDescription = () => {
+    if (isAdminMode) {
+      return "Manage institution departments, curriculum courses, faculty assignments, user privileges, and system audit logs.";
+    }
+    if (isStudentMode) {
+      return "View your individual course attendance, academic performance, semester grades, timetable, and department announcements.";
+    }
+    return "Manage student enrollments, record daily attendance, conduct live QR attendance sessions, evaluate grades, and monitor analytics.";
+  };
 
   return (
     <div className="login-page-bg">
       <div className="login-container">
         {/* Left Branding Panel */}
-        <div className={`login-left ${isStudentMode ? "student-mode" : ""}`}>
+        <div className={`login-left ${isStudentMode ? "student-mode" : isAdminMode ? "admin-mode" : ""}`}>
           <div className="login-branding">
             <div className="login-hero-icon">
-              {isStudentMode ? (
+              {isAdminMode ? (
+                <FaUserShield size={44} />
+              ) : isStudentMode ? (
                 <FaGraduationCap size={44} />
               ) : (
                 <FaChalkboardTeacher size={44} />
               )}
             </div>
-            <h2>
-              {isStudentMode
-                ? "STUDENT ACADEMIC PORTAL"
-                : "FACULTY MANAGEMENT SYSTEM"}
-            </h2>
-            <p>
-              {isStudentMode
-                ? "View your individual course attendance, academic performance, semester grades, and announcements."
-                : "Manage student enrollments, record attendance, evaluate grades, and monitor institutional metrics in real time."}
-            </p>
+            <h2>{getPortalTitle()}</h2>
+            <p>{getPortalDescription()}</p>
 
             <ul className="login-feature-list">
-              {isStudentMode ? (
+              {isAdminMode ? (
                 <>
                   <li>
-                    <FaCheckCircle /> Personal attendance tracking & alerts
+                    <FaCheckCircle /> Full user role & faculty management
                   </li>
                   <li>
-                    <FaCheckCircle /> Subject-wise internal & semester marks
+                    <FaCheckCircle /> Comprehensive system audit logging
                   </li>
                   <li>
-                    <FaCheckCircle /> Official student profile & status
+                    <FaCheckCircle /> Academic catalog & departments
+                  </li>
+                </>
+              ) : isStudentMode ? (
+                <>
+                  <li>
+                    <FaCheckCircle /> Real-time attendance & shortage alerts
+                  </li>
+                  <li>
+                    <FaCheckCircle /> Live QR code attendance scanner
+                  </li>
+                  <li>
+                    <FaCheckCircle /> Authentic SGPA / CGPA grade report
                   </li>
                 </>
               ) : (
                 <>
                   <li>
-                    <FaCheckCircle /> Full student directory management
+                    <FaCheckCircle /> Student directory & soft deletion
                   </li>
                   <li>
-                    <FaCheckCircle /> Daily attendance logging & bulk marking
+                    <FaCheckCircle /> Live temporary QR attendance sessions
                   </li>
                   <li>
-                    <FaCheckCircle /> Performance gradebook & reports
+                    <FaCheckCircle /> Gradebook mark entry & analytics
                   </li>
                 </>
               )}
@@ -135,16 +162,24 @@ const Login = ({ initialRole }) => {
 
           <div className="login-demo-pill">
             <small>
-              {isStudentMode ? "Student Demo Credentials" : "Faculty Demo Credentials"}
+              {isAdminMode
+                ? "Admin Demo Credentials"
+                : isStudentMode
+                ? "Student Demo Credentials"
+                : "Faculty Demo Credentials"}
             </small>
             <span>
-              {isStudentMode ? (
+              {isAdminMode ? (
                 <>
-                  Email: <code>alex.johnson@edu.com</code> | Pass: <code>student123</code>
+                  User: <code>admin</code> | Pass: <code>admin</code>
+                </>
+              ) : isStudentMode ? (
+                <>
+                  Roll No: <code>STU-2024-001</code> | Pass: <code>student123</code>
                 </>
               ) : (
                 <>
-                  User: <code>madam</code> (or <code>admin</code>) | Pass: <code>123456</code>
+                  User: <code>madam</code> | Pass: <code>123456</code>
                 </>
               )}
             </span>
@@ -153,37 +188,51 @@ const Login = ({ initialRole }) => {
 
         {/* Right Form Panel */}
         <div className={`login-form ${isStudentMode ? "student-form-mode" : ""}`}>
-          {/* Role Tabs */}
-          <div className="role-tabs-container">
+          {/* 3 Role Tabs */}
+          <div className="role-tabs-container" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
             <button
               type="button"
-              className={`role-tab-btn ${!isStudentMode ? "active teacher" : ""}`}
+              className={`role-tab-btn ${activeRole === "teacher" ? "active teacher" : ""}`}
               onClick={() => switchRole("teacher")}
             >
-              <FaChalkboardTeacher /> Faculty / Teacher
+              <FaChalkboardTeacher /> Faculty
             </button>
             <button
               type="button"
-              className={`role-tab-btn ${isStudentMode ? "active student" : ""}`}
+              className={`role-tab-btn ${activeRole === "student" ? "active student" : ""}`}
               onClick={() => switchRole("student")}
             >
-              <FaGraduationCap /> Student Portal
+              <FaGraduationCap /> Student
+            </button>
+            <button
+              type="button"
+              className={`role-tab-btn ${activeRole === "admin" ? "active" : ""}`}
+              style={activeRole === "admin" ? { background: "#0f172a", color: "#fff", borderColor: "#0f172a" } : {}}
+              onClick={() => switchRole("admin")}
+            >
+              <FaUserShield /> Admin
             </button>
           </div>
 
           <span
             className={`form-header-badge ${isStudentMode ? "student" : "teacher"}`}
           >
-            {isStudentMode ? "Student Login" : "Faculty Login"}
+            {isAdminMode ? "Admin Console" : isStudentMode ? "Student Portal" : "Faculty Portal"}
           </span>
 
           <h2>
-            {isStudentMode ? "Welcome, Student!" : "Welcome Back, Faculty!"}
+            {isAdminMode
+              ? "System Administrator Login"
+              : isStudentMode
+              ? "Student Portal Sign In"
+              : "Faculty Administrator Sign In"}
           </h2>
           <p className="login-subtitle">
-            {isStudentMode
-              ? "Sign in using your student email or roll number"
-              : "Sign in with your faculty administrator credentials"}
+            {isAdminMode
+              ? "Sign in with institutional administrative privileges"
+              : isStudentMode
+              ? "Sign in using your Roll Number or university email"
+              : "Sign in with your faculty department credentials"}
           </p>
 
           {error && (
@@ -196,7 +245,7 @@ const Login = ({ initialRole }) => {
           <form onSubmit={handleSubmit} className="login-inner-form">
             <div className="field-group">
               <label className="input-label-text">
-                {isStudentMode ? "Student Email or Roll ID" : "Faculty Username"}
+                {isStudentMode ? "Roll Number or Student Email" : "Username"}
               </label>
               <div
                 className={`username-cont ${
@@ -211,9 +260,11 @@ const Login = ({ initialRole }) => {
                 <input
                   type="text"
                   placeholder={
-                    isStudentMode
-                      ? "Enter student email or ID (e.g. alex.johnson@edu.com)"
-                      : "Enter username (e.g. madam or admin)"
+                    isAdminMode
+                      ? "Enter admin username (admin)"
+                      : isStudentMode
+                      ? "Enter Roll No (e.g. STU-2024-001)"
+                      : "Enter faculty username (e.g. madam)"
                   }
                   value={username}
                   required
@@ -235,11 +286,7 @@ const Login = ({ initialRole }) => {
                 <FaLock className="login-field-icon" />
                 <input
                   type="password"
-                  placeholder={
-                    isStudentMode
-                      ? "Enter student password (default: student123)"
-                      : "Enter password (default: 123456)"
-                  }
+                  placeholder="Enter your password"
                   value={password}
                   required
                   onChange={(e) => {
@@ -250,89 +297,33 @@ const Login = ({ initialRole }) => {
               </div>
             </div>
 
-            <div className="rem-cont">
-              <div className="remember-me">
-                <input
-                  type="checkbox"
-                  id={`rem-${activeRole}`}
-                  defaultChecked
-                />
-                <label htmlFor={`rem-${activeRole}`}>Remember me</label>
-              </div>
-              <div className="forget-pass">
-                <a
-                  href="#forgot"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (isStudentMode) {
-                      alert(
-                        "Student password assistance:\nDefault password is 'student123' or your registered phone number.\nContact college registrar if you need help."
-                      );
-                    } else {
-                      alert(
-                        "Faculty password assistance:\nDefault login is 'madam' / '123456' or 'admin' / 'admin'."
-                      );
-                    }
-                  }}
-                >
-                  Forgot password?
-                </a>
-              </div>
+            <div className="form-secondary-row">
+              <label className="remember-me-label">
+                <input type="checkbox" defaultChecked /> Remember session
+              </label>
+              <button
+                type="button"
+                className="autofill-demo-btn"
+                onClick={handleAutofillDemo}
+              >
+                <FaBolt /> Auto-Fill Demo
+              </button>
             </div>
 
             <button
               type="submit"
+              className={`login-submit-btn ${isStudentMode ? "student-btn" : ""}`}
               disabled={isSubmitting}
-              className={`login-submit-btn ${
-                isStudentMode ? "student-btn" : "teacher-btn"
-              }`}
             >
               {isSubmitting ? (
-                "Signing In..."
-              ) : isStudentMode ? (
-                <>
-                  <FaGraduationCap /> Enter Student Portal
-                </>
+                <span>
+                  <i className="fa-solid fa-spinner fa-spin"></i> Authenticating...
+                </span>
               ) : (
-                <>
-                  <FaChalkboardTeacher /> Login to Faculty Dashboard
-                </>
+                <span>Sign In to Portal →</span>
               )}
             </button>
           </form>
-
-          {/* Quick Demo Autofill */}
-          <div className="quick-fill-box">
-            <span className="quick-fill-text">
-              Testing? Autofill demo credentials:
-            </span>
-            <button
-              type="button"
-              className="quick-fill-btn"
-              onClick={handleAutofillDemo}
-            >
-              <FaBolt style={{ color: "#eab308" }} />
-              Autofill {isStudentMode ? "Student" : "Faculty"}
-            </button>
-          </div>
-
-          <div className="switch-portal-link">
-            {isStudentMode ? (
-              <span>
-                Are you a faculty member?{" "}
-                <button type="button" onClick={() => switchRole("teacher")}>
-                  Switch to Teacher Login →
-                </button>
-              </span>
-            ) : (
-              <span>
-                Are you an enrolled student?{" "}
-                <button type="button" onClick={() => switchRole("student")}>
-                  Switch to Student Login →
-                </button>
-              </span>
-            )}
-          </div>
         </div>
       </div>
     </div>

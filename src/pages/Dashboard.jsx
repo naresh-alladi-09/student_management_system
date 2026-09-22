@@ -8,13 +8,19 @@ import { getStudents } from "../services/studentservice";
 
 const Dashboard = () => {
   const [students, setStudents] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     getStudents()
       .then((res) => {
-        if (isMounted) setStudents(res.data || []);
+        const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+        const count = res.data?.count ?? list.length;
+        if (isMounted) {
+          setStudents(list);
+          setTotalCount(count);
+        }
       })
       .catch((err) => {
         console.error("Dashboard failed to fetch students:", err);
@@ -28,7 +34,7 @@ const Dashboard = () => {
     };
   }, []);
 
-  const recentStudents = students.slice(0, 5);
+  const recentStudents = Array.isArray(students) ? students.slice(0, 5) : [];
 
   return (
     <div className="sideandmain">
@@ -39,7 +45,7 @@ const Dashboard = () => {
         <Navbar />
 
         <div className="dashboard-body">
-          <Dashboardcard studentCount={students.length} />
+          <Dashboardcard studentCount={totalCount} />
 
           {/* Quick Actions & Recent Students */}
           <div className="dashboard-grid-layout">
@@ -47,7 +53,7 @@ const Dashboard = () => {
               <div className="panel-header">
                 <h3>Recently Registered Students</h3>
                 <Link to="/students" className="panel-link">
-                  View All ({students.length}) →
+                  View All ({totalCount}) →
                 </Link>
               </div>
 

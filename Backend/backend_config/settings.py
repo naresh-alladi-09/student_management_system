@@ -49,6 +49,11 @@ INSTALLED_APPS = [
     'accounts',
     'attendance',
     'performance',
+    'timetable',
+    'announcements',
+    'notifications',
+    'audit',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -69,6 +74,19 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 15,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Academic Management System API',
+    'DESCRIPTION': 'Enterprise Student, Attendance, Performance, and Timetable Management API with 3-tier Role-Based Access Control and Live QR Token Sessions.',
+    'VERSION': '2.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 TEMPLATES = [

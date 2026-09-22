@@ -5,21 +5,29 @@ import { useAuth } from "../context/AuthContext";
 const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, isAdmin } = useAuth();
   const currentPath = location.pathname.toLowerCase();
 
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: "fa-solid fa-gauge-high" },
-    { path: "/addstudents", label: "Add Student", icon: "fa-solid fa-user-plus" },
     { path: "/students", label: "Students", icon: "fa-solid fa-user-graduate" },
+    { path: "/addstudents", label: "Add Student", icon: "fa-solid fa-user-plus" },
     { path: "/attendance", label: "Attendance", icon: "fa-regular fa-calendar-check" },
     { path: "/performance", label: "Performance", icon: "fa-solid fa-chart-simple" },
   ];
 
+  if (isAdmin) {
+    navItems.unshift({
+      path: "/admin",
+      label: "Admin Console",
+      icon: "fa-solid fa-user-shield",
+    });
+  }
+
   const handleLogout = (e) => {
     e.preventDefault();
     logout();
-    navigate("/login/teacher");
+    navigate("/login");
   };
 
   return (

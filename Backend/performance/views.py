@@ -1,23 +1,32 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from students.models import Student
-from .models import Subject, StudentScore
-from .serializers import SubjectSerializer, StudentScoreSerializer
+from django.db import transaction
 
+from accounts.permissions import IsTeacherOrAdmin, IsSelfOrStaff, IsAdmin
+from students.models import Student
+from attendance.models import AttendanceRecord
+from .models import Subject, Assessment, Marks, StudentScore, calculate_grade_and_points
+from .serializers import SubjectSerializer, AssessmentSerializer, MarksSerializer, StudentScoreSerializer
+
+
+# =====================================================================
+# TEACHER / ADMIN: ALL SCORES OVERVIEW
+# =====================================================================
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsTeacherOrAdmin])
 def list_student_scores(request):
     """
-    List academic scores. Supports ?branch=CSE or ?student_id=1
-    If a student doesn't have scores yet, provides a default overview so teachers see real structured data.
+    List authentic student scores directly from the database.
+    NO FAKE PSEUDO-RANDOM SEEDED VALUES.
+    Supports ?branch=CSE or ?student_id=1
     """
     branch_param = request.query_params.get('branch', None)
     student_id_param = request.query_params.get('student_id', None)
 
-    students = Student.objects.all()
+    students = Student.objects.filter(is_active=True)
     if branch_param and branch_param.upper() != 'ALL':
         students = students.filter(branch__iexact=branch_param)
     if student_id_param:
@@ -25,39 +34,37 @@ def list_student_scores(request):
 
     results = []
     for s in students:
-        scores = StudentScore.objects.filter(student=s)
+        scores = StudentScore.objects.filter(student=s).select_related('subject')
+
         if scores.exists():
             maths = scores.filter(subject__name__icontains='math').first()
-            coding = scores.filter(subject__name__icontains='tech').first() or scores.filter(subject__name__icontains='program').first() or scores.first()
+            coding = (
+                scores.filter(subject__name__icontains='tech').first() or
+                scores.filter(subject__name__icontains='program').first() or
+                scores.filter(subject__name__icontains='data').first() or
+                scores.first()
+            )
             other = scores.exclude(id__in=[maths.id if maths else 0, coding.id if coding else 0]).first()
 
-            maths_val = maths.total if maths else 75.0
-            coding_val = coding.total if coding else 82.0
-            science_val = other.total if other else 78.0
-            avg_score = round((maths_val + coding_val + science_val) / 3, 2)
-        else:
-            # Consistent seed based on student attributes
-            seed = (s.id * 17 + len(s.name) * 7) % 35
-            maths_val = min(100, max(55, 70 + seed))
-            science_val = min(100, max(50, 68 + ((seed * 3) % 30)))
-            coding_val = min(100, max(60, 75 + ((seed * 2) % 25)))
-            avg_score = round((maths_val + science_val + coding_val) / 3, 2)
+            maths_val = maths.total if maths else 0.0
+            coding_val = coding.total if coding else 0.0
+            science_val = other.total if other else 0.0
 
-        if avg_score >= 90:
-            grade = 'A+'
-            grade_class = 'grade-aplus'
-        elif avg_score >= 80:
-            grade = 'A'
-            grade_class = 'grade-a'
-        elif avg_score >= 70:
-            grade = 'B'
-            grade_class = 'grade-b'
-        elif avg_score >= 60:
-            grade = 'C'
-            grade_class = 'grade-c'
+            total_points = sum(sc.subject.credits * sc.grade_point for sc in scores)
+            total_credits = sum(sc.subject.credits for sc in scores)
+            sgpa = round(total_points / total_credits, 2) if total_credits > 0 else 0.0
+
+            avg_score = round(sum(sc.total for sc in scores) / scores.count(), 1)
+            grade, _, grade_class = calculate_grade_and_points(avg_score)
         else:
-            grade = 'D'
-            grade_class = 'grade-d'
+            # Student has no scores in database yet
+            maths_val = 0.0
+            coding_val = 0.0
+            science_val = 0.0
+            avg_score = 0.0
+            sgpa = 0.0
+            grade = "N/A"
+            grade_class = "grade-na"
 
         results.append({
             "student_id": s.id,
@@ -70,94 +77,182 @@ def list_student_scores(request):
             "science": science_val,
             "coding": coding_val,
             "avg": avg_score,
+            "sgpa": sgpa,
             "grade": grade,
-            "gradeClass": grade_class
+            "gradeClass": grade_class,
+            "has_records": scores.exists()
         })
 
     return Response(results, status=status.HTTP_200_OK)
 
 
+# =====================================================================
+# INDIVIDUAL STUDENT REPORT CARD & GRADEBOOK
+# =====================================================================
+
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated, IsSelfOrStaff])
 def student_report_card(request, student_id):
     """
-    Get full official report card and subject marks for a single student.
+    Get authentic official report card, subject marks, attendance, and real SGPA/CGPA.
+    NO FAKE SEEDED MARKS.
     """
     try:
         student = Student.objects.get(id=student_id)
     except Student.DoesNotExist:
         return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    scores = StudentScore.objects.filter(student=student)
+    # Enforce student isolation: students can only access their own academic records
+    profile = getattr(request.user, 'profile', None)
+    if profile and profile.role == 'student':
+        if not profile.student or profile.student.id != student.id:
+            return Response(
+                {"detail": "You do not have permission to access another student's records."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    scores = StudentScore.objects.filter(student=student).select_related('subject')
     subjects_data = []
 
-    if scores.exists():
-        for sc in scores:
-            sub = sc.subject
-            subjects_data.append({
-                "code": sub.code,
-                "name": sub.name,
-                "credits": sub.credits,
-                "internals": sc.internals,
-                "endSem": sc.end_sem,
-                "total": sc.total,
-                "grade": sc.grade,
-                "gradeClass": sc.grade_class,
-                "attendance": 90,
-                "totalClasses": 36,
-                "attended": 33
-            })
+    for sc in scores:
+        sub = sc.subject
+        # Calculate real attendance for this specific subject
+        sub_recs = AttendanceRecord.objects.filter(student=student, subject=sub)
+        sub_total = sub_recs.count()
+        sub_present = sub_recs.filter(status='Present').count()
+        sub_att_rate = round((sub_present / sub_total * 100), 1) if sub_total > 0 else 0.0
+
+        subjects_data.append({
+            "code": sub.code,
+            "name": sub.name,
+            "credits": sub.credits,
+            "internals": sc.internals,
+            "endSem": sc.end_sem,
+            "total": sc.total,
+            "grade": sc.grade,
+            "gradePoint": sc.grade_point,
+            "gradeClass": sc.grade_class,
+            "attendance": sub_att_rate,
+            "totalClasses": sub_total,
+            "attended": sub_present,
+            "isPassed": sc.grade != 'F' and sc.total >= 40.0
+        })
+
+    total_credits = sum(s["credits"] for s in subjects_data)
+    earned_credits = sum(s["credits"] for s in subjects_data if s["isPassed"])
+
+    # Real SGPA formula: sum(credit * grade_point) / sum(credits)
+    if total_credits > 0:
+        weighted_points = sum(s["credits"] * s["gradePoint"] for s in subjects_data)
+        sgpa = round(weighted_points / total_credits, 2)
+        cgpa = sgpa  # Cumulative CGPA across current semester subjects
     else:
-        # Default curriculum courses for this student's branch
-        default_subs = Subject.objects.filter(branch__iexact=student.branch)
-        if not default_subs.exists():
-            default_subs = Subject.objects.all()[:5]
-
-        for idx, sub in enumerate(default_subs):
-            seed = (student.id * 7 + idx * 11) % 20
-            internals = round(24 + (seed % 6), 1)
-            end_sem = round(52 + (seed % 18), 1)
-            total = round(internals + end_sem, 1)
-            grade = 'A+' if total >= 90 else ('A' if total >= 80 else 'B')
-            grade_class = 'a-plus' if grade == 'A+' else ('a' if grade == 'A' else 'b')
-
-            subjects_data.append({
-                "code": sub.code,
-                "name": sub.name,
-                "credits": sub.credits,
-                "internals": internals,
-                "endSem": end_sem,
-                "total": total,
-                "grade": grade,
-                "gradeClass": grade_class,
-                "attendance": min(98, max(76, 85 + (seed % 12))),
-                "totalClasses": 34,
-                "attended": min(34, 29 + (seed % 5))
-            })
-
-    total_credits = sum(s["credits"] for s in subjects_data) or 17
-    weighted_score = sum(s["total"] * s["credits"] for s in subjects_data)
-    cgpa = round((weighted_score / (total_credits * 10)), 2) if total_credits > 0 else 8.5
+        sgpa = 0.0
+        cgpa = 0.0
 
     return Response({
         "student_id": student.id,
         "name": student.name,
         "roll_no": student.roll_no or f"STU-2024-{student.id:03d}",
+        "student_id_str": student.student_id or f"STU2024{student.id:04d}",
         "branch": student.branch,
         "year": student.year,
         "semester": student.semester,
+        "sgpa": sgpa,
         "cgpa": cgpa,
         "total_credits": total_credits,
+        "earned_credits": earned_credits,
+        "has_records": len(subjects_data) > 0,
         "subjects": subjects_data
     }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
-def list_subjects(request):
+@permission_classes([IsAuthenticated])
+def my_report_card(request):
     """
-    List all curriculum subjects.
+    Direct endpoint for logged-in student to retrieve their authentic report card.
     """
-    subs = Subject.objects.all()
-    serializer = SubjectSerializer(subs, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    user = request.user
+    profile = getattr(user, 'profile', None)
+    if not profile or profile.role != 'student' or not profile.student:
+        return Response({"error": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    return student_report_card(request._request, profile.student.id)
+
+
+# =====================================================================
+# TEACHER / ADMIN: MARKS ENTRY & SUBJECT MANAGEMENT
+# =====================================================================
+
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def save_student_score(request):
+    """
+    Teacher or Admin enters or updates marks for a student and subject.
+    Payload: { "student_id": 1, "subject_id": 2, "internals": 25.0, "end_sem": 60.0 }
+    """
+    student_id = request.data.get('student_id')
+    subject_id = request.data.get('subject_id')
+    internals = float(request.data.get('internals', 0.0))
+    end_sem = float(request.data.get('end_sem', 0.0))
+
+    if not student_id or not subject_id:
+        return Response(
+            {"detail": "student_id and subject_id are required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if internals < 0 or internals > 40:
+        return Response(
+            {"detail": "Internals marks must be between 0 and 40."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    if end_sem < 0 or end_sem > 70:
+        return Response(
+            {"detail": "End-semester marks must be between 0 and 70."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        student = Student.objects.get(id=student_id)
+        subject = Subject.objects.get(id=subject_id)
+    except (Student.DoesNotExist, Subject.DoesNotExist):
+        return Response({"detail": "Student or Subject not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    with transaction.atomic():
+        score, created = StudentScore.objects.update_or_create(
+            student=student,
+            subject=subject,
+            defaults={
+                'internals': internals,
+                'end_sem': end_sem,
+            }
+        )
+
+    return Response({
+        "message": f"Score saved successfully for {student.name} in {subject.code}.",
+        "score": StudentScoreSerializer(score).data
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsTeacherOrAdmin])
+def list_create_subjects(request):
+    """
+    List all curriculum subjects or create a new subject (Admin/Teacher).
+    """
+    if request.method == 'GET':
+        branch = request.query_params.get('branch', None)
+        subs = Subject.objects.filter(is_active=True)
+        if branch and branch.upper() != 'ALL':
+            subs = subs.filter(branch__iexact=branch)
+        serializer = SubjectSerializer(subs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    elif request.method == 'POST':
+        serializer = SubjectSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

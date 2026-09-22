@@ -1,6 +1,6 @@
 import os
 import django
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend_config.settings')
 django.setup()
@@ -9,12 +9,16 @@ from django.contrib.auth.models import User
 from accounts.models import UserProfile
 from students.models import Student
 from attendance.models import AttendanceRecord
-from performance.models import Subject, StudentScore
+from performance.models import Subject, StudentScore, Assessment, Marks
+from timetable.models import TimetableSlot
+from announcements.models import Announcement
+from notifications.models import Notification
+from audit.models import AuditLog
 
 
 def seed_data():
     print("=" * 60)
-    print("SEEDING INITIAL DATABASE DATA")
+    print("SEEDING ACADEMIC DATABASE (INTERVIEW-READY)")
     print("=" * 60)
 
     # 1. Teachers / Admins
@@ -26,28 +30,33 @@ def seed_data():
     teacher_user.save()
     UserProfile.objects.update_or_create(
         user=teacher_user,
-        defaults={"role": "teacher", "department": "Academic Operations", "phone": "9876543210"}
+        defaults={"role": "teacher", "department": "Computer Science & Engineering", "phone": "9876543210"}
     )
     print(f"[OK] Faculty account 'madam' initialized with password '123456'.")
 
     admin_user, created = User.objects.get_or_create(
         username="admin",
-        defaults={"email": "admin@eduportal.com", "first_name": "System", "last_name": "Admin", "is_staff": True, "is_superuser": True}
+        defaults={"email": "admin@eduportal.com", "first_name": "System", "last_name": "Administrator", "is_staff": True, "is_superuser": True}
     )
     admin_user.set_password("admin")
+    admin_user.is_staff = True
+    admin_user.is_superuser = True
     admin_user.save()
     UserProfile.objects.update_or_create(
         user=admin_user,
-        defaults={"role": "admin", "department": "Administration", "phone": "9998887770"}
+        defaults={"role": "admin", "department": "University Administration", "phone": "9998887770"}
     )
     print(f"[OK] Admin account 'admin' initialized with password 'admin'.")
 
     # 2. Assign Roll Numbers & Create Student Accounts
     students = Student.objects.all().order_by('id')
     for s in students:
+        s.is_active = True
         if not s.roll_no:
             s.roll_no = f"STU-2024-{s.id:03d}"
-            s.save()
+        if not s.student_id:
+            s.student_id = f"STU2024{s.id:04d}"
+        s.save()
 
         # Create user login for this student
         student_username = s.roll_no.lower().replace("-", "_")
@@ -56,6 +65,7 @@ def seed_data():
             defaults={"email": s.email, "first_name": s.name}
         )
         stu_user.set_password("student123")
+        stu_user.is_active = True
         stu_user.save()
         UserProfile.objects.update_or_create(
             user=stu_user,
@@ -65,61 +75,105 @@ def seed_data():
 
     # 3. Curriculum Subjects
     default_subjects = [
-        {"code": "CS501", "name": "Data Structures & Algorithms", "branch": "CSE", "semester": "5", "credits": 4},
-        {"code": "CS502", "name": "Database Management Systems", "branch": "CSE", "semester": "5", "credits": 4},
-        {"code": "CS503", "name": "Operating Systems", "branch": "CSE", "semester": "5", "credits": 3},
-        {"code": "CS504", "name": "Web Technologies & Full Stack", "branch": "CSE", "semester": "5", "credits": 3},
-        {"code": "CS505", "name": "Computer Networks", "branch": "CSE", "semester": "5", "credits": 3},
-        {"code": "AI501", "name": "Artificial Intelligence & ML", "branch": "AIML", "semester": "5", "credits": 4},
-        {"code": "AI502", "name": "Deep Learning & Neural Nets", "branch": "AIML", "semester": "5", "credits": 4},
-        {"code": "IT501", "name": "Cloud Computing & DevOps", "branch": "IT", "semester": "5", "credits": 3},
+        {"code": "CS501", "name": "Data Structures & Algorithms", "department": "Computer Science & Engineering", "branch": "CSE", "semester": "5", "credits": 4},
+        {"code": "CS502", "name": "Database Management Systems", "department": "Computer Science & Engineering", "branch": "CSE", "semester": "5", "credits": 4},
+        {"code": "CS503", "name": "Operating Systems", "department": "Computer Science & Engineering", "branch": "CSE", "semester": "5", "credits": 3},
+        {"code": "CS504", "name": "Web Technologies & Full Stack", "department": "Computer Science & Engineering", "branch": "CSE", "semester": "5", "credits": 3},
+        {"code": "CS505", "name": "Computer Networks", "department": "Computer Science & Engineering", "branch": "CSE", "semester": "5", "credits": 3},
+        {"code": "AI501", "name": "Artificial Intelligence & ML", "department": "Artificial Intelligence", "branch": "AIML", "semester": "5", "credits": 4},
+        {"code": "AI502", "name": "Deep Learning & Neural Nets", "department": "Artificial Intelligence", "branch": "AIML", "semester": "5", "credits": 4},
+        {"code": "IT501", "name": "Cloud Computing & DevOps", "department": "Information Technology", "branch": "IT", "semester": "5", "credits": 3},
     ]
 
+    subject_instances = []
     for sub_data in default_subjects:
-        Subject.objects.update_or_create(
+        sub, _ = Subject.objects.update_or_create(
             code=sub_data["code"],
             defaults=sub_data
         )
+        subject_instances.append(sub)
     print(f"[OK] {len(default_subjects)} curriculum subjects created/verified.")
 
-    # 4. Initial Attendance Records (Today and Past 7 days)
-    today = date.today()
-    for day_offset in range(5):
-        att_date = today - timedelta(days=day_offset)
-        # Skip weekends
-        if att_date.weekday() >= 5:
-            continue
-        for s in students:
-            # Most are Present, occasional absent
-            status = "Present" if (s.id + day_offset) % 7 != 0 else "Absent"
-            AttendanceRecord.objects.update_or_create(
-                student=s,
-                date=att_date,
-                defaults={"status": status}
-            )
-    print(f"[OK] Attendance records populated for recent dates.")
+    # 4. Timetable Slots
+    TimetableSlot.objects.all().delete()
+    timetable_data = [
+        {"subject": subject_instances[0], "teacher": teacher_user, "day": "Monday", "start_time": time(9, 30), "end_time": time(10, 45), "room": "Hall 102", "branch": "CSE", "semester": "5", "section": "A"},
+        {"subject": subject_instances[1], "teacher": teacher_user, "day": "Monday", "start_time": time(11, 15), "end_time": time(12, 30), "room": "Lab 3", "branch": "CSE", "semester": "5", "section": "A"},
+        {"subject": subject_instances[2], "teacher": teacher_user, "day": "Tuesday", "start_time": time(9, 30), "end_time": time(10, 45), "room": "Hall 104", "branch": "CSE", "semester": "5", "section": "A"},
+        {"subject": subject_instances[3], "teacher": teacher_user, "day": "Tuesday", "start_time": time(14, 0), "end_time": time(15, 30), "room": "Computing Lab", "branch": "CSE", "semester": "5", "section": "A"},
+        {"subject": subject_instances[4], "teacher": teacher_user, "day": "Wednesday", "start_time": time(10, 0), "end_time": time(11, 15), "room": "Hall 102", "branch": "CSE", "semester": "5", "section": "A"},
+        {"subject": subject_instances[0], "teacher": teacher_user, "day": "Thursday", "start_time": time(9, 30), "end_time": time(10, 45), "room": "Hall 102", "branch": "CSE", "semester": "5", "section": "A"},
+        {"subject": subject_instances[1], "teacher": teacher_user, "day": "Friday", "start_time": time(11, 15), "end_time": time(12, 30), "room": "Lab 3", "branch": "CSE", "semester": "5", "section": "A"},
+    ]
+    for tt in timetable_data:
+        TimetableSlot.objects.create(**tt)
+    print(f"[OK] {len(timetable_data)} timetable lecture slots created.")
 
-    # 5. Academic Scores for all Students
-    subjects = Subject.objects.all()
+    # 5. Department Announcements
+    Announcement.objects.all().delete()
+    announcements_data = [
+        {"title": "Mid-Term Examination Schedule Announced", "description": "The Mid-Term examinations for Semester 5 will commence from next Monday. Please review the detailed timetable in your portal.", "created_by": teacher_user, "department": "CSE", "priority": "Important"},
+        {"title": "Annual Academic Project Exhibition 2026", "description": "All final year and third year students must submit project phase 1 abstracts by end of this week.", "created_by": admin_user, "department": "All", "priority": "Normal"},
+        {"title": "Library Book Return Notice", "description": "All semester reference textbooks borrowed before the mid-term exams must be renewed or returned.", "created_by": admin_user, "department": "All", "priority": "Normal"},
+    ]
+    for ann in announcements_data:
+        Announcement.objects.create(**ann)
+    print(f"[OK] {len(announcements_data)} department announcements published.")
+
+    # 6. Notifications
+    Notification.objects.all().delete()
     for s in students:
-        # Match subjects by branch or fallback to first 5
-        stu_subs = subjects.filter(branch__iexact=s.branch)
-        if not stu_subs.exists():
-            stu_subs = subjects[:5]
+        if hasattr(s, 'user_profile') and s.user_profile.user:
+            u = s.user_profile.user
+            Notification.objects.create(
+                user=u,
+                title="Mid-Term Schedule Published",
+                message="Mid-term exam schedules for your branch are now visible in the timetable section.",
+                notification_type="announcement",
+                is_read=False
+            )
+            Notification.objects.create(
+                user=u,
+                title="Welcome to Academic Portal",
+                message=f"Welcome {s.name}! Your official roll number is {s.roll_no}.",
+                notification_type="general",
+                is_read=True
+            )
+    print("[OK] Notifications populated for students.")
 
+    # 7. Authentic Academic Scores
+    for s in students:
+        stu_subs = Subject.objects.filter(branch__iexact=s.branch)
+        if not stu_subs.exists():
+            stu_subs = Subject.objects.all()[:4]
+
+        # Explicit marks (e.g. 26-28 internal, 54-62 endsem)
+        sample_scores = [
+            (27.0, 58.0),
+            (25.0, 61.0),
+            (28.0, 55.0),
+            (24.0, 60.0),
+        ]
         for idx, sub in enumerate(stu_subs):
-            seed = (s.id * 7 + idx * 13) % 25
-            internals = round(23.0 + (seed % 7), 1)
-            end_sem = round(52.0 + (seed % 18), 1)
+            int_m, end_m = sample_scores[idx % len(sample_scores)]
             StudentScore.objects.update_or_create(
                 student=s,
                 subject=sub,
                 defaults={
-                    "internals": internals,
-                    "end_sem": end_sem,
+                    "internals": int_m,
+                    "end_sem": end_m,
                 }
             )
-    print(f"[OK] Academic scores initialized for all students.")
+
+    # 8. Audit Log
+    AuditLog.log(
+        action="LOGIN",
+        entity="System",
+        entity_id="init",
+        description="System initialized with production seed dataset.",
+        user=admin_user
+    )
+    print("[OK] Audit log entry recorded.")
     print("=" * 60)
     print("SEEDING COMPLETED SUCCESSFULLY!")
     print("=" * 60)

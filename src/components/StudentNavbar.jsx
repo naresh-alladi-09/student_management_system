@@ -1,15 +1,55 @@
-import { FaUserGraduate, FaSignOutAlt, FaCalendarCheck, FaChartLine, FaIdBadge, FaThLarge } from "react-icons/fa";
+import { useState, useEffect } from "react";
+import {
+  FaUserGraduate,
+  FaSignOutAlt,
+  FaCalendarCheck,
+  FaChartLine,
+  FaIdBadge,
+  FaThLarge,
+  FaClock,
+  FaBell,
+  FaCheckDouble,
+} from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { getMyNotifications, markNotificationAsRead } from "../services/studentservice";
 import "../styles/navbar.css";
 
 const StudentNavbar = ({ activeTab, setActiveTab }) => {
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifs, setShowNotifs] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    getMyNotifications()
+      .then((res) => {
+        if (!isMounted) return;
+        setUnreadCount(res.data?.unread_count || 0);
+        setNotifications(res.data?.notifications || []);
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
     navigate("/login/student");
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markNotificationAsRead();
+      setUnreadCount(0);
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    } catch {
+      // ignore
+    }
   };
 
   const studentName = currentUser?.name || "Student";
@@ -48,7 +88,7 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
           onClick={() => setActiveTab("attendance")}
         >
           <FaCalendarCheck />
-          <span>My Attendance</span>
+          <span>Attendance</span>
         </button>
         <button
           type="button"
@@ -56,7 +96,23 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
           onClick={() => setActiveTab("performance")}
         >
           <FaChartLine />
-          <span>My Grades</span>
+          <span>Grades & SGPA</span>
+        </button>
+        <button
+          type="button"
+          className={`student-tab-pill ${activeTab === "timetable" ? "active" : ""}`}
+          onClick={() => setActiveTab("timetable")}
+        >
+          <FaClock />
+          <span>Timetable</span>
+        </button>
+        <button
+          type="button"
+          className={`student-tab-pill ${activeTab === "announcements" ? "active" : ""}`}
+          onClick={() => setActiveTab("announcements")}
+        >
+          <FaBell />
+          <span>Announcements</span>
         </button>
         <button
           type="button"
@@ -64,11 +120,128 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
           onClick={() => setActiveTab("profile")}
         >
           <FaIdBadge />
-          <span>My Profile</span>
+          <span>Profile</span>
         </button>
       </div>
 
       <div className="nav-links">
+        {/* Notification Bell Dropdown */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            className="nav-notification-btn"
+            style={{
+              position: "relative",
+              background: "rgba(255,255,255,0.12)",
+              border: "none",
+              color: "#fff",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "16px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            onClick={() => setShowNotifs(!showNotifs)}
+            title="Notifications"
+          >
+            <FaBell />
+            {unreadCount > 0 && (
+              <span
+                style={{
+                  background: "#ef4444",
+                  color: "#fff",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  borderRadius: "10px",
+                  padding: "1px 6px",
+                  lineHeight: "14px",
+                }}
+              >
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {showNotifs && (
+            <div
+              style={{
+                position: "absolute",
+                top: "42px",
+                right: "0",
+                width: "320px",
+                background: "#ffffff",
+                borderRadius: "12px",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+                zIndex: 1000,
+                color: "#1e293b",
+                overflow: "hidden",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div
+                style={{
+                  padding: "12px 16px",
+                  borderBottom: "1px solid #f1f5f9",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: "#f8fafc",
+                }}
+              >
+                <strong style={{ fontSize: "14px" }}>Notifications</strong>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMarkAllRead}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#2563eb",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <FaCheckDouble /> Mark read
+                  </button>
+                )}
+              </div>
+              <div style={{ maxHeight: "280px", overflowY: "auto" }}>
+                {notifications.length > 0 ? (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      style={{
+                        padding: "12px 16px",
+                        borderBottom: "1px solid #f8fafc",
+                        background: n.is_read ? "#ffffff" : "#f0fdf4",
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: "13px", color: "#0f172a" }}>
+                        {n.title}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
+                        {n.message}
+                      </div>
+                      <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "4px" }}>
+                        {new Date(n.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: "24px", textAlign: "center", color: "#94a3b8", fontSize: "13px" }}>
+                    No notifications available.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="nav-profile-badge student-badge-theme">
           <div className="student-avatar-circle">
             {studentName.charAt(0).toUpperCase()}

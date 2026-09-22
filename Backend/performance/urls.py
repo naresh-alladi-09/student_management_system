@@ -1,8 +1,16 @@
 from django.urls import path
-from .views import list_student_scores, student_report_card, list_subjects
+from .views import (
+    list_student_scores,
+    student_report_card,
+    my_report_card,
+    save_student_score,
+    list_create_subjects,
+)
 
 urlpatterns = [
     path('', list_student_scores, name='list_student_scores'),
     path('student/<int:student_id>/', student_report_card, name='student_report_card'),
-    path('subjects/', list_subjects, name='list_subjects'),
+    path('my/', my_report_card, name='my_report_card'),
+    path('marks/save/', save_student_score, name='save_student_score'),
+    path('subjects/', list_create_subjects, name='list_create_subjects'),
 ]

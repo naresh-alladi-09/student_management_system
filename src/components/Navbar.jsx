@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FaUserCircle, FaSignOutAlt, FaSearch } from "react-icons/fa";
+import { FaUserCircle, FaSignOutAlt, FaSearch, FaUserShield } from "react-icons/fa";
 import "../styles/navbar.css";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -7,12 +7,13 @@ import { useAuth } from "../context/AuthContext";
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, isAdmin } = useAuth();
   const [navSearch, setNavSearch] = useState("");
 
   const getPageTitle = () => {
     const path = location.pathname.toLowerCase();
-    if (path.includes("addstudents")) return "Add New Student";
+    if (path.includes("admin")) return "Administrative Console";
+    if (path.includes("addstudents")) return "Enroll New Student";
     if (path.includes("students")) return "Student Directory";
     if (path.includes("attendance") || path.includes("attendence")) return "Attendance Management";
     if (path.includes("performance")) return "Academic Performance";
@@ -27,10 +28,11 @@ const Navbar = () => {
 
   const handleLogout = () => {
     logout();
-    navigate("/login/teacher");
+    navigate("/login");
   };
 
-  const teacherDisplayName = currentUser?.name || "Faculty Admin";
+  const userDisplayName = currentUser?.name || currentUser?.username || "Faculty Admin";
+  const userRole = currentUser?.role?.toUpperCase() || (isAdmin ? "ADMIN" : "TEACHER");
 
   return (
     <div className="navbar">
@@ -51,8 +53,17 @@ const Navbar = () => {
         </div>
 
         <div className="nav-profile-badge">
-          <FaUserCircle size={22} color="#3b82f6" />
-          <span className="teacher-name">{teacherDisplayName}</span>
+          {isAdmin ? (
+            <FaUserShield size={22} color="#059669" />
+          ) : (
+            <FaUserCircle size={22} color="#3b82f6" />
+          )}
+          <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
+            <span className="teacher-name">{userDisplayName}</span>
+            <span style={{ fontSize: "10px", color: isAdmin ? "#059669" : "#64748b", fontWeight: 700 }}>
+              {userRole}
+            </span>
+          </div>
         </div>
 
         <button className="nav-logout-btn" onClick={handleLogout} title="Sign Out">
