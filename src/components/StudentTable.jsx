@@ -1,4 +1,3 @@
-import React from "react";
 import "../styles/studenttable.css";
 
 const StudentTable = ({ students, onEdit, onDelete }) => {

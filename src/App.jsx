@@ -44,8 +44,8 @@ function App() {
           <Route path="/dashboard" element={<TeacherRoute><Dashboard /></TeacherRoute>} />
           <Route path="/students" element={<TeacherRoute><Students /></TeacherRoute>} />
           <Route path="/addstudents" element={<TeacherRoute><Addstudent /></TeacherRoute>} />
-          <Route path="/AddStudents" element={<TeacherRoute><Addstudent /></TeacherRoute>} />
           <Route path="/attendence" element={<TeacherRoute><Attendence /></TeacherRoute>} />
+          <Route path="/attendance" element={<TeacherRoute><Attendence /></TeacherRoute>} />
           <Route path="/performance" element={<TeacherRoute><Performance /></TeacherRoute>} />
 
           {/* Student Portal Routes */}

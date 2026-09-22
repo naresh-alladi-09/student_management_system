@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Dashboardcard from "../components/Dashboardcard";
 import Navbar from "../components/Navbar";
@@ -11,17 +11,21 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchStudents = async () => {
-      try {
-        const res = await getStudents();
-        setStudents(res.data || []);
-      } catch (err) {
+    let isMounted = true;
+    getStudents()
+      .then((res) => {
+        if (isMounted) setStudents(res.data || []);
+      })
+      .catch((err) => {
         console.error("Dashboard failed to fetch students:", err);
-      } finally {
-        setLoading(false);
-      }
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
     };
-    fetchStudents();
   }, []);
 
   const recentStudents = students.slice(0, 5);

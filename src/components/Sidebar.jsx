@@ -1,4 +1,3 @@
-import React from "react";
 import "../styles/sidebar.css";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -13,7 +12,7 @@ const Sidebar = () => {
     { path: "/dashboard", label: "Dashboard", icon: "fa-solid fa-gauge-high" },
     { path: "/addstudents", label: "Add Student", icon: "fa-solid fa-user-plus" },
     { path: "/students", label: "Students", icon: "fa-solid fa-user-graduate" },
-    { path: "/attendence", label: "Attendance", icon: "fa-regular fa-calendar-check" },
+    { path: "/attendance", label: "Attendance", icon: "fa-regular fa-calendar-check" },
     { path: "/performance", label: "Performance", icon: "fa-solid fa-chart-simple" },
   ];
 

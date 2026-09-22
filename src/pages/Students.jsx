@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   getStudents,
@@ -13,12 +13,12 @@ import "../styles/studenttable.css";
 
 const Students = () => {
   const [students, setStudents] = useState([]);
-  const [filteredStudents, setFilteredStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("ALL");
   const [statusMessage, setStatusMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [studentToDelete, setStudentToDelete] = useState(null);
 
   // Edit Modal State
   const [editingStudent, setEditingStudent] = useState(null);
@@ -33,12 +33,10 @@ const Students = () => {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const loadStudents = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const response = await getStudents();
-      const list = response.data || [];
-      setStudents(list);
-      setFilteredStudents(list);
+      setStudents(response.data || []);
     } catch (error) {
       console.error("Failed to fetch students:", error);
       setErrorMessage("Could not connect to database to fetch students.");
@@ -48,11 +46,28 @@ const Students = () => {
   };
 
   useEffect(() => {
-    loadStudents();
+    let isMounted = true;
+    getStudents()
+      .then((res) => {
+        if (isMounted) setStudents(res.data || []);
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.error("Failed to fetch students:", err);
+          setErrorMessage("Could not connect to database to fetch students.");
+        }
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Filter students whenever searchTerm or selectedBranch changes
-  useEffect(() => {
+  // Filter students dynamically with useMemo (eliminates cascading renders)
+  const filteredStudents = useMemo(() => {
     let result = [...students];
 
     if (selectedBranch !== "ALL") {
@@ -68,11 +83,12 @@ const Students = () => {
           (s.name || "").toLowerCase().includes(q) ||
           (s.email || "").toLowerCase().includes(q) ||
           (s.phone || "").includes(q) ||
-          String(s.id).includes(q)
+          String(s.id).includes(q) ||
+          (s.roll_no && s.roll_no.toLowerCase().includes(q))
       );
     }
 
-    setFilteredStudents(result);
+    return result;
   }, [students, searchTerm, selectedBranch]);
 
   // Open Edit Modal
@@ -114,28 +130,31 @@ const Students = () => {
       loadStudents();
     } catch (error) {
       console.error("Update error:", error.response?.data || error);
-      alert("Failed to update student. Please check input values.");
+      setErrorMessage("Failed to update student. Please check input values.");
+      setTimeout(() => setErrorMessage(null), 4000);
     } finally {
       setSavingEdit(false);
     }
   };
 
-  // DELETE STUDENT
-  const handleDelete = async (id, studentName) => {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete student "${studentName || `#${id}`}"?`
-    );
+  // Trigger Delete Confirmation Modal
+  const handleDeleteClick = (id, studentName) => {
+    setStudentToDelete({ id, name: studentName || `#${id}` });
+  };
 
-    if (!confirmDelete) return;
-
+  const handleConfirmDelete = async () => {
+    if (!studentToDelete) return;
     try {
-      await deleteStudent(id);
-      setStatusMessage(`✓ Student record removed from database.`);
+      await deleteStudent(studentToDelete.id);
+      setStatusMessage(`✓ Student "${studentToDelete.name}" removed successfully.`);
       setTimeout(() => setStatusMessage(null), 3000);
+      setStudentToDelete(null);
       loadStudents();
     } catch (error) {
       console.error("Delete error:", error.response?.data || error);
-      alert("Failed to delete student from database.");
+      setErrorMessage("Failed to delete student from database.");
+      setTimeout(() => setErrorMessage(null), 4000);
+      setStudentToDelete(null);
     }
   };
 
@@ -223,7 +242,7 @@ const Students = () => {
             <StudentTable
               students={filteredStudents}
               onEdit={handleOpenEdit}
-              onDelete={handleDelete}
+              onDelete={handleDeleteClick}
             />
           )}
         </div>
@@ -362,6 +381,49 @@ const Students = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {studentToDelete && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: "420px" }}>
+            <div className="modal-header">
+              <h3 style={{ color: "#ef4444" }}>
+                <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: "8px" }}></i>
+                Confirm Deletion
+              </h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setStudentToDelete(null)}
+              >
+                &times;
+              </button>
+            </div>
+            <div style={{ padding: "20px" }}>
+              <p style={{ color: "#334155", fontSize: "15px", lineHeight: "1.5" }}>
+                Are you sure you want to permanently remove student <strong>{studentToDelete.name}</strong> from the database? This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setStudentToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ backgroundColor: "#ef4444", borderColor: "#dc2626" }}
+                onClick={handleConfirmDelete}
+              >
+                <i className="fa-solid fa-trash-can"></i> Delete Record
+              </button>
+            </div>
           </div>
         </div>
       )}

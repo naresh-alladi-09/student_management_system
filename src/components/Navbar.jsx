@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { FaUserCircle, FaSignOutAlt, FaSearch } from "react-icons/fa";
 import "../styles/navbar.css";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -14,7 +14,7 @@ const Navbar = () => {
     const path = location.pathname.toLowerCase();
     if (path.includes("addstudents")) return "Add New Student";
     if (path.includes("students")) return "Student Directory";
-    if (path.includes("attendence")) return "Attendance Management";
+    if (path.includes("attendance") || path.includes("attendence")) return "Attendance Management";
     if (path.includes("performance")) return "Academic Performance";
     return "Dashboard Overview";
   };

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 from pathlib import Path
 import os
+import urllib.parse
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -42,8 +43,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
     'students',
+    'accounts',
+    'attendance',
+    'performance',
 ]
 
 MIDDLEWARE = [
@@ -58,6 +63,13 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'backend_config.urls'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+}
 
 TEMPLATES = [
     {
@@ -80,19 +92,43 @@ WSGI_APPLICATION = 'backend_config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+database_url = os.environ.get("DATABASE_URL") or os.environ.get("AIVEN_SERVICE_URI")
+
+if database_url:
+    parsed_url = urllib.parse.urlparse(database_url)
+    db_engine = "django.db.backends.mysql"
+    db_name = parsed_url.path.lstrip('/') or "defaultdb"
+    db_user = parsed_url.username or "avnadmin"
+    db_password = parsed_url.password or ""
+    db_host = parsed_url.hostname or "127.0.0.1"
+    db_port = parsed_url.port or 3306
+else:
+    db_engine = os.environ.get("DB_ENGINE", "django.db.backends.mysql")
+    db_name = os.environ.get("AIVEN_DB_NAME", os.environ.get("DB_NAME", "defaultdb"))
+    db_user = os.environ.get("AIVEN_DB_USER", os.environ.get("DB_USER", "avnadmin"))
+    db_password = os.environ.get("AIVEN_PASSWORD", os.environ.get("DB_PASSWORD", ""))
+    db_host = os.environ.get("AIVEN_DB_HOST", os.environ.get("DB_HOST", "mysql-26020f38-alekhyabandaru4-16f1.f.aivencloud.com"))
+    db_port = int(os.environ.get("AIVEN_DB_PORT", os.environ.get("DB_PORT", 22125)))
+
+db_options = {
+    'charset': 'utf8mb4',
+}
+
+ca_path = BASE_DIR / 'ca.pem'
+if ca_path.exists():
+    db_options['ssl'] = {
+        'ca': str(ca_path.resolve()),
+    }
+
 DATABASES = {
     'default': {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": os.environ.get("AIVEN_DB_NAME", "defaultdb"),
-        "USER": os.environ.get("AIVEN_DB_USER", "avnadmin"),
-        "PASSWORD": os.environ.get("AIVEN_PASSWORD", ""),
-        "HOST": os.environ.get("AIVEN_DB_HOST", "mysql-26020f38-alekhyabandaru4-16f1.f.aivencloud.com"),
-        "PORT": int(os.environ.get("AIVEN_DB_PORT", 22125)),
-        'OPTIONS': {
-            'ssl': {
-                'ca': str(BASE_DIR / 'ca.pem'),
-            },
-        },
+        "ENGINE": db_engine,
+        "NAME": db_name,
+        "USER": db_user,
+        "PASSWORD": db_password,
+        "HOST": db_host,
+        "PORT": db_port,
+        'OPTIONS': db_options,
     }
 }
 

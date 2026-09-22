@@ -1,9 +1,6 @@
-
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import StudentForm from "../components/StudentForm";
-
-import React from 'react'
 
 const Addstudent = () => {
   return (

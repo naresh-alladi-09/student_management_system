@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import "../styles/attendence.css";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
-import { getStudents } from "../services/studentservice";
+import { getDailyAttendance, saveBulkAttendance } from "../services/studentservice";
 
 function Attendance() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [attendance, setAttendance] = useState({});
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -15,43 +16,41 @@ function Attendance() {
   );
 
   useEffect(() => {
-    const fetchStudents = async () => {
-      try {
-        setLoading(true);
-        const response = await getStudents();
-        const studentList = response.data || [];
-        setStudents(studentList);
+    let isMounted = true;
+    getDailyAttendance(selectedDate)
+      .then((res) => {
+        if (!isMounted) return;
+        const data = res.data || {};
+        const records = data.records || [];
+        setStudents(
+          records.map((r) => ({
+            id: r.student_id,
+            name: r.name,
+            roll_no: r.roll_no,
+            branch: r.branch,
+            year: r.year,
+            semester: r.semester,
+          }))
+        );
+        const map = {};
+        records.forEach((r) => {
+          map[r.student_id] = r.status || "Present";
+        });
+        setAttendance(map);
+        setError(null);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.error("Failed to load attendance from database:", err);
+        setError("Could not load attendance from database. Please check connection.");
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
 
-        // Load saved attendance from localStorage for current date if available
-        const saved = localStorage.getItem(`attendance_${selectedDate}`);
-        if (saved) {
-          try {
-            setAttendance(JSON.parse(saved));
-          } catch {
-            // Default all to Present
-            const initial = {};
-            studentList.forEach((s) => {
-              initial[s.id] = "Present";
-            });
-            setAttendance(initial);
-          }
-        } else {
-          // Default all to Present
-          const initial = {};
-          studentList.forEach((s) => {
-            initial[s.id] = "Present";
-          });
-          setAttendance(initial);
-        }
-      } catch (err) {
-        console.error("Failed to load students for attendance:", err);
-        setError("Failed to load students from database.");
-      } finally {
-        setLoading(false);
-      }
+    return () => {
+      isMounted = false;
     };
-
-    fetchStudents();
   }, [selectedDate]);
 
   const handleStatusChange = (studentId, status) => {
@@ -71,10 +70,19 @@ function Attendance() {
     setSaveSuccess(false);
   };
 
-  const handleSave = () => {
-    localStorage.setItem(`attendance_${selectedDate}`, JSON.stringify(attendance));
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      await saveBulkAttendance(selectedDate, attendance);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3500);
+    } catch (err) {
+      console.error("Save attendance error:", err);
+      setError("Failed to save attendance to database.");
+      setTimeout(() => setError(null), 4000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const presentCount = students.filter(
@@ -107,7 +115,10 @@ function Attendance() {
                 id="att-date"
                 type="date"
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(e) => {
+                  setSelectedDate(e.target.value);
+                  setLoading(true);
+                }}
                 className="date-input"
               />
             </div>
@@ -171,7 +182,7 @@ function Attendance() {
 
                 <tbody>
                   {students.length > 0 ? (
-                    students.map((student, index) => {
+                    students.map((student) => {
                       const currentStatus = attendance[student.id] || "Present";
                       const isPresent = currentStatus === "Present";
                       return (
@@ -223,8 +234,9 @@ function Attendance() {
 
               {students.length > 0 && (
                 <div className="save-btn-container">
-                  <button className="save-btn" onClick={handleSave}>
-                    <i className="fa-solid fa-floppy-disk"></i> Save Attendance
+                  <button className="save-btn" onClick={handleSave} disabled={isSaving}>
+                    <i className={isSaving ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-floppy-disk"}></i>
+                    <span>{isSaving ? " Saving..." : " Save Attendance"}</span>
                   </button>
                 </div>
               )}

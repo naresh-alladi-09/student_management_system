@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../styles/Login.css";
 import {
@@ -11,14 +11,14 @@ import {
   FaCheckCircle,
   FaExclamationCircle,
 } from "react-icons/fa";
-import { useAuth, DEFAULT_DEMO_STUDENT } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext";
 
 const Login = ({ initialRole }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { loginTeacher, loginStudent } = useAuth();
 
-  // Determine initial role: prop > URL path > default to 'teacher'
+  // Determine active role directly from URL / props
   const getRoleFromLocation = () => {
     if (initialRole) return initialRole;
     const path = location.pathname.toLowerCase();
@@ -29,21 +29,13 @@ const Login = ({ initialRole }) => {
     return "teacher";
   };
 
-  const [activeRole, setActiveRole] = useState(getRoleFromLocation);
+  const activeRole = getRoleFromLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync role when URL changes
-  useEffect(() => {
-    const derivedRole = getRoleFromLocation();
-    setActiveRole(derivedRole);
-    setError("");
-  }, [location.pathname, location.search]);
-
   const switchRole = (newRole) => {
-    setActiveRole(newRole);
     setError("");
     setUsername("");
     setPassword("");
@@ -56,7 +48,7 @@ const Login = ({ initialRole }) => {
       setUsername("madam");
       setPassword("123456");
     } else {
-      setUsername(DEFAULT_DEMO_STUDENT.email);
+      setUsername("STU-2024-009");
       setPassword("student123");
     }
   };
@@ -67,7 +59,7 @@ const Login = ({ initialRole }) => {
     setIsSubmitting(true);
 
     if (activeRole === "teacher") {
-      const res = loginTeacher(username, password);
+      const res = await loginTeacher(username, password);
       setIsSubmitting(false);
       if (res.success) {
         navigate("/dashboard");

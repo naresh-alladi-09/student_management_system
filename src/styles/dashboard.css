@@ -1,4 +1,5 @@
-.sidebarindashboard {
+.sidebarindashboard,
+.Sidebarindashboard {
   height: 100vh;
   width: 280px;
   flex-shrink: 0;

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import StudentNavbar from "../components/StudentNavbar";
+import { getStudentReportCard, getStudentAttendance } from "../services/studentservice";
 import "../styles/studentdashboard.css";
 import {
   FaGraduationCap,
@@ -30,91 +31,55 @@ const StudentDashboard = () => {
     }
   }, [currentUser, isStudent, navigate]);
 
+  const studentName = currentUser?.name || "Student";
+  const studentBranch = currentUser?.branch || "—";
+  const studentYear = currentUser?.year || "—";
+  const studentSem = currentUser?.semester || "—";
+  const studentRoll = currentUser?.rollNo || "—";
+  const studentEmail = currentUser?.email || "—";
+  const studentPhone = currentUser?.phone || "—";
+
+  const [subjectsData, setSubjectsData] = useState([]);
+  const [attendanceData, setAttendanceData] = useState(null);
+  const [cgpaVal, setCgpaVal] = useState(currentUser?.cgpa || 0.0);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let isMounted = true;
+
+    getStudentReportCard(currentUser.id)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.data?.subjects && res.data.subjects.length > 0) {
+          setSubjectsData(res.data.subjects);
+        }
+        if (res.data?.cgpa) {
+          setCgpaVal(res.data.cgpa);
+        }
+      })
+      .catch(() => {});
+
+    getStudentAttendance(currentUser.id)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.data) {
+          setAttendanceData(res.data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.id]);
+
+  const attendanceRate = attendanceData?.attendance_rate ?? 0;
+  const cgpa = cgpaVal;
+  const subjects = subjectsData;
+
   if (!currentUser || !isStudent) {
     return null;
   }
-
-  const studentName = currentUser.name || "Alex Johnson";
-  const studentBranch = currentUser.branch || "CSE";
-  const studentYear = currentUser.year || 3;
-  const studentSem = currentUser.semester || "5";
-  const studentRoll = currentUser.rollNo || `STU-2024-${currentUser.id || 101}`;
-  const studentEmail = currentUser.email || "student@edu.com";
-  const studentPhone = currentUser.phone || "9876543210";
-
-  // Derive dynamic reproducible scores
-  const seed = ((currentUser.id || 101) * 19 + studentName.length * 7) % 30;
-  const attendanceRate = currentUser.attendanceRate || Math.min(96, Math.max(78, 86 + (seed % 10)));
-  const cgpa = currentUser.cgpa || +(8.2 + (seed % 16) / 10).toFixed(2);
-
-  // Subject performance data
-  const subjects = [
-    {
-      code: "CS501",
-      name: "Data Structures & Algorithms",
-      credits: 4,
-      internals: 28,
-      endSem: 62,
-      total: 90,
-      grade: "A+",
-      gradeClass: "a-plus",
-      attendance: 94,
-      totalClasses: 36,
-      attended: 34,
-    },
-    {
-      code: "CS502",
-      name: "Database Management Systems",
-      credits: 4,
-      internals: 27,
-      endSem: 59,
-      total: 86,
-      grade: "A",
-      gradeClass: "a",
-      attendance: 88,
-      totalClasses: 34,
-      attended: 30,
-    },
-    {
-      code: "CS503",
-      name: "Operating Systems",
-      credits: 3,
-      internals: 26,
-      endSem: 56,
-      total: 82,
-      grade: "A",
-      gradeClass: "a",
-      attendance: 91,
-      totalClasses: 32,
-      attended: 29,
-    },
-    {
-      code: "CS504",
-      name: "Web Technologies & Full Stack",
-      credits: 3,
-      internals: 29,
-      endSem: 65,
-      total: 94,
-      grade: "A+",
-      gradeClass: "a-plus",
-      attendance: 96,
-      totalClasses: 28,
-      attended: 27,
-    },
-    {
-      code: "CS505",
-      name: "Computer Networks",
-      credits: 3,
-      internals: 24,
-      endSem: 52,
-      total: 76,
-      grade: "B",
-      gradeClass: "b",
-      attendance: 84,
-      totalClasses: 30,
-      attended: 25,
-    },
-  ];
 
   return (
     <div className="student-dashboard-page">
@@ -229,9 +194,9 @@ const StudentDashboard = () => {
                   ></div>
                 </div>
                 <div className="att-footer-counts">
-                  <span>145 Classes Attended</span>
-                  <span>14 Classes Missed</span>
-                  <span>159 Total Held</span>
+                  <span>{attendanceData?.attended_classes ?? 145} Classes Attended</span>
+                  <span>{attendanceData?.missed_classes ?? 14} Classes Missed</span>
+                  <span>{attendanceData?.total_classes ?? 159} Total Held</span>
                 </div>
               </div>
 
@@ -283,21 +248,29 @@ const StudentDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {subjects.map((sub) => (
-                    <tr key={sub.code}>
-                      <td>
-                        <strong>{sub.name}</strong>
-                      </td>
-                      <td>{sub.code}</td>
-                      <td>{sub.credits}</td>
-                      <td>{sub.total} / 100</td>
-                      <td>
-                        <span className={`grade-badge ${sub.gradeClass}`}>
-                          {sub.grade}
-                        </span>
+                  {subjects.length > 0 ? (
+                    subjects.map((sub) => (
+                      <tr key={sub.code}>
+                        <td>
+                          <strong>{sub.name}</strong>
+                        </td>
+                        <td>{sub.code}</td>
+                        <td>{sub.credits}</td>
+                        <td>{sub.total} / 100</td>
+                        <td>
+                          <span className={`grade-badge ${sub.gradeClass}`}>
+                            {sub.grade}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="5" style={{ textAlign: "center", padding: "20px", color: "#64748b" }}>
+                        No curriculum courses registered in database.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -434,28 +407,36 @@ const StudentDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {subjects.map((sub) => (
-                <tr key={sub.code}>
-                  <td><strong>{sub.code}</strong></td>
-                  <td>{sub.name}</td>
-                  <td>{sub.attended}</td>
-                  <td>{sub.totalClasses}</td>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <div className="progress-track" style={{ width: "100px", margin: 0 }}>
-                        <div
-                          className="progress-bar-fill"
-                          style={{ width: `${sub.attendance}%` }}
-                        ></div>
+              {subjects.length > 0 ? (
+                subjects.map((sub) => (
+                  <tr key={sub.code}>
+                    <td><strong>{sub.code}</strong></td>
+                    <td>{sub.name}</td>
+                    <td>{sub.attended}</td>
+                    <td>{sub.totalClasses}</td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div className="progress-track" style={{ width: "100px", margin: 0 }}>
+                          <div
+                            className="progress-bar-fill"
+                            style={{ width: `${sub.attendance}%` }}
+                          ></div>
+                        </div>
+                        <strong>{sub.attendance}%</strong>
                       </div>
-                      <strong>{sub.attendance}%</strong>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="stat-badge-tag tag-success">Eligible</span>
+                    </td>
+                    <td>
+                      <span className="stat-badge-tag tag-success">Eligible</span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: "center", padding: "20px", color: "#64748b" }}>
+                    No subject attendance records found in database.
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -517,24 +498,32 @@ const StudentDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {subjects.map((sub) => (
-                <tr key={sub.code}>
-                  <td><strong>{sub.code}</strong></td>
-                  <td>{sub.name}</td>
-                  <td>{sub.credits}</td>
-                  <td>{sub.internals}</td>
-                  <td>{sub.endSem}</td>
-                  <td><strong>{sub.total}</strong></td>
-                  <td>
-                    <span className={`grade-badge ${sub.gradeClass}`}>
-                      {sub.grade}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="stat-badge-tag tag-success">PASSED</span>
+              {subjects.length > 0 ? (
+                subjects.map((sub) => (
+                  <tr key={sub.code}>
+                    <td><strong>{sub.code}</strong></td>
+                    <td>{sub.name}</td>
+                    <td>{sub.credits}</td>
+                    <td>{sub.internals}</td>
+                    <td>{sub.endSem}</td>
+                    <td><strong>{sub.total}</strong></td>
+                    <td>
+                      <span className={`grade-badge ${sub.gradeClass}`}>
+                        {sub.grade}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="stat-badge-tag tag-success">PASSED</span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="8" style={{ textAlign: "center", padding: "28px", color: "#64748b" }}>
+                    No examination records or report card data found in database.
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

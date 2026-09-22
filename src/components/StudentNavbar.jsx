@@ -1,4 +1,3 @@
-import React from "react";
 import { FaUserGraduate, FaSignOutAlt, FaCalendarCheck, FaChartLine, FaIdBadge, FaThLarge } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -14,8 +13,8 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
   };
 
   const studentName = currentUser?.name || "Student";
-  const studentBranch = currentUser?.branch || "CSE";
-  const studentRoll = currentUser?.rollNo || `STU-${currentUser?.id || "101"}`;
+  const studentBranch = currentUser?.branch || "—";
+  const studentRoll = currentUser?.rollNo || "—";
 
   return (
     <div className="navbar student-navbar-wrap">

@@ -1,20 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { getStudents } from "../services/studentservice";
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useContext, useState, useEffect } from "react";
+import { loginApi, logoutApi } from "../services/studentservice";
 
-const AuthContext = createContext(null);
-
-export const DEFAULT_DEMO_STUDENT = {
-  id: 101,
-  name: "Alex Johnson",
-  email: "alex.johnson@edu.com",
-  phone: "9876543210",
-  branch: "CSE",
-  year: 3,
-  semester: "5",
-  rollNo: "STU-2024-101",
-  cgpa: 8.85,
-  attendanceRate: 91,
-};
+export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -36,147 +24,86 @@ export const AuthProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  // Teacher Login
-  const loginTeacher = (username, password) => {
+  // Teacher Login via Real Database API
+  const loginTeacher = async (username, password) => {
     const trimmedUser = (username || "").trim();
     const trimmedPass = (password || "").trim();
 
-    if (
-      (trimmedUser === "madam" && trimmedPass === "123456") ||
-      (trimmedUser === "admin" && trimmedPass === "admin")
-    ) {
-      const teacherUser = {
-        role: "teacher",
+    try {
+      setLoading(true);
+      const res = await loginApi({
         username: trimmedUser,
-        name: trimmedUser === "admin" ? "System Admin" : "Faculty Admin",
+        password: trimmedPass,
+        role: "teacher",
+      });
+
+      const data = res.data;
+      const teacherUser = {
+        role: data.role || "teacher",
+        token: data.token,
+        username: data.username,
+        name: data.name || "Faculty Admin",
         title: "Faculty Advisor",
-        department: "Academic Operations",
+        department: data.department || "Academic Operations",
       };
       setCurrentUser(teacherUser);
+      setLoading(false);
       return { success: true, user: teacherUser };
+    } catch (err) {
+      setLoading(false);
+      const errMsg =
+        err.response?.data?.detail ||
+        "Invalid teacher credentials. Please check your username and password.";
+      return { success: false, message: errMsg };
     }
-
-    return {
-      success: false,
-      message: "Invalid teacher credentials. Use 'madam' / '123456' or 'admin' / 'admin'.",
-    };
   };
 
-  // Student Login
+  // Student Login via Real Database API
   const loginStudent = async (identifier, password) => {
     setLoading(true);
-    const idClean = (identifier || "").trim().toLowerCase();
+    const idClean = (identifier || "").trim();
     const passClean = (password || "").trim();
 
     try {
-      // 1. Check if it matches the default demo student
-      if (
-        idClean === "alex.johnson@edu.com" ||
-        idClean === "101" ||
-        idClean === "stu-2024-101" ||
-        idClean === "demo" ||
-        idClean === "student"
-      ) {
-        if (passClean === "student123" || passClean === "123456" || passClean === "9876543210") {
-          const studentUser = {
-            role: "student",
-            ...DEFAULT_DEMO_STUDENT,
-          };
-          setCurrentUser(studentUser);
-          setLoading(false);
-          return { success: true, user: studentUser };
-        } else {
-          setLoading(false);
-          return {
-            success: false,
-            message: "Incorrect student password. Default demo password is 'student123'.",
-          };
-        }
-      }
+      const res = await loginApi({
+        identifier: idClean,
+        password: passClean,
+        role: "student",
+      });
 
-      // 2. Query registered students from the backend API
-      let registeredStudents = [];
-      try {
-        const res = await getStudents();
-        registeredStudents = res.data || [];
-      } catch (err) {
-        console.warn("Could not fetch students from backend; checking fallback.", err);
-      }
-
-      // Find matching student
-      const matched = registeredStudents.find(
-        (s) =>
-          (s.email && s.email.toLowerCase() === idClean) ||
-          String(s.id) === idClean ||
-          (s.phone && s.phone.trim() === idClean) ||
-          (s.name && s.name.toLowerCase() === idClean)
-      );
-
-      if (matched) {
-        // Allow login if password is 'student123', or student's phone number, or '123456'
-        const validPasswords = [
-          "student123",
-          "123456",
-          matched.phone ? matched.phone.trim() : "",
-          String(matched.id),
-        ].filter(Boolean);
-
-        if (validPasswords.includes(passClean)) {
-          const studentUser = {
-            role: "student",
-            ...matched,
-            rollNo: `STU-2024-00${matched.id}`,
-            attendanceRate: 85 + (matched.id % 12),
-            cgpa: +(7.5 + ((matched.id * 3) % 20) / 10).toFixed(2),
-          };
-          setCurrentUser(studentUser);
-          setLoading(false);
-          return { success: true, user: studentUser };
-        } else {
-          setLoading(false);
-          return {
-            success: false,
-            message: "Incorrect password. Default is 'student123' or your registered phone number.",
-          };
-        }
-      }
-
-      // 3. Fallback: if student list is empty or identifier wasn't found in DB,
-      // allow entering with default demo student or dynamic temporary profile
-      if (passClean === "student123" || passClean === "123456") {
-        const dynamicStudent = {
-          role: "student",
-          id: 102,
-          name: identifier.includes("@") ? identifier.split("@")[0].toUpperCase() : identifier,
-          email: identifier.includes("@") ? identifier : `${identifier}@edu.com`,
-          phone: "9123456780",
-          branch: "CSE",
-          year: 3,
-          semester: "5",
-          rollNo: `STU-${Math.floor(1000 + Math.random() * 9000)}`,
-          cgpa: 8.5,
-          attendanceRate: 89,
-        };
-        setCurrentUser(dynamicStudent);
-        setLoading(false);
-        return { success: true, user: dynamicStudent };
-      }
-
-      setLoading(false);
-      return {
-        success: false,
-        message: "Student record not found. Try student email / ID with password 'student123'.",
+      const data = res.data;
+      const studentData = data.student || {};
+      const studentUser = {
+        role: "student",
+        token: data.token,
+        username: data.username,
+        id: studentData.id,
+        name: studentData.name || data.name,
+        rollNo: studentData.rollNo || data.username,
+        email: studentData.email || data.email,
+        phone: studentData.phone || "",
+        branch: studentData.branch || "CSE",
+        year: studentData.year || 1,
+        semester: studentData.semester || "1",
       };
-    } catch (error) {
+      setCurrentUser(studentUser);
       setLoading(false);
-      return {
-        success: false,
-        message: "An error occurred during student login. Please try again.",
-      };
+      return { success: true, user: studentUser };
+    } catch (err) {
+      setLoading(false);
+      const errMsg =
+        err.response?.data?.detail ||
+        "Incorrect student credentials. Use your Roll No / Email and password 'student123'.";
+      return { success: false, message: errMsg };
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await logoutApi();
+    } catch {
+      // ignore
+    }
     setCurrentUser(null);
     localStorage.removeItem("sms_auth_user");
   };
@@ -186,7 +113,7 @@ export const AuthProvider = ({ children }) => {
       value={{
         currentUser,
         role: currentUser?.role || null,
-        isTeacher: currentUser?.role === "teacher",
+        isTeacher: currentUser?.role === "teacher" || currentUser?.role === "admin",
         isStudent: currentUser?.role === "student",
         loginTeacher,
         loginStudent,

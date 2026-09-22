@@ -1,50 +1,83 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import "../styles/dashboardcard.css";
-
 import { FaUserGraduate, FaClipboardCheck, FaBook, FaChartLine } from "react-icons/fa";
-import { getStudents } from "../services/studentservice";
+import {
+  getStudents,
+  getAttendanceSummary,
+  getAllPerformance,
+} from "../services/studentservice";
 
 function DashboardCard({ studentCount: externalCount }) {
-  const [studentCount, setStudentCount] = useState(externalCount ?? 0);
-  const [branchCount, setBranchCount] = useState(0);
-  const [loading, setLoading] = useState(externalCount === undefined);
+  const [internalCount, setInternalCount] = useState(0);
+  const [branchList, setBranchList] = useState([]);
+  const [presentToday, setPresentToday] = useState(0);
+  const [attendanceRate, setAttendanceRate] = useState(0);
+  const [avgScore, setAvgScore] = useState("—");
+  const [topBranch, setTopBranch] = useState("—");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (externalCount !== undefined) {
-      setStudentCount(externalCount);
-      return;
-    }
+    let isMounted = true;
 
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        const res = await getStudents();
-        const list = res.data || [];
-        setStudentCount(list.length);
-        const branches = new Set(list.map((s) => s.branch?.toUpperCase()).filter(Boolean));
-        setBranchCount(branches.size || 3);
-      } catch (err) {
-        console.error("Failed to load student count:", err);
-      } finally {
-        setLoading(false);
-      }
+    Promise.all([
+      getStudents().catch(() => ({ data: [] })),
+      getAttendanceSummary().catch(() => ({ data: null })),
+      getAllPerformance("ALL").catch(() => ({ data: [] })),
+    ])
+      .then(([studentsRes, attRes, perfRes]) => {
+        if (!isMounted) return;
+
+        const students = studentsRes.data || [];
+        setInternalCount(students.length);
+
+        const branches = Array.from(
+          new Set(students.map((s) => s.branch?.toUpperCase()).filter(Boolean))
+        );
+        setBranchList(branches);
+
+        if (attRes.data) {
+          setPresentToday(attRes.data.present_today || 0);
+          setAttendanceRate(attRes.data.attendance_rate || 0);
+        }
+
+        const perfData = perfRes.data || [];
+        if (perfData.length > 0) {
+          const totalAvg =
+            perfData.reduce((acc, curr) => acc + (parseFloat(curr.avg) || 0), 0) /
+            perfData.length;
+          setAvgScore(totalAvg.toFixed(1));
+
+          // Compute top branch by average
+          const branchMap = {};
+          perfData.forEach((p) => {
+            const b = p.branch?.toUpperCase() || "GENERAL";
+            if (!branchMap[b]) branchMap[b] = { sum: 0, count: 0 };
+            branchMap[b].sum += parseFloat(p.avg) || 0;
+            branchMap[b].count += 1;
+          });
+
+          let bestBranch = "—";
+          let highestAvg = 0;
+          Object.entries(branchMap).forEach(([b, stats]) => {
+            const bAvg = stats.sum / stats.count;
+            if (bAvg > highestAvg) {
+              highestAvg = bAvg;
+              bestBranch = b;
+            }
+          });
+          setTopBranch(bestBranch);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
     };
+  }, []);
 
-    loadData();
-  }, [externalCount]);
-
-  // Calculate today's attendance from localStorage if saved
-  const todayStr = new Date().toISOString().split("T")[0];
-  let presentToday = Math.max(0, studentCount);
-  try {
-    const saved = localStorage.getItem(`attendance_${todayStr}`);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      presentToday = Object.values(parsed).filter((v) => v === "Present").length;
-    }
-  } catch {
-    // fallback
-  }
+  const studentCount = externalCount !== undefined ? externalCount : internalCount;
 
   return (
     <div className="dashboard-cards">
@@ -56,7 +89,7 @@ function DashboardCard({ studentCount: externalCount }) {
         <div className="text">
           <h3>Total Students</h3>
           <h1>{loading ? "..." : studentCount}</h1>
-          <span className="card-subtext">Total enrolled</span>
+          <span className="card-subtext">Active database records</span>
         </div>
       </div>
 
@@ -69,7 +102,9 @@ function DashboardCard({ studentCount: externalCount }) {
           <h3>Present Today</h3>
           <h1>{loading ? "..." : presentToday}</h1>
           <span className="card-subtext">
-            {studentCount > 0 ? `${Math.round((presentToday / studentCount) * 100)}% active rate` : "No attendance yet"}
+            {studentCount > 0
+              ? `${attendanceRate}% active rate`
+              : "No records today"}
           </span>
         </div>
       </div>
@@ -81,8 +116,12 @@ function DashboardCard({ studentCount: externalCount }) {
         </div>
         <div className="text">
           <h3>Active Branches</h3>
-          <h1>{loading ? "..." : (branchCount || 3)}</h1>
-          <span className="card-subtext">CSE, ECE, AIML</span>
+          <h1>{loading ? "..." : branchList.length || 3}</h1>
+          <span className="card-subtext">
+            {branchList.length > 0
+              ? branchList.slice(0, 4).join(", ")
+              : "CSE, AIML, IT"}
+          </span>
         </div>
       </div>
 
@@ -93,8 +132,8 @@ function DashboardCard({ studentCount: externalCount }) {
         </div>
         <div className="text">
           <h3>Average Score</h3>
-          <h1>84.5%</h1>
-          <span className="card-subtext">Top performing: CSE</span>
+          <h1>{loading ? "..." : `${avgScore}%`}</h1>
+          <span className="card-subtext">Top branch: {topBranch}</span>
         </div>
       </div>
     </div>
