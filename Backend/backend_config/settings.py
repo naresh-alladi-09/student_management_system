@@ -39,7 +39,7 @@ if allowed_hosts_env:
 elif DEBUG:
     ALLOWED_HOSTS = ['*']
 else:
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.vercel.app', '.onrender.com', '.railway.app']
 
 
 # Application definition
@@ -213,5 +213,10 @@ else:
         "http://localhost:3000",
         "http://127.0.0.1:8000",
     ]
+
+# Automatically allow preview and production deployments on Vercel
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+]
 
 CORS_ALLOW_CREDENTIALS = True

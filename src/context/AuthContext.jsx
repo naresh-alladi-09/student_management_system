@@ -71,10 +71,15 @@ export const AuthProvider = ({ children }) => {
       return { success: true, user: userData };
     } catch (err) {
       setLoading(false);
-      const errMsg =
-        err.response?.data?.detail ||
-        err.response?.data?.error ||
-        "Authentication failed. Please check your credentials.";
+      let errMsg = "Authentication failed. Please check your credentials.";
+      if (!err.response) {
+        errMsg =
+          "Cannot connect to the backend server. If using Vercel, please ensure your backend is deployed and VITE_API_URL is configured in Vercel Environment Variables.";
+      } else if (err.response.data?.detail) {
+        errMsg = err.response.data.detail;
+      } else if (err.response.data?.error) {
+        errMsg = err.response.data.error;
+      }
       return { success: false, message: errMsg };
     }
   };
