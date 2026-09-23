@@ -64,6 +64,7 @@ const StudentDashboard = () => {
   const [qrInputToken, setQrInputToken] = useState("");
   const [qrSubmitting, setQrSubmitting] = useState(false);
   const [qrResult, setQrResult] = useState(null);
+  const [cameraError, setCameraError] = useState(null);
 
   const extractTokenFromInput = (text) => {
     if (!text) return "";
@@ -114,6 +115,7 @@ const StudentDashboard = () => {
   // Camera Scanner Lifecycle using Html5QrcodeScanner
   useEffect(() => {
     if (!showQrModal || qrMode !== "camera") return;
+    setCameraError(null);
 
     let scanner = null;
     const timer = setTimeout(() => {
@@ -136,10 +138,25 @@ const StudentDashboard = () => {
               scanner.clear();
             } catch {}
           },
-          () => {}
+          (errorMessage) => {
+            if (
+              errorMessage &&
+              (errorMessage.includes("Permission") ||
+                errorMessage.includes("NotAllowedError") ||
+                errorMessage.includes("device not found") ||
+                errorMessage.includes("NotFoundError"))
+            ) {
+              setCameraError(
+                "Camera permission denied or camera device not found. Please allow camera permissions in your browser or switch to manual token entry."
+              );
+            }
+          }
         );
       } catch (err) {
         console.warn("Could not start camera scanner:", err);
+        setCameraError(
+          "Unable to start camera on this device. Please switch to the Enter Token tab below."
+        );
       }
     }, 150);
 
@@ -660,18 +677,46 @@ const StudentDashboard = () => {
             )}
           </div>
 
-          <h4 style={{ margin: "20px 0 12px 0", color: "#1e293b" }}>
+          {isShortage && (
+            <div
+              style={{
+                marginTop: "16px",
+                marginBottom: "20px",
+                padding: "16px 20px",
+                borderRadius: "12px",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                color: "#b91c1c",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "12px",
+              }}
+            >
+              <FaExclamationTriangle style={{ fontSize: "20px", flexShrink: 0, marginTop: "2px" }} />
+              <div>
+                <strong style={{ display: "block", marginBottom: "4px" }}>
+                  Low Attendance Warning
+                </strong>
+                <span>
+                  {attendanceData?.warning_message || `Your overall attendance is ${attendanceRate}%. Your attendance is below the required 75% threshold.`}
+                  {classesNeeded > 0 && ` You need to attend the next ${classesNeeded} consecutive classes to regain exam eligibility.`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <h4 style={{ margin: "20px 0 12px 0", color: "#1e293b", fontSize: "16px", fontWeight: 700 }}>
             Subject-wise Attendance Breakdown
           </h4>
           <table className="grades-table">
             <thead>
               <tr>
-                <th>Subject Code</th>
-                <th>Course Name</th>
-                <th>Classes Attended</th>
-                <th>Total Held</th>
+                <th>Subject</th>
+                <th>Present</th>
+                <th>Absent</th>
+                <th>Total</th>
                 <th>Percentage</th>
-                <th>Eligibility Status</th>
+                <th>Status & Warnings</th>
               </tr>
             </thead>
             <tbody>
@@ -680,34 +725,45 @@ const StudentDashboard = () => {
                 attendanceData.subject_breakdown.map((sub) => (
                   <tr key={sub.code}>
                     <td>
-                      <strong>{sub.code}</strong>
-                    </td>
-                    <td>{sub.name}</td>
-                    <td>{sub.attended}</td>
-                    <td>{sub.total_classes}</td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <div className="progress-track" style={{ width: "100px", margin: 0 }}>
-                          <div
-                            className="progress-bar-fill"
-                            style={{
-                              width: `${Math.min(100, sub.attendance_rate)}%`,
-                              backgroundColor:
-                                sub.attendance_rate >= 75 ? "#10b981" : "#ef4444",
-                            }}
-                          ></div>
-                        </div>
-                        <strong>{sub.attendance_rate}%</strong>
+                      <div>
+                        <strong>{sub.name}</strong>
+                        <div style={{ fontSize: "12px", color: "#64748b" }}>{sub.code} • {sub.credits} Credits</div>
                       </div>
                     </td>
                     <td>
-                      <span
-                        className={`stat-badge-tag ${
-                          sub.attendance_rate >= 75 ? "tag-success" : "tag-danger"
-                        }`}
-                      >
-                        {sub.attendance_rate >= 75 ? "Eligible" : "Shortage"}
-                      </span>
+                      <span style={{ color: "#059669", fontWeight: 700 }}>{sub.present ?? sub.attended ?? 0}</span>
+                    </td>
+                    <td>
+                      <span style={{ color: "#dc2626", fontWeight: 700 }}>{sub.absent ?? sub.missed ?? 0}</span>
+                    </td>
+                    <td>
+                      <strong>{sub.total ?? sub.total_classes ?? 0}</strong>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div className="progress-track" style={{ width: "90px", margin: 0 }}>
+                          <div
+                            className="progress-bar-fill"
+                            style={{
+                              width: `${Math.min(100, sub.percentage ?? sub.attendance_rate)}%`,
+                              backgroundColor:
+                                (sub.percentage ?? sub.attendance_rate) >= 75 ? "#10b981" : "#ef4444",
+                            }}
+                          ></div>
+                        </div>
+                        <strong>{sub.percentage ?? sub.attendance_rate}%</strong>
+                      </div>
+                    </td>
+                    <td>
+                      {sub.is_shortage ? (
+                        <div style={{ color: "#b91c1c", fontSize: "12px", fontWeight: 600 }}>
+                          ⚠️ {sub.warning || `Attendance is below 75% (${sub.classes_needed_for_75} classes needed)`}
+                        </div>
+                      ) : (
+                        <span className="stat-badge-tag tag-success">
+                          ✓ Normal Standing
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -723,6 +779,80 @@ const StudentDashboard = () => {
               )}
             </tbody>
           </table>
+
+          {/* Attendance History Section */}
+          <div style={{ marginTop: "32px" }}>
+            <h4 style={{ margin: "0 0 12px 0", color: "#1e293b", fontSize: "16px", fontWeight: 700 }}>
+              Recent Attendance History
+            </h4>
+            <div className="table-responsive">
+              <table className="grades-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Subject / Class</th>
+                    <th>Marked Via</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attendanceData?.history && attendanceData.history.length > 0 ? (
+                    attendanceData.history.map((rec) => (
+                      <tr key={rec.id}>
+                        <td>
+                          <strong>{rec.date}</strong>
+                        </td>
+                        <td>
+                          <div>
+                            <strong>{rec.subject_code ? `${rec.subject_code} - ` : ""}{rec.subject}</strong>
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            style={{
+                              padding: "2px 8px",
+                              borderRadius: "4px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              background: rec.marked_via === "QR" ? "#eff6ff" : "#f1f5f9",
+                              color: rec.marked_via === "QR" ? "#2563eb" : "#475569",
+                            }}
+                          >
+                            {rec.marked_via === "QR" ? "QR Code" : "Teacher Manual"}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: "12px", color: "#64748b" }}>
+                            {rec.marked_at ? new Date(rec.marked_at).toLocaleTimeString() : "—"}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`stat-badge-tag ${
+                              rec.status === "Present"
+                                ? "tag-success"
+                                : rec.status === "Late"
+                                ? "tag-warn"
+                                : "tag-danger"
+                            }`}
+                          >
+                            {rec.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="5" style={{ textAlign: "center", padding: "20px", color: "#64748b" }}>
+                        No recent attendance entries recorded.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -988,7 +1118,7 @@ const StudentDashboard = () => {
             </div>
             <div className="profile-field-box">
               <small>System Student ID</small>
-              <span>{currentUser?.studentId || f`STU2024${currentUser?.id || "0001"}`}</span>
+              <span>{currentUser?.studentId || `STU2024${currentUser?.id || "0001"}`}</span>
             </div>
             <div className="profile-field-box">
               <small>Branch / Department</small>
@@ -1200,6 +1330,40 @@ const StudentDashboard = () => {
             {/* TAB 1: CAMERA SCANNER */}
             {qrMode === "camera" && !qrResult?.success && (
               <div style={{ marginBottom: "16px" }}>
+                {cameraError && (
+                  <div
+                    style={{
+                      background: "#fff1f2",
+                      border: "1px solid #fecdd3",
+                      borderRadius: "8px",
+                      padding: "12px 14px",
+                      color: "#9f1239",
+                      fontSize: "13px",
+                      marginBottom: "12px",
+                      textAlign: "left",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: "4px" }}>Camera Notice</div>
+                    <div style={{ lineHeight: "1.4" }}>{cameraError}</div>
+                    <button
+                      type="button"
+                      onClick={() => setQrMode("manual")}
+                      style={{
+                        marginTop: "8px",
+                        padding: "6px 12px",
+                        background: "#e11d48",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Switch to Enter Code Manually
+                    </button>
+                  </div>
+                )}
                 <div
                   id="qr-reader-target"
                   style={{

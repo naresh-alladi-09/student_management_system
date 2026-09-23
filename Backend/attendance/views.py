@@ -1,5 +1,5 @@
 import math
-from datetime import date
+from datetime import date, timedelta
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count, Q
@@ -9,8 +9,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import IsTeacherOrAdmin, IsSelfOrStaff, IsStudent
-from students.models import Student
+from students.models import Student, AcademicClass, FacultyAssignment
 from performance.models import Subject
+from audit.models import AuditLog
 from .models import AttendanceSession, AttendanceRecord
 from .serializers import AttendanceSessionSerializer, AttendanceRecordSerializer
 
@@ -23,12 +24,14 @@ from .serializers import AttendanceSessionSerializer, AttendanceRecordSerializer
 @permission_classes([IsTeacherOrAdmin])
 def create_attendance_session(request):
     """
-    Teacher starts an attendance session for a subject.
-    Payload: { "subject_id": 1, "duration_seconds": 60 }
+    Teacher starts an attendance session for a subject and optional section/class.
+    Payload: { "subject_id": 1, "duration_seconds": 60, "class_id": 2, "section": "A" }
     Returns: newly created session with temporary secure QR token.
     """
     subject_id = request.data.get('subject_id')
     duration_seconds = int(request.data.get('duration_seconds', 60))
+    class_id = request.data.get('class_id') or request.data.get('academic_class_id')
+    section_val = request.data.get('section', 'A')
 
     if not subject_id:
         return Response({"detail": "subject_id is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -37,6 +40,31 @@ def create_attendance_session(request):
         subject = Subject.objects.get(id=subject_id)
     except Subject.DoesNotExist:
         return Response({"detail": "Subject not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    academic_class = None
+    if class_id:
+        try:
+            academic_class = AcademicClass.objects.get(id=class_id)
+            section_val = academic_class.section
+        except AcademicClass.DoesNotExist:
+            return Response({"detail": f"AcademicClass with ID {class_id} not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Validate Teacher Permission:
+    # If the user is not staff/admin, check if they are authorized to teach this subject
+    is_admin = request.user.is_staff or request.user.is_superuser or (
+        hasattr(request.user, 'profile') and request.user.profile.role == 'admin'
+    )
+    if not is_admin:
+        teacher_assignments = FacultyAssignment.objects.filter(teacher=request.user)
+        if teacher_assignments.exists():
+            assignment_qs = teacher_assignments.filter(subject=subject)
+            if academic_class:
+                assignment_qs = assignment_qs.filter(academic_class=academic_class)
+            if not assignment_qs.exists():
+                return Response(
+                    {"detail": f"You are not assigned to conduct attendance for {subject.name} ({subject.code})."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
     # Deactivate any previous active sessions by this teacher for this subject today
     AttendanceSession.objects.filter(
@@ -49,7 +77,18 @@ def create_attendance_session(request):
     session = AttendanceSession.create_session(
         subject=subject,
         teacher=request.user,
-        duration_seconds=duration_seconds
+        duration_seconds=duration_seconds,
+        academic_class=academic_class,
+        section=section_val
+    )
+
+    AuditLog.log(
+        action='ATTENDANCE_SESSION_START',
+        entity='AttendanceSession',
+        entity_id=str(session.id),
+        description=f"Faculty '{request.user.username}' started QR attendance session for {subject.code} (Section {section_val}).",
+        user=request.user,
+        request=request
     )
 
     serializer = AttendanceSessionSerializer(session)
@@ -99,13 +138,16 @@ def get_active_session(request):
         for r in records
     ]
 
-    total_branch_students = Student.objects.filter(branch__iexact=session.subject.branch, is_active=True).count()
-    if total_branch_students == 0:
-        total_branch_students = Student.objects.filter(is_active=True).count()
+    if session.academic_class:
+        total_enrolled = Student.objects.filter(academic_class=session.academic_class, is_active=True).count()
+    else:
+        total_enrolled = Student.objects.filter(branch__iexact=session.subject.branch, is_active=True).count()
+    if total_enrolled == 0:
+        total_enrolled = Student.objects.filter(is_active=True).count()
 
     present_count = len(attendees)
-    absent_count = max(0, total_branch_students - present_count)
-    rate = round((present_count / total_branch_students * 100), 1) if total_branch_students > 0 else 0.0
+    absent_count = max(0, total_enrolled - present_count)
+    rate = round((present_count / total_enrolled * 100), 1) if total_enrolled > 0 else 0.0
 
     return Response({
         "active": True,
@@ -151,6 +193,16 @@ def close_attendance_session(request, session_id):
         return Response({"detail": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
 
     session.close()
+
+    AuditLog.log(
+        action='ATTENDANCE_SESSION_CLOSE',
+        entity='AttendanceSession',
+        entity_id=str(session.id),
+        description=f"Faculty '{request.user.username}' closed attendance session #{session.id} for {session.subject.code} (Section {session.section or 'All'}).",
+        user=request.user,
+        request=request
+    )
+
     return Response({
         "message": "Attendance session closed successfully.",
         "session_id": session.id,
@@ -227,7 +279,42 @@ def mark_qr_attendance(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 4. Check for duplicate attendance for this session
+    # 4. Validate Student Eligibility for this Subject / Academic Class
+    if session.academic_class:
+        target_class = session.academic_class
+        student_class = student.academic_class
+        is_enrolled = False
+        if student_class and student_class.id == target_class.id:
+            is_enrolled = True
+        elif (
+            student.branch.upper() == target_class.branch.code.upper() and
+            int(student.year) == int(target_class.year) and
+            str(student.semester) == str(target_class.semester) and
+            student.section.upper() == target_class.section.upper()
+        ):
+            is_enrolled = True
+
+        if not is_enrolled:
+            return Response(
+                {
+                    "detail": f"Access denied. You are not enrolled in {target_class.display_name}. This session is restricted to students of this section.",
+                    "student_class": f"{student.branch} Y{student.year}S{student.semester}-{student.section}",
+                    "session_class": target_class.display_name
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+    elif session.subject and session.subject.branch:
+        if student.branch.upper() != session.subject.branch.upper():
+            return Response(
+                {
+                    "detail": f"Access denied. This subject ({session.subject.code}) is for {session.subject.branch} department, but you are enrolled in {student.branch}.",
+                    "student_branch": student.branch,
+                    "subject_branch": session.subject.branch
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    # 5. Check for duplicate attendance for this session
     existing = AttendanceRecord.objects.filter(student=student, session=session).first()
     if existing:
         return Response(
@@ -239,7 +326,7 @@ def mark_qr_attendance(request):
             status=status.HTTP_409_CONFLICT
         )
 
-    # 5. Create AttendanceRecord atomically
+    # 6. Create AttendanceRecord atomically
     with transaction.atomic():
         record = AttendanceRecord.objects.create(
             student=student,
@@ -249,6 +336,15 @@ def mark_qr_attendance(request):
             status='Present',
             marked_via='QR',
             remarks=f"Marked via live QR session by {student.name}"
+        )
+
+        AuditLog.log(
+            action='ATTENDANCE_QR_MARK',
+            entity='AttendanceRecord',
+            entity_id=str(record.id),
+            description=f"Student '{student.name}' ({student.roll_no}) marked QR attendance for {session.subject.code}.",
+            user=user,
+            request=request
         )
 
     return Response({
@@ -283,9 +379,19 @@ def get_daily_attendance(request):
         target_date = date.today()
 
     branch = request.query_params.get('branch', None)
+    year = request.query_params.get('year', None)
+    semester = request.query_params.get('semester', None)
+    section = request.query_params.get('section', None)
+
     students_qs = Student.objects.filter(is_active=True).order_by('id')
     if branch and branch.upper() != 'ALL':
         students_qs = students_qs.filter(branch__iexact=branch)
+    if year and year.upper() != 'ALL':
+        students_qs = students_qs.filter(year=year)
+    if semester and semester.upper() != 'ALL':
+        students_qs = students_qs.filter(semester=semester)
+    if section and section.upper() != 'ALL':
+        students_qs = students_qs.filter(section__iexact=section)
 
     existing_records = {
         rec.student_id: rec.status
@@ -303,6 +409,7 @@ def get_daily_attendance(request):
             "branch": s.branch,
             "year": s.year,
             "semester": s.semester,
+            "section": s.section,
             "status": st
         })
 
@@ -410,14 +517,16 @@ def student_attendance_detail(request, student_id):
     rate = round((present / total * 100), 1) if total > 0 else 0.0
 
     # Real attendance shortage calculation:
+    # Real attendance shortage calculation:
     # Target = 75%. If P / T < 0.75:
     # Need x consecutive classes such that (P + x) / (T + x) >= 0.75
     # => P + x >= 0.75T + 0.75x => 0.25x >= 0.75T - P => x >= 3T - 4P
+    threshold = float(request.query_params.get('threshold', 75.0))
     shortage_warning = False
     classes_needed_for_75 = 0
-    if total > 0 and rate < 75.0:
+    if total > 0 and rate < threshold:
         shortage_warning = True
-        needed = math.ceil(3 * total - 4 * present)
+        needed = math.ceil((threshold / (100 - threshold)) * total - (100 / (100 - threshold)) * present) if threshold < 100 else 0
         classes_needed_for_75 = max(0, needed)
 
     # Subject-wise attendance calculation
@@ -430,19 +539,29 @@ def student_attendance_detail(request, student_id):
         sub_recs = AttendanceRecord.objects.filter(student=student, subject=sub)
         sub_total = sub_recs.count()
         sub_present = sub_recs.filter(status='Present').count()
+        sub_absent = sub_recs.filter(status='Absent').count()
         sub_rate = round((sub_present / sub_total * 100), 1) if sub_total > 0 else 0.0
-        sub_needed = max(0, math.ceil(3 * sub_total - 4 * sub_present)) if sub_total > 0 and sub_rate < 75.0 else 0
+        sub_needed = max(0, math.ceil(3 * sub_total - 4 * sub_present)) if sub_total > 0 and sub_rate < threshold else 0
+        sub_is_shortage = sub_total > 0 and sub_rate < threshold
 
         subject_stats.append({
             "code": sub.code,
             "name": sub.name,
             "credits": sub.credits,
             "total_classes": sub_total,
+            "total": sub_total,
             "attended": sub_present,
+            "present": sub_present,
             "missed": sub_total - sub_present,
+            "absent": sub_absent,
             "attendance_rate": sub_rate,
-            "is_shortage": sub_total > 0 and sub_rate < 75.0,
+            "percentage": sub_rate,
+            "is_shortage": sub_is_shortage,
             "classes_needed_for_75": sub_needed,
+            "warning": (
+                f"Your {sub.name} attendance is {sub_rate}%. Your attendance is below the required threshold of {threshold}%."
+                if sub_is_shortage else ""
+            ),
         })
 
     history = [
@@ -459,6 +578,11 @@ def student_attendance_detail(request, student_id):
         for r in records[:50]
     ]
 
+    overall_warning = (
+        f"Your overall attendance is {rate}%. Your attendance is below the required threshold of {threshold}%."
+        if shortage_warning else ""
+    )
+
     return Response({
         "student_id": student.id,
         "name": student.name,
@@ -470,6 +594,7 @@ def student_attendance_detail(request, student_id):
         "late_classes": late,
         "attendance_rate": rate,
         "shortage_warning": shortage_warning,
+        "warning_message": overall_warning,
         "classes_needed_for_75": classes_needed_for_75,
         "subject_breakdown": subject_stats,
         "history": history
@@ -494,18 +619,186 @@ def my_attendance_view(request):
 @permission_classes([IsTeacherOrAdmin])
 def attendance_summary(request):
     """
-    College-wide / department aggregate attendance stats.
+    Institutional aggregate attendance analytics dashboard:
+    Overall stats, branch-wise, year-wise, section-wise, subject-wise,
+    low-attendance students (< threshold, default 75%), and 7-day attendance trends.
     """
     today = date.today()
-    students_count = Student.objects.filter(is_active=True).count()
+    threshold = float(request.query_params.get('threshold', 75.0))
+
+    # All active students
+    active_students = list(Student.objects.filter(is_active=True))
+    total_students = len(active_students)
+
+    # Today's records
     records_today = AttendanceRecord.objects.filter(date=today)
     present_today = records_today.filter(status='Present').count()
+    absent_today = records_today.filter(status='Absent').count()
+    not_marked_today = max(0, total_students - present_today - absent_today)
+    today_rate = round((present_today / total_students * 100), 1) if total_students > 0 else 0.0
 
-    rate = round((present_today / students_count * 100), 1) if students_count > 0 else 0.0
+    # Cumulative records
+    all_records = AttendanceRecord.objects.all()
+    total_recs = all_records.count()
+    present_recs = all_records.filter(status='Present').count()
+    cumulative_rate = round((present_recs / total_recs * 100), 1) if total_recs > 0 else 0.0
+
+    # Low attendance students calculation
+    student_records_map = {}
+    for rec in all_records.values('student_id', 'status'):
+        sid = rec['student_id']
+        if sid not in student_records_map:
+            student_records_map[sid] = {'present': 0, 'total': 0}
+        student_records_map[sid]['total'] += 1
+        if rec['status'] == 'Present':
+            student_records_map[sid]['present'] += 1
+
+    low_attendance_list = []
+    for s in active_students:
+        s_stats = student_records_map.get(s.id, {'present': 0, 'total': 0})
+        s_total = s_stats['total']
+        s_present = s_stats['present']
+        s_rate = round((s_present / s_total * 100), 1) if s_total > 0 else 0.0
+
+        if s_total > 0 and s_rate < threshold:
+            needed = max(0, math.ceil(3 * s_total - 4 * s_present))
+            low_attendance_list.append({
+                "student_id": s.id,
+                "name": s.name,
+                "roll_no": s.roll_no or f"STU-{s.id:03d}",
+                "branch": s.branch,
+                "year": s.year,
+                "semester": s.semester,
+                "section": s.section,
+                "attended": s_present,
+                "total": s_total,
+                "attendance_rate": s_rate,
+                "classes_needed": needed,
+                "warning": f"{s.name}'s attendance is {s_rate}%, which is below the {threshold}% threshold."
+            })
+
+    # Sort low attendance students ascending by rate
+    low_attendance_list.sort(key=lambda x: x['attendance_rate'])
+
+    # Branch-wise analytics
+    branches = {}
+    for s in active_students:
+        b = (s.branch or 'General').upper()
+        if b not in branches:
+            branches[b] = {'students': 0, 'present': 0, 'total': 0}
+        branches[b]['students'] += 1
+        st_data = student_records_map.get(s.id, {'present': 0, 'total': 0})
+        branches[b]['present'] += st_data['present']
+        branches[b]['total'] += st_data['total']
+
+    branch_wise = [
+        {
+            "branch": b,
+            "total_students": data['students'],
+            "attended": data['present'],
+            "total_classes": data['total'],
+            "attendance_rate": round((data['present'] / data['total'] * 100), 1) if data['total'] > 0 else 0.0
+        }
+        for b, data in sorted(branches.items())
+    ]
+
+    # Year-wise analytics
+    years = {}
+    for s in active_students:
+        y = s.year or 1
+        if y not in years:
+            years[y] = {'students': 0, 'present': 0, 'total': 0}
+        years[y]['students'] += 1
+        st_data = student_records_map.get(s.id, {'present': 0, 'total': 0})
+        years[y]['present'] += st_data['present']
+        years[y]['total'] += st_data['total']
+
+    year_wise = [
+        {
+            "year": y,
+            "total_students": data['students'],
+            "attended": data['present'],
+            "total_classes": data['total'],
+            "attendance_rate": round((data['present'] / data['total'] * 100), 1) if data['total'] > 0 else 0.0
+        }
+        for y, data in sorted(years.items())
+    ]
+
+    # Section-wise analytics
+    sections = {}
+    for s in active_students:
+        sec = s.section or 'A'
+        if sec not in sections:
+            sections[sec] = {'students': 0, 'present': 0, 'total': 0}
+        sections[sec]['students'] += 1
+        st_data = student_records_map.get(s.id, {'present': 0, 'total': 0})
+        sections[sec]['present'] += st_data['present']
+        sections[sec]['total'] += st_data['total']
+
+    section_wise = [
+        {
+            "section": sec,
+            "total_students": data['students'],
+            "attended": data['present'],
+            "total_classes": data['total'],
+            "attendance_rate": round((data['present'] / data['total'] * 100), 1) if data['total'] > 0 else 0.0
+        }
+        for sec, data in sorted(sections.items())
+    ]
+
+    # Subject-wise analytics
+    subjects = Subject.objects.all()
+    subject_wise = []
+    for sub in subjects:
+        sub_recs = AttendanceRecord.objects.filter(subject=sub)
+        st_total = sub_recs.count()
+        st_present = sub_recs.filter(status='Present').count()
+        s_rate = round((st_present / st_total * 100), 1) if st_total > 0 else 0.0
+        subject_wise.append({
+            "code": sub.code,
+            "name": sub.name,
+            "branch": sub.branch,
+            "semester": sub.semester,
+            "total_classes": st_total,
+            "attended": st_present,
+            "attendance_rate": s_rate
+        })
+
+    # 7-day attendance trends
+    trends = []
+    from datetime import timedelta
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        day_recs = AttendanceRecord.objects.filter(date=d)
+        d_total = day_recs.count()
+        d_present = day_recs.filter(status='Present').count()
+        d_rate = round((d_present / d_total * 100), 1) if d_total > 0 else 0.0
+        trends.append({
+            "date": d.isoformat(),
+            "day": d.strftime('%a'),
+            "present": d_present,
+            "total": d_total,
+            "attendance_rate": d_rate
+        })
 
     return Response({
-        "total_students": students_count,
-        "present_today": present_today,
-        "attendance_rate": rate,
-        "date": today.isoformat()
+        "threshold": threshold,
+        "date": today.isoformat(),
+        "overall": {
+            "total_students": total_students,
+            "present_today": present_today,
+            "absent_today": absent_today,
+            "not_marked_today": not_marked_today,
+            "today_attendance_rate": today_rate,
+            "cumulative_attendance_rate": cumulative_rate,
+            "total_records": total_recs,
+            "low_attendance_count": len(low_attendance_list)
+        },
+        "low_attendance_students": low_attendance_list,
+        "branch_wise": branch_wise,
+        "year_wise": year_wise,
+        "section_wise": section_wise,
+        "subject_wise": subject_wise,
+        "recent_trends": trends
     }, status=status.HTTP_200_OK)
+

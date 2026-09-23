@@ -11,11 +11,19 @@ class AuditLog(models.Model):
         ('STUDENT_DEACTIVATE', 'Student Deactivated'),
         ('STUDENT_ACTIVATE', 'Student Restored'),
         ('ATTENDANCE_SESSION_START', 'Attendance Session Started'),
+        ('ATTENDANCE_SESSION_CLOSE', 'Attendance Session Closed'),
         ('ATTENDANCE_QR_MARK', 'QR Attendance Marked'),
         ('ATTENDANCE_BULK_SAVE', 'Bulk Attendance Saved'),
         ('MARKS_UPDATE', 'Marks Updated'),
         ('ANNOUNCEMENT_CREATE', 'Announcement Created'),
+        ('ANNOUNCEMENT_DELETE', 'Announcement Deactivated'),
+        ('REPORT_GENERATE', 'Report Generated'),
         ('USER_CREATE', 'User Created'),
+        ('TEACHER_CREATE', 'Teacher Created'),
+        ('TIMETABLE_CREATE', 'Timetable Slot Created'),
+        ('TIMETABLE_UPDATE', 'Timetable Slot Updated'),
+        ('TIMETABLE_DELETE', 'Timetable Slot Deleted'),
+        ('ACADEMIC_SETUP', 'Academic Structure Modified'),
     )
 
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')

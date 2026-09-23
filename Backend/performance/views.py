@@ -5,8 +5,10 @@ from rest_framework.response import Response
 from django.db import transaction
 
 from accounts.permissions import IsTeacherOrAdmin, IsSelfOrStaff, IsAdmin
-from students.models import Student
+from students.models import Student, FacultyAssignment
 from attendance.models import AttendanceRecord
+from audit.models import AuditLog
+from notifications.models import Notification
 from .models import Subject, Assessment, Marks, StudentScore, calculate_grade_and_points
 from .serializers import SubjectSerializer, AssessmentSerializer, MarksSerializer, StudentScoreSerializer
 
@@ -20,21 +22,49 @@ from .serializers import SubjectSerializer, AssessmentSerializer, MarksSerialize
 def list_student_scores(request):
     """
     List authentic student scores directly from the database.
-    NO FAKE PSEUDO-RANDOM SEEDED VALUES.
-    Supports ?branch=CSE or ?student_id=1
+    Supports filtering by ?branch=CSE&year=3&semester=5&section=A&class_id=1&student_id=1
     """
     branch_param = request.query_params.get('branch', None)
+    year_param = request.query_params.get('year', None)
+    sem_param = request.query_params.get('semester', None)
+    sec_param = request.query_params.get('section', None)
+    class_id_param = request.query_params.get('class_id', None)
     student_id_param = request.query_params.get('student_id', None)
 
-    students = Student.objects.filter(is_active=True)
+    students = Student.objects.filter(is_active=True).select_related('academic_class')
     if branch_param and branch_param.upper() != 'ALL':
         students = students.filter(branch__iexact=branch_param)
+    if year_param:
+        students = students.filter(year=year_param)
+    if sem_param:
+        students = students.filter(semester=str(sem_param))
+    if sec_param and sec_param.upper() != 'ALL':
+        students = students.filter(section__iexact=sec_param)
+    if class_id_param:
+        students = students.filter(academic_class_id=class_id_param)
     if student_id_param:
         students = students.filter(id=student_id_param)
 
     results = []
     for s in students:
         scores = StudentScore.objects.filter(student=s).select_related('subject')
+
+        detailed_scores = [
+            {
+                "subject_id": sc.subject.id,
+                "code": sc.subject.code,
+                "name": sc.subject.name,
+                "credits": sc.subject.credits,
+                "internals": sc.internals,
+                "end_sem": sc.end_sem,
+                "total": sc.total,
+                "grade": sc.grade,
+                "grade_point": sc.grade_point,
+                "grade_class": sc.grade_class,
+                "is_passed": sc.grade != 'F' and sc.total >= 40.0
+            }
+            for sc in scores
+        ]
 
         if scores.exists():
             maths = scores.filter(subject__name__icontains='math').first()
@@ -73,9 +103,12 @@ def list_student_scores(request):
             "branch": s.branch,
             "year": s.year,
             "semester": s.semester,
+            "section": s.section,
+            "academic_class_name": str(s.academic_class) if s.academic_class else f"{s.branch} Y{s.year}S{s.semester}-{s.section}",
             "maths": maths_val,
             "science": science_val,
             "coding": coding_val,
+            "scores": detailed_scores,
             "avg": avg_score,
             "sgpa": sgpa,
             "grade": grade,
@@ -158,6 +191,7 @@ def student_report_card(request, student_id):
         "branch": student.branch,
         "year": student.year,
         "semester": student.semester,
+        "section": student.section,
         "sgpa": sgpa,
         "cgpa": cgpa,
         "total_credits": total_credits,
@@ -190,16 +224,25 @@ def my_report_card(request):
 def save_student_score(request):
     """
     Teacher or Admin enters or updates marks for a student and subject.
+    Validates range, teacher evaluation assignment, records audit log,
+    and sends in-app notification to the evaluated student.
     Payload: { "student_id": 1, "subject_id": 2, "internals": 25.0, "end_sem": 60.0 }
     """
     student_id = request.data.get('student_id')
     subject_id = request.data.get('subject_id')
-    internals = float(request.data.get('internals', 0.0))
-    end_sem = float(request.data.get('end_sem', 0.0))
 
     if not student_id or not subject_id:
         return Response(
             {"detail": "student_id and subject_id are required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        internals = float(request.data.get('internals', 0.0))
+        end_sem = float(request.data.get('end_sem', 0.0))
+    except (ValueError, TypeError):
+        return Response(
+            {"detail": "Internals and End-semester marks must be numeric."},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -208,9 +251,10 @@ def save_student_score(request):
             {"detail": "Internals marks must be between 0 and 40."},
             status=status.HTTP_400_BAD_REQUEST
         )
-    if end_sem < 0 or end_sem > 70:
+    if end_sem < 0 or end_sem > 60:
+        # Standard academic 40 internals + 60 end sem = 100 total
         return Response(
-            {"detail": "End-semester marks must be between 0 and 70."},
+            {"detail": "End-semester marks must be between 0 and 60."},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -220,6 +264,18 @@ def save_student_score(request):
     except (Student.DoesNotExist, Subject.DoesNotExist):
         return Response({"detail": "Student or Subject not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    # Authorization check: If user is teacher (not admin), verify faculty assignment if configured
+    is_admin = request.user.is_staff or getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
+    if not is_admin:
+        teacher_assignments = FacultyAssignment.objects.filter(teacher=request.user)
+        if teacher_assignments.exists():
+            is_assigned = teacher_assignments.filter(subject=subject).exists()
+            if not is_assigned:
+                return Response(
+                    {"detail": f"You are not assigned to evaluate marks for {subject.code}."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
     with transaction.atomic():
         score, created = StudentScore.objects.update_or_create(
             student=student,
@@ -228,6 +284,24 @@ def save_student_score(request):
                 'internals': internals,
                 'end_sem': end_sem,
             }
+        )
+
+    # 1. Audit Log Entry
+    AuditLog.log(
+        action="MARKS_UPDATE",
+        entity="StudentScore",
+        entity_id=score.id,
+        description=f"Marks entered for {student.name} ({student.roll_no}) in {subject.code}: Internals={internals}, EndSem={end_sem}, Total={score.total} (Grade: {score.grade})",
+        request=request
+    )
+
+    # 2. In-App Notification to Student
+    if hasattr(student, 'user_profile') and student.user_profile and student.user_profile.user:
+        Notification.objects.create(
+            user=student.user_profile.user,
+            title=f"New Grade Published: {subject.code}",
+            message=f"Your score for {subject.name} ({subject.code}) has been updated: {score.total}/100 (Grade: {score.grade}, Grade Point: {score.grade_point}).",
+            notification_type='marks'
         )
 
     return Response({

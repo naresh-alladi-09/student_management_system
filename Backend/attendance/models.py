@@ -17,6 +17,14 @@ class AttendanceSession(models.Model):
         on_delete=models.CASCADE,
         related_name='conducted_sessions'
     )
+    academic_class = models.ForeignKey(
+        'students.AcademicClass',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='attendance_sessions'
+    )
+    section = models.CharField(max_length=10, default='A', blank=True)
     date = models.DateField(default=date.today)
     start_time = models.TimeField(auto_now_add=True)
     end_time = models.TimeField(null=True, blank=True)
@@ -30,7 +38,7 @@ class AttendanceSession(models.Model):
         ordering = ['-created_at']
 
     @classmethod
-    def create_session(cls, subject, teacher, duration_seconds=60):
+    def create_session(cls, subject, teacher, duration_seconds=60, academic_class=None, section='A'):
         token = secrets.token_urlsafe(32)
         now = timezone.now()
         expires = now + timedelta(seconds=duration_seconds)
@@ -40,6 +48,8 @@ class AttendanceSession(models.Model):
             qr_token=token,
             expires_at=expires,
             duration_seconds=duration_seconds,
+            academic_class=academic_class,
+            section=section,
             is_active=True
         )
 

@@ -12,6 +12,7 @@ const StudentForm = () => {
   const [phone, setPhone] = useState("");
   const [branch, setBranch] = useState("CSE");
   const [semester, setSemester] = useState("1");
+  const [section, setSection] = useState("A");
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -43,6 +44,7 @@ const StudentForm = () => {
       phone: phone.trim(),
       branch,
       semester: String(semester),
+      section: section.trim().toUpperCase() || "A",
     };
 
     try {
@@ -194,6 +196,19 @@ const StudentForm = () => {
                 <option value="6">Semester 6</option>
                 <option value="7">Semester 7</option>
                 <option value="8">Semester 8</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="stu-section">Section *</label>
+              <select
+                id="stu-section"
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
+              >
+                <option value="A">Section A</option>
+                <option value="B">Section B</option>
+                <option value="C">Section C</option>
               </select>
             </div>
           </div>

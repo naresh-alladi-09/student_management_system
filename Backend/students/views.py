@@ -6,8 +6,15 @@ from rest_framework.response import Response
 from django.db import connection
 from django.db.models import Q, Count
 from accounts.permissions import IsTeacherOrAdmin, IsSelfOrStaff, IsAdmin
-from .models import Student
-from .serializers import StudentSerializer
+from audit.models import AuditLog
+from .models import Department, Branch, AcademicClass, FacultyAssignment, Student
+from .serializers import (
+    DepartmentSerializer,
+    BranchSerializer,
+    AcademicClassSerializer,
+    FacultyAssignmentSerializer,
+    StudentSerializer,
+)
 
 
 class StudentViewSet(viewsets.ModelViewSet):
@@ -25,7 +32,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsTeacherOrAdmin()]
 
     def get_queryset(self):
-        queryset = Student.objects.all().order_by('-id')
+        queryset = Student.objects.all().select_related('academic_class', 'academic_class__branch').order_by('-id')
 
         # Filter by active status (default: show active unless requested otherwise)
         active_param = self.request.query_params.get('is_active', None)
@@ -50,6 +57,16 @@ class StudentViewSet(viewsets.ModelViewSet):
         if semester_param:
             queryset = queryset.filter(semester=semester_param)
 
+        # Filter by section
+        section_param = self.request.query_params.get('section', None)
+        if section_param and section_param.upper() != 'ALL':
+            queryset = queryset.filter(section__iexact=section_param)
+
+        # Filter by academic_class id
+        academic_class_id = self.request.query_params.get('academic_class', None)
+        if academic_class_id:
+            queryset = queryset.filter(academic_class_id=academic_class_id)
+
         # Search by keyword
         search = self.request.query_params.get('search', None)
         if search:
@@ -72,14 +89,52 @@ class StudentViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         return super().list(request, *args, **kwargs)
 
+    def perform_create(self, serializer):
+        student = serializer.save()
+        AuditLog.log(
+            action='STUDENT_CREATE',
+            entity='Student',
+            entity_id=str(student.id),
+            description=f"Student '{student.name}' ({student.roll_no}) enrolled into {student.branch} Year {student.year} Sec {student.section}.",
+            user=self.request.user,
+            request=self.request
+        )
+
+    def perform_update(self, serializer):
+        student = serializer.save()
+        AuditLog.log(
+            action='STUDENT_UPDATE',
+            entity='Student',
+            entity_id=str(student.id),
+            description=f"Student '{student.name}' ({student.roll_no}) record updated.",
+            user=self.request.user,
+            request=self.request
+        )
+
     def perform_destroy(self, instance):
         # Soft delete instead of hard delete to preserve historical records
         instance.deactivate()
+        AuditLog.log(
+            action='STUDENT_DEACTIVATE',
+            entity='Student',
+            entity_id=str(instance.id),
+            description=f"Student '{instance.name}' ({instance.roll_no}) deactivated via deletion request.",
+            user=self.request.user,
+            request=self.request
+        )
 
     @action(detail=True, methods=['post'], permission_classes=[IsTeacherOrAdmin])
     def deactivate(self, request, pk=None):
         student = self.get_object()
         student.deactivate()
+        AuditLog.log(
+            action='STUDENT_DEACTIVATE',
+            entity='Student',
+            entity_id=str(student.id),
+            description=f"Student '{student.name}' ({student.roll_no}) deactivated.",
+            user=request.user,
+            request=request
+        )
         return Response({
             "detail": f"Student '{student.name}' ({student.roll_no}) deactivated successfully.",
             "is_active": False
@@ -89,6 +144,14 @@ class StudentViewSet(viewsets.ModelViewSet):
     def activate(self, request, pk=None):
         student = self.get_object()
         student.activate()
+        AuditLog.log(
+            action='STUDENT_ACTIVATE',
+            entity='Student',
+            entity_id=str(student.id),
+            description=f"Student '{student.name}' ({student.roll_no}) restored successfully.",
+            user=request.user,
+            request=request
+        )
         return Response({
             "detail": f"Student '{student.name}' ({student.roll_no}) restored successfully.",
             "is_active": True
@@ -142,3 +205,96 @@ def health_check(request):
             "latency_ms": latency_ms,
             "error": str(e)
         }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+class DepartmentViewSet(viewsets.ModelViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated()]
+
+
+class BranchViewSet(viewsets.ModelViewSet):
+    queryset = Branch.objects.all().select_related('department')
+    serializer_class = BranchSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated()]
+
+
+class AcademicClassViewSet(viewsets.ModelViewSet):
+    queryset = AcademicClass.objects.all().select_related('branch', 'branch__department')
+    serializer_class = AcademicClassSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        branch = self.request.query_params.get('branch', None)
+        year = self.request.query_params.get('year', None)
+        semester = self.request.query_params.get('semester', None)
+        section = self.request.query_params.get('section', None)
+        if branch and branch.upper() != 'ALL':
+            qs = qs.filter(branch__code__iexact=branch)
+        if year:
+            qs = qs.filter(year=year)
+        if semester:
+            qs = qs.filter(semester=semester)
+        if section:
+            qs = qs.filter(section__iexact=section)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        AuditLog.log(
+            action='ACADEMIC_SETUP',
+            entity='AcademicClass',
+            entity_id=str(obj.id),
+            description=f"Created cohort {obj.display_name}.",
+            user=self.request.user,
+            request=self.request
+        )
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated()]
+
+
+class FacultyAssignmentViewSet(viewsets.ModelViewSet):
+    queryset = FacultyAssignment.objects.all().select_related(
+        'teacher', 'subject', 'academic_class', 'academic_class__branch'
+    )
+    serializer_class = FacultyAssignmentSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        teacher_id = self.request.query_params.get('teacher_id', None)
+        subject_id = self.request.query_params.get('subject_id', None)
+        class_id = self.request.query_params.get('class_id', None)
+        if teacher_id:
+            qs = qs.filter(teacher_id=teacher_id)
+        if subject_id:
+            qs = qs.filter(subject_id=subject_id)
+        if class_id:
+            qs = qs.filter(academic_class_id=class_id)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        AuditLog.log(
+            action='ACADEMIC_SETUP',
+            entity='FacultyAssignment',
+            entity_id=str(obj.id),
+            description=f"Assigned faculty '{obj.teacher.username}' to subject '{obj.subject.code}' in cohort '{obj.academic_class.display_name}'.",
+            user=self.request.user,
+            request=self.request
+        )
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated()]

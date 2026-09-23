@@ -5,6 +5,10 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from audit.models import AuditLog
 from .models import UserProfile
 from .permissions import IsAdmin
 from .serializers import UserSerializer
@@ -110,6 +114,15 @@ def login_view(request):
             "semester": s.semester,
         }
 
+    AuditLog.log(
+        action='LOGIN',
+        entity='User',
+        entity_id=str(user.id),
+        description=f"User '{user.username}' successfully authenticated into role '{profile.role}'.",
+        user=user,
+        request=request
+    )
+
     return Response(response_data, status=status.HTTP_200_OK)
 
 
@@ -117,8 +130,16 @@ def login_view(request):
 @permission_classes([IsAuthenticated])
 def logout_view(request):
     """
-    Invalidates the caller's auth token.
+    Invalidates the caller's auth token and logs logout event.
     """
+    AuditLog.log(
+        action='LOGOUT',
+        entity='User',
+        entity_id=str(request.user.id),
+        description=f"User '{request.user.username}' logged out.",
+        user=request.user,
+        request=request
+    )
     try:
         request.user.auth_token.delete()
     except Exception:
@@ -182,8 +203,8 @@ def manage_users_view(request):
         password = request.data.get('password', '').strip()
         first_name = request.data.get('first_name', '').strip()
         last_name = request.data.get('last_name', '').strip()
-        role = request.data.get('role', 'teacher')
-        department = request.data.get('department', 'Academic Operations')
+        role = request.data.get('role', 'teacher').strip().lower()
+        department = request.data.get('department', 'Academic Operations').strip()
 
         if not username or not password or not email:
             return Response(
@@ -191,9 +212,39 @@ def manage_users_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if User.objects.filter(username=username).exists():
+        if role not in ['admin', 'teacher', 'student']:
+            return Response(
+                {"detail": f"Invalid role '{role}'. Allowed roles are 'admin', 'teacher', 'student'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response(
+                {"detail": "Invalid email address format."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if User.objects.filter(username__iexact=username).exists():
             return Response(
                 {"detail": f"Username '{username}' already exists."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if User.objects.filter(email__iexact=email).exists():
+            return Response(
+                {"detail": f"A user with email '{email}' already exists."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Enforce Django password validators
+        temp_user = User(username=username, email=email)
+        try:
+            validate_password(password, user=temp_user)
+        except ValidationError as e:
+            return Response(
+                {"detail": "Password does not meet security requirements: " + "; ".join(e.messages)},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -211,6 +262,16 @@ def manage_users_view(request):
         UserProfile.objects.update_or_create(
             user=user,
             defaults={"role": role, "department": department}
+        )
+
+        action_choice = 'TEACHER_CREATE' if role == 'teacher' else 'USER_CREATE'
+        AuditLog.log(
+            action=action_choice,
+            entity='User',
+            entity_id=str(user.id),
+            description=f"Admin created user '{username}' with role '{role}' in department '{department}'.",
+            user=request.user,
+            request=request
         )
 
         return Response(

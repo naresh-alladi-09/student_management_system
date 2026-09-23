@@ -1,4 +1,81 @@
 from django.db import models
+from django.contrib.auth.models import User
+
+
+class Department(models.Model):
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['code']
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+
+class Branch(models.Model):
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='branches')
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['code']
+
+    def __str__(self):
+        return f"{self.code} ({self.department.code})"
+
+
+class AcademicClass(models.Model):
+    """
+    Represents an institutional cohort: Branch -> Year -> Semester -> Section
+    Example: CSE -> 3rd Year -> Semester 1 -> Section A
+    """
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='classes')
+    year = models.IntegerField(default=1)  # 1 to 4
+    semester = models.IntegerField(default=1)  # 1 to 8
+    section = models.CharField(max_length=10, default='A')  # 'A', 'B', 'C'
+    academic_year = models.CharField(max_length=20, default='2024-2025', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['branch', 'year', 'semester', 'section']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['branch', 'year', 'semester', 'section'],
+                name='unique_branch_year_sem_section'
+            )
+        ]
+
+    @property
+    def display_name(self):
+        return f"{self.branch.code} - Year {self.year}, Sem {self.semester} (Sec {self.section})"
+
+    def __str__(self):
+        return f"{self.branch.code} Y{self.year}S{self.semester}-{self.section}"
+
+
+class FacultyAssignment(models.Model):
+    """
+    Associates a Teacher with the Subject and Section (AcademicClass) they are authorized to teach.
+    """
+    teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name='faculty_assignments')
+    subject = models.ForeignKey('performance.Subject', on_delete=models.CASCADE, related_name='faculty_assignments')
+    academic_class = models.ForeignKey(AcademicClass, on_delete=models.CASCADE, related_name='faculty_assignments')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['academic_class', 'subject']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['teacher', 'subject', 'academic_class'],
+                name='unique_teacher_subject_class'
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.teacher.username} -> {self.subject.code} ({self.academic_class})"
 
 
 class Student(models.Model):
@@ -12,6 +89,14 @@ class Student(models.Model):
     branch = models.CharField(max_length=50, default='CSE')
     year = models.IntegerField(default=1)
     semester = models.CharField(max_length=10, default='1')
+    section = models.CharField(max_length=10, default='A')
+    academic_class = models.ForeignKey(
+        AcademicClass,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='students'
+    )
     admission_year = models.IntegerField(default=2024)
     profile_photo = models.CharField(max_length=255, blank=True, default='')
     is_active = models.BooleanField(default=True)
@@ -62,11 +147,61 @@ class Student(models.Model):
             needs_update = True
             update_fields.append('department')
 
+        # Auto-link to relational AcademicClass hierarchy
+        if not self.academic_class and self.branch:
+            try:
+                dept_code = self.branch.upper()
+                dept_name = self.department or f"{self.branch} Department"
+                dept, _ = Department.objects.get_or_create(
+                    code=dept_code,
+                    defaults={'name': dept_name}
+                )
+                br, _ = Branch.objects.get_or_create(
+                    code=self.branch.upper(),
+                    defaults={'department': dept, 'name': dept_name}
+                )
+                try:
+                    sem_int = int(self.semester)
+                except (ValueError, TypeError):
+                    sem_int = 1
+
+                ac, _ = AcademicClass.objects.get_or_create(
+                    branch=br,
+                    year=self.year or 1,
+                    semester=sem_int,
+                    section=self.section or 'A',
+                    defaults={'academic_year': f"{self.admission_year or 2024}-{ (self.admission_year or 2024) + 1 }"}
+                )
+                self.academic_class = ac
+                needs_update = True
+                update_fields.append('academic_class')
+            except Exception:
+                pass
+        elif self.academic_class:
+            if self.branch != self.academic_class.branch.code:
+                self.branch = self.academic_class.branch.code
+                needs_update = True
+                update_fields.append('branch')
+            if self.year != self.academic_class.year:
+                self.year = self.academic_class.year
+                needs_update = True
+                update_fields.append('year')
+            if self.semester != str(self.academic_class.semester):
+                self.semester = str(self.academic_class.semester)
+                needs_update = True
+                update_fields.append('semester')
+            if self.section != self.academic_class.section:
+                self.section = self.academic_class.section
+                needs_update = True
+                update_fields.append('section')
+
         if needs_update:
             super().save(update_fields=update_fields)
 
         # Auto-provision or update student login account
         try:
+            import os
+            import logging
             from django.contrib.auth.models import User
             from accounts.models import UserProfile
             uname = self.roll_no.lower().replace("-", "_")
@@ -75,7 +210,8 @@ class Student(models.Model):
                 defaults={"email": self.email, "first_name": self.name}
             )
             if created or not user.has_usable_password():
-                user.set_password("student123")
+                default_pw = os.environ.get('STUDENT_DEFAULT_PASSWORD', 'student123')
+                user.set_password(default_pw)
                 user.save()
             user.is_active = self.is_active
             user.save(update_fields=['is_active'])
@@ -89,8 +225,9 @@ class Student(models.Model):
                     "department": self.department
                 }
             )
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Could not provision user account for student '{self.roll_no}': {e}")
 
     def deactivate(self):
         self.is_active = False

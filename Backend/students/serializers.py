@@ -1,9 +1,69 @@
 from rest_framework import serializers
-from .models import Student
+from .models import Department, Branch, AcademicClass, FacultyAssignment, Student
+
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Department
+        fields = ['id', 'code', 'name', 'created_at']
+
+
+class BranchSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    department_code = serializers.CharField(source='department.code', read_only=True)
+
+    class Meta:
+        model = Branch
+        fields = ['id', 'department', 'department_code', 'department_name', 'code', 'name', 'created_at']
+
+
+class AcademicClassSerializer(serializers.ModelSerializer):
+    branch_code = serializers.CharField(source='branch.code', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    display_name = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = AcademicClass
+        fields = [
+            'id',
+            'branch',
+            'branch_code',
+            'branch_name',
+            'year',
+            'semester',
+            'section',
+            'academic_year',
+            'display_name',
+            'created_at',
+        ]
+
+
+class FacultyAssignmentSerializer(serializers.ModelSerializer):
+    teacher_name = serializers.CharField(source='teacher.get_full_name', read_only=True)
+    teacher_username = serializers.CharField(source='teacher.username', read_only=True)
+    subject_code = serializers.CharField(source='subject.code', read_only=True)
+    subject_name = serializers.CharField(source='subject.name', read_only=True)
+    class_display = serializers.CharField(source='academic_class.display_name', read_only=True)
+
+    class Meta:
+        model = FacultyAssignment
+        fields = [
+            'id',
+            'teacher',
+            'teacher_username',
+            'teacher_name',
+            'subject',
+            'subject_code',
+            'subject_name',
+            'academic_class',
+            'class_display',
+            'created_at',
+        ]
 
 
 class StudentSerializer(serializers.ModelSerializer):
     roll_number = serializers.CharField(source='roll_no', read_only=True)
+    academic_class_display = serializers.CharField(source='academic_class.display_name', read_only=True)
 
     class Meta:
         model = Student
@@ -20,6 +80,9 @@ class StudentSerializer(serializers.ModelSerializer):
             'branch',
             'year',
             'semester',
+            'section',
+            'academic_class',
+            'academic_class_display',
             'admission_year',
             'profile_photo',
             'is_active',

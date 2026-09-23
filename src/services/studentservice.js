@@ -46,11 +46,12 @@ export const getStudentStats = () => {
 // ATTENDANCE SERVICES
 // ==========================================
 
-export const getDailyAttendance = (dateStr, branch) => {
+export const getDailyAttendance = (dateStr, branch, section = null) => {
   let url = "/api/attendance/";
   const params = [];
   if (dateStr) params.push(`date=${encodeURIComponent(dateStr)}`);
   if (branch && branch !== "ALL") params.push(`branch=${encodeURIComponent(branch)}`);
+  if (section && section !== "ALL") params.push(`section=${encodeURIComponent(section)}`);
   if (params.length > 0) url += `?${params.join("&")}`;
   return apiClient.get(url);
 };
@@ -71,16 +72,40 @@ export const getMyAttendance = () => {
   return apiClient.get("/api/attendance/my/");
 };
 
-export const getAttendanceSummary = () => {
-  return apiClient.get("/api/attendance/summary/");
+export const getAttendanceSummary = (params = {}) => {
+  return apiClient.get("/api/attendance/summary/", { params });
 };
 
 // QR Session Services
-export const createAttendanceSession = (subjectId, durationSeconds = 60) => {
+export const createAttendanceSession = (subjectId, durationSeconds = 60, classId = null, section = 'A') => {
   return apiClient.post("/api/attendance/sessions/create/", {
     subject_id: subjectId,
     duration_seconds: durationSeconds,
+    class_id: classId,
+    section: section,
   });
+};
+
+// Academic Hierarchy Services
+export const getDepartments = () => {
+  return apiClient.get("/api/departments/");
+};
+
+export const getBranches = (departmentId = null) => {
+  const query = departmentId ? `?department=${departmentId}` : "";
+  return apiClient.get(`/api/branches/${query}`);
+};
+
+export const getAcademicClasses = (params = {}) => {
+  return apiClient.get("/api/classes/", { params });
+};
+
+export const getFacultyAssignments = (params = {}) => {
+  return apiClient.get("/api/faculty-assignments/", { params });
+};
+
+export const createFacultyAssignment = (data) => {
+  return apiClient.post("/api/faculty-assignments/", data);
 };
 
 export const getActiveSession = () => {
@@ -141,21 +166,47 @@ export const getTimetable = (params = {}) => {
   return apiClient.get("/api/timetable/", { params });
 };
 
+export const getTodayTimetable = (params = {}) => {
+  return apiClient.get("/api/timetable/today/", { params });
+};
+
+export const startAttendanceFromSlot = (slotId, durationSeconds = 120) => {
+  return apiClient.post(`/api/timetable/${slotId}/start-attendance/`, {
+    duration_seconds: durationSeconds,
+  });
+};
+
 export const createTimetableSlot = (slotData) => {
   return apiClient.post("/api/timetable/create/", slotData);
 };
+
+export const updateTimetableSlot = (slotId, data) => {
+  return apiClient.patch(`/api/timetable/${slotId}/`, data);
+};
+
+export const deleteTimetableSlot = (slotId) => {
+  return apiClient.delete(`/api/timetable/${slotId}/`);
+};
+
 
 // ==========================================
 // ANNOUNCEMENTS SERVICES
 // ==========================================
 
-export const getAnnouncements = (department = null) => {
-  const query = department ? `?department=${encodeURIComponent(department)}` : "";
-  return apiClient.get(`/api/announcements/${query}`);
+export const getAnnouncements = (params = null) => {
+  if (typeof params === "string") {
+    const query = params ? `?department=${encodeURIComponent(params)}` : "";
+    return apiClient.get(`/api/announcements/${query}`);
+  }
+  return apiClient.get("/api/announcements/", { params: params || {} });
 };
 
 export const createAnnouncement = (annData) => {
   return apiClient.post("/api/announcements/create/", annData);
+};
+
+export const deleteAnnouncement = (id) => {
+  return apiClient.delete(`/api/announcements/${id}/`);
 };
 
 // ==========================================
@@ -177,6 +228,10 @@ export const markNotificationAsRead = (notificationId = null) => {
 
 export const getAuditLogs = (params = {}) => {
   return apiClient.get("/api/audit/logs/", { params });
+};
+
+export const getAuditStats = () => {
+  return apiClient.get("/api/audit/stats/");
 };
 
 export const getSystemUsers = (role = null) => {
@@ -202,4 +257,39 @@ export const logoutApi = () => {
 
 export const getMeApi = () => {
   return apiClient.get("/api/auth/me/");
+};
+
+// ==========================================
+// INSTITUTIONAL REPORTING & CSV EXPORT
+// ==========================================
+
+export const downloadReportCSV = async (reportType, params = {}, defaultFilename = "report.csv") => {
+  const res = await apiClient.get(`/api/reports/${reportType}/`, {
+    params: { ...params, export: "csv" },
+    responseType: "blob",
+  });
+  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", defaultFilename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const getAttendanceReport = (params = {}) => {
+  return apiClient.get("/api/reports/attendance/", { params });
+};
+
+export const getLowAttendanceReport = (params = {}) => {
+  return apiClient.get("/api/reports/low-attendance/", { params });
+};
+
+export const getStudentsRosterReport = (params = {}) => {
+  return apiClient.get("/api/reports/students/", { params });
+};
+
+export const getPerformanceReport = (params = {}) => {
+  return apiClient.get("/api/reports/performance/", { params });
 };

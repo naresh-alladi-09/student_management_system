@@ -24,6 +24,7 @@ const Students = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("ALL");
   const [selectedYear, setSelectedYear] = useState("ALL");
+  const [selectedSection, setSelectedSection] = useState("ALL");
   const [selectedStatus, setSelectedStatus] = useState("ALL"); // 'ALL' | 'active' | 'inactive'
 
   const [statusMessage, setStatusMessage] = useState(null);
@@ -39,6 +40,7 @@ const Students = () => {
     phone: "",
     branch: "CSE",
     semester: "1",
+    section: "A",
     roll_no: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
@@ -51,6 +53,7 @@ const Students = () => {
     if (searchTerm.trim()) params.search = searchTerm.trim();
     if (selectedBranch !== "ALL") params.branch = selectedBranch;
     if (selectedYear !== "ALL") params.year = selectedYear;
+    if (selectedSection !== "ALL") params.section = selectedSection;
     if (selectedStatus === "active") params.is_active = "true";
     if (selectedStatus === "inactive") params.is_active = "false";
 
@@ -76,7 +79,7 @@ const Students = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, selectedBranch, selectedYear, selectedStatus]);
+  }, [searchTerm, selectedBranch, selectedYear, selectedSection, selectedStatus]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -95,6 +98,7 @@ const Students = () => {
       phone: student.phone || "",
       branch: student.branch || "CSE",
       semester: String(student.semester || "1"),
+      section: student.section || "A",
       roll_no: student.roll_no || "",
     });
   };
@@ -261,6 +265,22 @@ const Students = () => {
                 <option value="2">2nd Year</option>
                 <option value="3">3rd Year</option>
                 <option value="4">4th Year</option>
+              </select>
+            </div>
+
+            {/* Section Filter */}
+            <div className="filter-group">
+              <label htmlFor="section-filter">Section:</label>
+              <select
+                id="section-filter"
+                value={selectedSection}
+                onChange={(e) => setSelectedSection(e.target.value)}
+                className="branch-select"
+              >
+                <option value="ALL">All Sections</option>
+                <option value="A">Section A</option>
+                <option value="B">Section B</option>
+                <option value="C">Section C</option>
               </select>
             </div>
 
@@ -446,6 +466,21 @@ const Students = () => {
                             Semester {s}
                           </option>
                         ))}
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="edit-section">Section *</label>
+                      <select
+                        id="edit-section"
+                        value={editFormData.section}
+                        onChange={(e) =>
+                          setEditFormData({ ...editFormData, section: e.target.value })
+                        }
+                      >
+                        <option value="A">Section A</option>
+                        <option value="B">Section B</option>
+                        <option value="C">Section C</option>
                       </select>
                     </div>
 

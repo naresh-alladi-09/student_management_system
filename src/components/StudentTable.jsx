@@ -21,7 +21,7 @@ const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
               <th>Student Name</th>
               <th>Academic Year</th>
               <th>Branch / Department</th>
-              <th>Semester</th>
+              <th>Semester & Sec</th>
               <th>Status</th>
               <th>Contact Email</th>
               <th>Phone</th>
@@ -57,7 +57,7 @@ const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
                         {student.branch || "General"}
                       </span>
                     </td>
-                    <td>Sem {student.semester}</td>
+                    <td>Sem {student.semester} <span style={{ color: "#64748b", fontSize: "12px" }}>({student.section || 'A'})</span></td>
                     <td>
                       <span
                         style={{

@@ -7,10 +7,12 @@ import {
   getDailyAttendance,
   saveBulkAttendance,
   getAllSubjects,
+  getAcademicClasses,
   createAttendanceSession,
   getActiveSession,
   refreshSessionToken,
   closeAttendanceSession,
+  getAttendanceSummary,
 } from "../services/studentservice";
 import {
   FaQrcode,
@@ -21,6 +23,8 @@ import {
   FaClock,
   FaUsers,
   FaCheckCircle,
+  FaChartLine,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 
 function Attendance() {
@@ -35,19 +39,47 @@ function Attendance() {
     new Date().toISOString().split("T")[0]
   );
   const [selectedBranch, setSelectedBranch] = useState("ALL");
+  const [selectedSection, setSelectedSection] = useState("ALL");
 
   // QR Session States
   const [subjects, setSubjects] = useState([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [academicClasses, setAcademicClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState("");
   const [sessionDuration, setSessionDuration] = useState(60);
   const [activeSessionData, setActiveSessionData] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Analytics Dashboard States
+  const [summaryData, setSummaryData] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [threshold, setThreshold] = useState(75);
+
+  const fetchSummary = (thresh = 75) => {
+    setSummaryLoading(true);
+    getAttendanceSummary({ threshold: thresh })
+      .then((res) => {
+        setSummaryData(res.data);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch attendance analytics:", err);
+      })
+      .finally(() => {
+        setSummaryLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    if (activeTab === "analytics") {
+      fetchSummary(threshold);
+    }
+  }, [activeTab, threshold]);
+
   const pollIntervalRef = useRef(null);
 
-  // Load Subjects for QR session
+  // Load Subjects and Academic Classes for QR session
   useEffect(() => {
     getAllSubjects()
       .then((res) => {
@@ -58,12 +90,22 @@ function Attendance() {
         }
       })
       .catch(() => {});
+
+    getAcademicClasses()
+      .then((res) => {
+        const cls = res.data?.results || res.data || [];
+        setAcademicClasses(cls);
+        if (cls.length > 0) {
+          setSelectedClassId(String(cls[0].id));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Fetch Manual Attendance Records
-  const loadDailyAttendance = (dateStr, branch) => {
+  const loadDailyAttendance = (dateStr, branch, section) => {
     setLoading(true);
-    getDailyAttendance(dateStr, branch)
+    getDailyAttendance(dateStr, branch, section)
       .then((res) => {
         const data = res.data || {};
         const records = data.records || [];
@@ -76,6 +118,7 @@ function Attendance() {
             branch: r.branch,
             year: r.year,
             semester: r.semester,
+            section: r.section || "A",
           }))
         );
         const map = {};
@@ -96,9 +139,9 @@ function Attendance() {
 
   useEffect(() => {
     if (activeTab === "manual") {
-      loadDailyAttendance(selectedDate, selectedBranch);
+      loadDailyAttendance(selectedDate, selectedBranch, selectedSection);
     }
-  }, [selectedDate, selectedBranch, activeTab]);
+  }, [selectedDate, selectedBranch, selectedSection, activeTab]);
 
   // Check Active QR Session
   const checkActiveQrSession = () => {
@@ -145,9 +188,13 @@ function Attendance() {
     if (!selectedSubjectId) return;
     setQrLoading(true);
     try {
+      const targetClass = academicClasses.find((c) => String(c.id) === String(selectedClassId));
+      const secVal = targetClass ? targetClass.section : "A";
       await createAttendanceSession(
         parseInt(selectedSubjectId, 10),
-        sessionDuration
+        sessionDuration,
+        selectedClassId ? parseInt(selectedClassId, 10) : null,
+        secVal
       );
       checkActiveQrSession();
     } catch (err) {
@@ -284,6 +331,26 @@ function Attendance() {
               >
                 <FaQrcode /> Live QR Session Generator
               </button>
+
+              <button
+                type="button"
+                className={`action-btn ${activeTab === "analytics" ? "btn-primary" : ""}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "10px 18px",
+                  borderRadius: "8px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: activeTab === "analytics" ? "#0f172a" : "#f1f5f9",
+                  color: activeTab === "analytics" ? "#fff" : "#475569",
+                  border: "none",
+                }}
+                onClick={() => setActiveTab("analytics")}
+              >
+                <FaChartLine /> Analytics & Shortage Alerts
+              </button>
             </div>
           </div>
 
@@ -339,6 +406,34 @@ function Attendance() {
                         {subjects.map((sub) => (
                           <option key={sub.id} value={sub.id}>
                             {sub.code} - {sub.name} ({sub.branch} Sem {sub.semester})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: "16px" }}>
+                      <label
+                        htmlFor="class-select"
+                        style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}
+                      >
+                        Target Class & Section:
+                      </label>
+                      <select
+                        id="class-select"
+                        value={selectedClassId}
+                        onChange={(e) => setSelectedClassId(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "14px",
+                        }}
+                      >
+                        <option value="">All Cohorts (Subject-wide)</option>
+                        {academicClasses.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.display_name || `${c.branch_code} Year ${c.year} Sem ${c.semester} Sec ${c.section}`}
                           </option>
                         ))}
                       </select>
@@ -407,7 +502,7 @@ function Attendance() {
                         marginBottom: "14px",
                       }}
                     >
-                      ● SESSION ACTIVE • {activeSessionData.session.subject_details?.code}
+                      ● SESSION ACTIVE • {activeSessionData.session.subject_details?.code} • {activeSessionData.session.class_display || `Section ${activeSessionData.session.section || 'A'}`}
                     </div>
 
                     <h3 style={{ margin: "0 0 6px 0", color: "#0f172a" }}>
@@ -736,6 +831,25 @@ function Attendance() {
                       <option value="MECH">MECH</option>
                     </select>
                   </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <label htmlFor="att-section-filter" style={{ fontWeight: 600 }}>Section:</label>
+                    <select
+                      id="att-section-filter"
+                      value={selectedSection}
+                      onChange={(e) => setSelectedSection(e.target.value)}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                      }}
+                    >
+                      <option value="ALL">All Sections</option>
+                      <option value="A">Section A</option>
+                      <option value="B">Section B</option>
+                      <option value="C">Section C</option>
+                    </select>
+                  </div>
                 </div>
 
                 {saveSuccess && (
@@ -870,6 +984,347 @@ function Attendance() {
                 </button>
               </div>
             </>
+          )}
+
+          {/* ============================================================== */}
+          {/* TAB 3: ATTENDANCE ANALYTICS & SHORTAGE ALERTS                  */}
+          {/* ============================================================== */}
+          {activeTab === "analytics" && (
+            <div>
+              {/* Analytics Header & Configurable Threshold Controls */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: "16px",
+                  padding: "20px 24px",
+                  border: "1px solid #e2e8f0",
+                  marginBottom: "20px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: "18px", color: "#0f172a", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <FaChartLine style={{ color: "#2563eb" }} />
+                    Attendance Analytics & Shortage Warning System
+                  </h3>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+                    Live cohort statistics, multi-dimensional breakdowns, and identification of students below requirement threshold.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#475569" }}>
+                    Shortage Threshold:
+                  </span>
+                  {[70, 75, 80, 85].map((threshVal) => (
+                    <button
+                      key={threshVal}
+                      type="button"
+                      onClick={() => setThreshold(threshVal)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "20px",
+                        border: "1px solid",
+                        borderColor: threshold === threshVal ? "#2563eb" : "#cbd5e1",
+                        background: threshold === threshVal ? "#eff6ff" : "#ffffff",
+                        color: threshold === threshVal ? "#2563eb" : "#475569",
+                        fontWeight: threshold === threshVal ? 700 : 500,
+                        fontSize: "12px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {threshVal}%
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => fetchSummary(threshold)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      background: "#f8fafc",
+                      color: "#475569",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                    }}
+                    title="Refresh analytics"
+                  >
+                    <FaSync />
+                  </button>
+                </div>
+              </div>
+
+              {summaryLoading || !summaryData ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "#64748b", background: "#fff", borderRadius: "16px" }}>
+                  Analyzing institutional attendance records...
+                </div>
+              ) : (
+                <>
+                  {/* Top Metric Cards */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: "16px",
+                      marginBottom: "24px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: "#fff",
+                        padding: "18px 20px",
+                        borderRadius: "14px",
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <small style={{ color: "#64748b", fontWeight: 600 }}>Today's Attendance Rate</small>
+                      <div style={{ fontSize: "26px", fontWeight: 800, color: "#2563eb", marginTop: "4px" }}>
+                        {summaryData.overall?.today_attendance_rate}%
+                      </div>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>
+                        {summaryData.overall?.present_today} Present / {summaryData.overall?.total_students} Enrolled
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#fff",
+                        padding: "18px 20px",
+                        borderRadius: "14px",
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <small style={{ color: "#64748b", fontWeight: 600 }}>All-Time Cumulative Attendance</small>
+                      <div style={{ fontSize: "26px", fontWeight: 800, color: "#059669", marginTop: "4px" }}>
+                        {summaryData.overall?.cumulative_attendance_rate}%
+                      </div>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>
+                        Across {summaryData.overall?.total_records} recorded entries
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#fff",
+                        padding: "18px 20px",
+                        borderRadius: "14px",
+                        border: "1px solid #fecaca",
+                        background: "#fff5f5",
+                      }}
+                    >
+                      <small style={{ color: "#b91c1c", fontWeight: 600 }}>Low Attendance Shortage Alerts</small>
+                      <div style={{ fontSize: "26px", fontWeight: 800, color: "#dc2626", marginTop: "4px" }}>
+                        {summaryData.overall?.low_attendance_count} Students
+                      </div>
+                      <span style={{ fontSize: "12px", color: "#b91c1c" }}>
+                        Below required {threshold}% threshold
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Low Attendance Students Table */}
+                  <div
+                    style={{
+                      background: "#fff",
+                      borderRadius: "16px",
+                      padding: "24px",
+                      border: "1px solid #e2e8f0",
+                      marginBottom: "24px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                      <h4 style={{ margin: 0, fontSize: "16px", color: "#0f172a", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <FaExclamationTriangle style={{ color: "#dc2626" }} />
+                        Students Below {threshold}% Required Threshold
+                      </h4>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          background: "#fef2f2",
+                          color: "#dc2626",
+                          padding: "4px 10px",
+                          borderRadius: "12px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {summaryData.low_attendance_students?.length || 0} At-Risk Students
+                      </span>
+                    </div>
+
+                    <div className="table-responsive">
+                      <table className="grades-table">
+                        <thead>
+                          <tr>
+                            <th>Roll Number</th>
+                            <th>Student Name</th>
+                            <th>Cohort</th>
+                            <th>Classes Attended</th>
+                            <th>Attendance Rate</th>
+                            <th>Recovery Requirement</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {summaryData.low_attendance_students && summaryData.low_attendance_students.length > 0 ? (
+                            summaryData.low_attendance_students.map((stu) => (
+                              <tr key={stu.student_id}>
+                                <td>
+                                  <strong>{stu.roll_no}</strong>
+                                </td>
+                                <td>{stu.name}</td>
+                                <td>
+                                  <span className="dash-branch-badge">
+                                    {stu.branch} Y{stu.year}S{stu.semester}-{stu.section}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong>{stu.attended}</strong> / {stu.total}
+                                </td>
+                                <td>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <div className="progress-track" style={{ width: "90px", margin: 0 }}>
+                                      <div
+                                        className="progress-bar-fill"
+                                        style={{
+                                          width: `${Math.min(100, stu.attendance_rate)}%`,
+                                          backgroundColor: "#dc2626",
+                                        }}
+                                      ></div>
+                                    </div>
+                                    <span style={{ color: "#dc2626", fontWeight: 700 }}>
+                                      {stu.attendance_rate}%
+                                    </span>
+                                  </div>
+                                </td>
+                                <td>
+                                  <span
+                                    style={{
+                                      padding: "3px 8px",
+                                      borderRadius: "6px",
+                                      background: "#fee2e2",
+                                      color: "#b91c1c",
+                                      fontSize: "12px",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Needs next {stu.classes_needed} classes
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="6" style={{ textAlign: "center", padding: "24px", color: "#059669" }}>
+                                ✓ Great news! No students are currently below the {threshold}% attendance threshold.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Branch-wise and Subject-wise Breakdowns Grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                    {/* Branch-wise breakdown */}
+                    <div
+                      style={{
+                        background: "#fff",
+                        borderRadius: "16px",
+                        padding: "20px",
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <h4 style={{ margin: "0 0 14px 0", fontSize: "15px", color: "#0f172a" }}>
+                        Department / Branch Breakdown
+                      </h4>
+                      <table className="grades-table">
+                        <thead>
+                          <tr>
+                            <th>Branch</th>
+                            <th>Enrolled</th>
+                            <th>Attendance %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {summaryData.branch_wise && summaryData.branch_wise.length > 0 ? (
+                            summaryData.branch_wise.map((b) => (
+                              <tr key={b.branch}>
+                                <td>
+                                  <strong>{b.branch}</strong>
+                                </td>
+                                <td>{b.total_students} students</td>
+                                <td>
+                                  <strong style={{ color: b.attendance_rate >= 75 ? "#059669" : "#dc2626" }}>
+                                    {b.attendance_rate}%
+                                  </strong>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="3" style={{ textAlign: "center", padding: "16px", color: "#64748b" }}>
+                                No branch records available.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Subject-wise breakdown */}
+                    <div
+                      style={{
+                        background: "#fff",
+                        borderRadius: "16px",
+                        padding: "20px",
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <h4 style={{ margin: "0 0 14px 0", fontSize: "15px", color: "#0f172a" }}>
+                        Course / Subject Attendance
+                      </h4>
+                      <table className="grades-table">
+                        <thead>
+                          <tr>
+                            <th>Course</th>
+                            <th>Classes</th>
+                            <th>Attendance %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {summaryData.subject_wise && summaryData.subject_wise.length > 0 ? (
+                            summaryData.subject_wise.slice(0, 6).map((sub) => (
+                              <tr key={sub.code}>
+                                <td>
+                                  <strong>{sub.code}</strong> - {sub.name}
+                                </td>
+                                <td>{sub.total_classes} sessions</td>
+                                <td>
+                                  <strong style={{ color: sub.attendance_rate >= 75 ? "#059669" : "#dc2626" }}>
+                                    {sub.attendance_rate}%
+                                  </strong>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="3" style={{ textAlign: "center", padding: "16px", color: "#64748b" }}>
+                                No subject records available.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>

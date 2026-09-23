@@ -7,6 +7,7 @@ from students.serializers import StudentSerializer
 class AttendanceSessionSerializer(serializers.ModelSerializer):
     subject_details = SubjectSerializer(source='subject', read_only=True)
     teacher_name = serializers.CharField(source='teacher.get_full_name', read_only=True)
+    class_display = serializers.CharField(source='academic_class.display_name', read_only=True)
     is_expired = serializers.SerializerMethodField()
     attendees_count = serializers.SerializerMethodField()
 
@@ -18,6 +19,9 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
             'subject_details',
             'teacher',
             'teacher_name',
+            'academic_class',
+            'class_display',
+            'section',
             'date',
             'start_time',
             'end_time',

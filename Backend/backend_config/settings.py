@@ -25,12 +25,21 @@ load_dotenv(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-@i3wfc7qtlq#y8^&+l0fvv(15y(2m1ytti=^i4ky#djzg!zyok'
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-@i3wfc7qtlq#y8^&+l0fvv(15y(2m1ytti=^i4ky#djzg!zyok'
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True').strip().lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['*']
+allowed_hosts_env = os.environ.get('ALLOWED_HOSTS')
+if allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
+elif DEBUG:
+    ALLOWED_HOSTS = ['*']
+else:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 
 # Application definition
@@ -53,6 +62,7 @@ INSTALLED_APPS = [
     'announcements',
     'notifications',
     'audit',
+    'reports',
     'drf_spectacular',
 ]
 
@@ -125,8 +135,8 @@ else:
     db_name = os.environ.get("AIVEN_DB_NAME", os.environ.get("DB_NAME", "defaultdb"))
     db_user = os.environ.get("AIVEN_DB_USER", os.environ.get("DB_USER", "avnadmin"))
     db_password = os.environ.get("AIVEN_PASSWORD", os.environ.get("DB_PASSWORD", ""))
-    db_host = os.environ.get("AIVEN_DB_HOST", os.environ.get("DB_HOST", "mysql-26020f38-alekhyabandaru4-16f1.f.aivencloud.com"))
-    db_port = int(os.environ.get("AIVEN_DB_PORT", os.environ.get("DB_PORT", 22125)))
+    db_host = os.environ.get("AIVEN_DB_HOST", os.environ.get("DB_HOST", "127.0.0.1"))
+    db_port = int(os.environ.get("AIVEN_DB_PORT", os.environ.get("DB_PORT", 3306)))
 
 db_options = {
     'charset': 'utf8mb4',
@@ -187,13 +197,21 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS configuration
+cors_allow_all = os.environ.get('CORS_ALLOW_ALL_ORIGINS', '').strip().lower()
+CORS_ALLOW_ALL_ORIGINS = cors_allow_all in ('true', '1', 'yes')
+
+cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS')
+if cors_origins_env:
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
+else:
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:3000",
+        "http://127.0.0.1:8000",
+    ]
+
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-    "http://localhost:3000",
-    "http://127.0.0.1:8000",
-]

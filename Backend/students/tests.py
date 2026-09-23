@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from accounts.models import UserProfile
-from students.models import Student
+from students.models import Department, Branch, AcademicClass, FacultyAssignment, Student
 from performance.models import Subject, StudentScore, calculate_grade_and_points
 from attendance.models import AttendanceSession, AttendanceRecord
 
@@ -243,3 +243,157 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
         self.assertFalse(self.student_a.is_active)
         # Verify student still exists in DB
         self.assertTrue(Student.objects.filter(id=self.student_a.id).exists())
+
+    # -----------------------------------------------------------------
+    # 6. ACADEMIC HIERARCHY STRUCTURE
+    # -----------------------------------------------------------------
+    def test_academic_hierarchy_structure(self):
+        """Verify Department -> Branch -> AcademicClass -> Student hierarchy."""
+        dept = Department.objects.create(code='MECH', name='Mechanical Engineering')
+        branch = Branch.objects.create(department=dept, code='MECH', name='Mechanical Engineering')
+        ac_class = AcademicClass.objects.create(
+            branch=branch,
+            year=2,
+            semester=3,
+            section='B',
+            academic_year='2024-2025'
+        )
+
+        mech_student = Student.objects.create(
+            name='Charlie Mechanic',
+            email='charlie@test.com',
+            phone='9876543219',
+            academic_class=ac_class
+        )
+        # Verify bidirectional fields are synchronized
+        self.assertEqual(mech_student.branch, 'MECH')
+        self.assertEqual(mech_student.year, 2)
+        self.assertEqual(mech_student.semester, '3')
+        self.assertEqual(mech_student.section, 'B')
+        self.assertEqual(mech_student.academic_class.id, ac_class.id)
+
+    # -----------------------------------------------------------------
+    # 7. QR ATTENDANCE SECTION & CLASS VALIDATION
+    # -----------------------------------------------------------------
+    def test_qr_attendance_enrolled_section_success(self):
+        """Student enrolled in the matching class and section can mark attendance."""
+        dept, _ = Department.objects.get_or_create(code='CSE', defaults={'name': 'Computer Science'})
+        branch, _ = Branch.objects.get_or_create(code='CSE', defaults={'department': dept, 'name': 'CSE'})
+        ac_a, _ = AcademicClass.objects.get_or_create(branch=branch, year=3, semester=5, section='A')
+
+        self.student_a.academic_class = ac_a
+        self.student_a.section = 'A'
+        self.student_a.save()
+
+        # Teacher starts session for Section A
+        session = AttendanceSession.create_session(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            duration_seconds=120,
+            academic_class=ac_a,
+            section='A'
+        )
+
+        self.client.force_authenticate(user=self.user_a)
+        res = self.client.post('/api/attendance/mark-qr/', {'qr_token': session.qr_token})
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(res.data['success'])
+
+    def test_qr_attendance_wrong_section_rejected(self):
+        """Student from a different section/class is rejected with 403 Forbidden."""
+        dept, _ = Department.objects.get_or_create(code='CSE', defaults={'name': 'Computer Science'})
+        branch, _ = Branch.objects.get_or_create(code='CSE', defaults={'department': dept, 'name': 'CSE'})
+        ac_a, _ = AcademicClass.objects.get_or_create(branch=branch, year=3, semester=5, section='A')
+        ac_b, _ = AcademicClass.objects.get_or_create(branch=branch, year=3, semester=5, section='B')
+
+        # Student A is enrolled in Section A
+        self.student_a.academic_class = ac_a
+        self.student_a.section = 'A'
+        self.student_a.save()
+
+        # Student B is enrolled in Section B
+        self.student_b.academic_class = ac_b
+        self.student_b.section = 'B'
+        self.student_b.save()
+
+        # Session launched strictly for Section A
+        session = AttendanceSession.create_session(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            duration_seconds=120,
+            academic_class=ac_a,
+            section='A'
+        )
+
+        # Student B (Section B) tries to scan Section A QR code
+        self.client.force_authenticate(user=self.user_b)
+        res = self.client.post('/api/attendance/mark-qr/', {'qr_token': session.qr_token})
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('not enrolled', res.data['detail'].lower())
+
+    def test_qr_attendance_duplicate_rejected(self):
+        """Scanning the exact same QR session token twice returns 409 Conflict."""
+        dept, _ = Department.objects.get_or_create(code='CSE', defaults={'name': 'Computer Science'})
+        branch, _ = Branch.objects.get_or_create(code='CSE', defaults={'department': dept, 'name': 'CSE'})
+        ac_a, _ = AcademicClass.objects.get_or_create(branch=branch, year=3, semester=5, section='A')
+
+        self.student_a.academic_class = ac_a
+        self.student_a.section = 'A'
+        self.student_a.save()
+
+        session = AttendanceSession.create_session(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            duration_seconds=120,
+            academic_class=ac_a,
+            section='A'
+        )
+
+        self.client.force_authenticate(user=self.user_a)
+        # First scan
+        res1 = self.client.post('/api/attendance/mark-qr/', {'qr_token': session.qr_token})
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        # Second scan for same session
+        res2 = self.client.post('/api/attendance/mark-qr/', {'qr_token': session.qr_token})
+        self.assertEqual(res2.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(res2.data.get('already_marked'))
+
+    def test_qr_attendance_expired_rejected(self):
+        """Expired session QR token returns 400 Bad Request."""
+        session = AttendanceSession.objects.create(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            qr_token='expired_token_xyz',
+            expires_at=timezone.now() - timedelta(seconds=10),
+            duration_seconds=10,
+            is_active=True
+        )
+
+        self.client.force_authenticate(user=self.user_a)
+        res = self.client.post('/api/attendance/mark-qr/', {'qr_token': session.qr_token})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('expired', res.data['detail'].lower())
+
+    # -----------------------------------------------------------------
+    # 8. USER CREATION PASSWORD SECURITY VALIDATION
+    # -----------------------------------------------------------------
+    def test_user_creation_password_validation(self):
+        """Admin creating a user with a weak password fails password security validation."""
+        self.client.force_authenticate(user=self.admin_user)
+        payload = {
+            'username': 'weakuser',
+            'email': 'weakuser@institution.edu',
+            'password': '123',  # Too short and common
+            'role': 'teacher',
+            'department': 'CSE'
+        }
+        res = self.client.post('/api/auth/users/', payload)
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('requirements', res.data['detail'].lower())
+
+        # Now test with strong password
+        payload['password'] = 'EnterpriseSecurePass@2026'
+        res_ok = self.client.post('/api/auth/users/', payload)
+        self.assertEqual(res_ok.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(User.objects.filter(username='weakuser').exists())
