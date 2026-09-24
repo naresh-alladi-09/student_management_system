@@ -16,13 +16,23 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.http import JsonResponse
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
 
+def health_check(request):
+    return JsonResponse({
+        "status": "healthy",
+        "service": "Academic Management System API",
+        "version": "2.0.0"
+    })
+
 urlpatterns = [
+    path('', health_check, name='health-check-root'),
+    path('api/health/', health_check, name='health-check-api'),
     path('admin/', admin.site.urls),
 
     # OpenAPI 3 Schema & Interactive API Documentation

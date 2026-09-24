@@ -11,13 +11,21 @@ import {
   FaBolt,
   FaCheckCircle,
   FaExclamationCircle,
+  FaExclamationTriangle,
+  FaSyncAlt,
 } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL, pingBackend } from "../services/apiClient";
 
 const Login = ({ initialRole }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { loginUser } = useAuth();
+  const { loginUser, apiBaseUrl = API_BASE_URL } = useAuth();
+  const [wakeUpNotice, setWakeUpNotice] = useState(false);
+  const [pingStatus, setPingStatus] = useState(null);
+
+  const isLocalhost =
+    apiBaseUrl.includes("127.0.0.1") || apiBaseUrl.includes("localhost");
 
   // Determine active role directly from URL / props
   const getRoleFromLocation = () => {
@@ -61,13 +69,42 @@ const Login = ({ initialRole }) => {
     }
   };
 
+  const handleTestBackend = async () => {
+    setPingStatus({
+      state: "testing",
+      message: "Testing connection (waking up Render if asleep)...",
+    });
+    const res = await pingBackend();
+    if (res.ok) {
+      setPingStatus({
+        state: "success",
+        message: "Backend is online and responding! You can now sign in.",
+      });
+    } else {
+      setPingStatus({
+        state: "error",
+        message:
+          res.error ||
+          "Cannot reach backend. Render may be cold-booting; try again in 30 seconds.",
+      });
+    }
+  };
+
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     setError("");
     setIsSubmitting(true);
+    setWakeUpNotice(false);
+
+    // If Render backend is sleeping on free tier, notify user after 4s
+    const timer = setTimeout(() => {
+      setWakeUpNotice(true);
+    }, 4000);
 
     const res = await loginUser(username, password, activeRole);
+    clearTimeout(timer);
     setIsSubmitting(false);
+    setWakeUpNotice(false);
 
     if (res.success) {
       if (res.user.role === "admin") {
@@ -78,7 +115,9 @@ const Login = ({ initialRole }) => {
         navigate("/dashboard");
       }
     } else {
-      setError(res.message || "Invalid credentials. Please check your username and password.");
+      setError(
+        res.message || "Invalid credentials. Please check your username and password."
+      );
     }
   };
 
@@ -310,6 +349,13 @@ const Login = ({ initialRole }) => {
               </button>
             </div>
 
+            {wakeUpNotice && (
+              <div className="render-wakeup-notice">
+                <FaSyncAlt className="spin-icon" />
+                <span>Render backend is waking up from free-tier sleep (~50s). Please wait...</span>
+              </div>
+            )}
+
             <button
               type="submit"
               className={`login-submit-btn ${isStudentMode ? "student-btn" : ""}`}
@@ -317,13 +363,59 @@ const Login = ({ initialRole }) => {
             >
               {isSubmitting ? (
                 <span>
-                  <i className="fa-solid fa-spinner fa-spin"></i> Authenticating...
+                  <FaSyncAlt className="spin-icon" /> Authenticating...
                 </span>
               ) : (
                 <span>Sign In to Portal →</span>
               )}
             </button>
           </form>
+
+          {/* Diagnostic Footer */}
+          <div className="login-backend-diag">
+            <div className="backend-diag-row">
+              <div className="backend-url-info">
+                <span
+                  className={`status-dot ${isLocalhost ? "status-warn" : "status-live"}`}
+                ></span>
+                <span className="backend-label">Backend:</span>
+                <span className="backend-url-code" title={apiBaseUrl}>
+                  {apiBaseUrl}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn-ping-backend"
+                onClick={handleTestBackend}
+                disabled={pingStatus?.state === "testing"}
+                title="Test live connection to backend"
+              >
+                {pingStatus?.state === "testing" ? (
+                  <span>
+                    <FaSyncAlt className="spin-icon" /> Pinging...
+                  </span>
+                ) : (
+                  <span>Test Connection</span>
+                )}
+              </button>
+            </div>
+            {isLocalhost && (
+              <div className="backend-diag-notice warn">
+                <FaExclamationTriangle />
+                <span>
+                  Currently pointing to <strong>localhost</strong>. In Vercel Project Settings, add <code>VITE_API_URL</code> with your Render URL, then click <strong>Redeploy</strong>.
+                </span>
+              </div>
+            )}
+            {pingStatus && (
+              <div className={`backend-diag-notice ${pingStatus.state}`}>
+                {pingStatus.state === "success" && <FaCheckCircle />}
+                {pingStatus.state === "error" && <FaExclamationCircle />}
+                {pingStatus.state === "testing" && <FaSyncAlt className="spin-icon" />}
+                <span>{pingStatus.message}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

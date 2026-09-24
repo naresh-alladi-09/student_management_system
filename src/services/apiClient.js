@@ -1,14 +1,28 @@
 import axios from "axios";
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://127.0.0.1:8000"
-).replace(/\/$/, "");
+// Helper to sanitize and normalize the configured API Base URL
+const sanitizeBaseUrl = () => {
+  const envUrl =
+    import.meta.env.VITE_API_URL ||
+    import.meta.env.VITE_API_BASE_URL ||
+    "http://127.0.0.1:8000";
 
+  let sanitized = String(envUrl).trim().replace(/\/+$/, "");
+
+  // If the user included /api at the end, strip it because service calls already prefix /api/
+  if (sanitized.endsWith("/api")) {
+    sanitized = sanitized.slice(0, -4).replace(/\/+$/, "");
+  }
+
+  return sanitized;
+};
+
+export const API_BASE_URL = sanitizeBaseUrl();
+
+// 60-second timeout to allow Render free tier Web Services to wake up from cold sleep (~50s)
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -32,5 +46,25 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
+// Diagnostic helper to ping backend status and health
+export const pingBackend = async () => {
+  try {
+    const res = await apiClient.get("/api/health/", { timeout: 35000 });
+    return { ok: true, data: res.data };
+  } catch (err) {
+    // Fallback to root or schema if health check hasn't been deployed yet
+    try {
+      const res = await apiClient.get("/", { timeout: 35000 });
+      return { ok: true, data: res.data };
+    } catch (innerErr) {
+      return {
+        ok: false,
+        error: innerErr.message || "Failed to reach backend",
+        code: innerErr.code,
+      };
+    }
+  }
+};
 
 export default apiClient;

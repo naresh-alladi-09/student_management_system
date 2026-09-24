@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from "react";
 import { loginApi, logoutApi, getMeApi } from "../services/studentservice";
+import { API_BASE_URL } from "../services/apiClient";
 
 export const AuthContext = createContext(null);
 
@@ -73,12 +74,25 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
       let errMsg = "Authentication failed. Please check your credentials.";
       if (!err.response) {
-        errMsg =
-          "Cannot connect to the backend server. If using Vercel, please ensure your backend is deployed and VITE_API_URL is configured in Vercel Environment Variables.";
+        if (err.code === "ECONNABORTED" || err.message?.toLowerCase().includes("timeout")) {
+          errMsg =
+            "Connection timed out (backend took >60s to respond). If your Render backend is sleeping on the free tier, it takes ~50-60 seconds to wake up. Please wait 30 seconds and try again!";
+        } else if (
+          API_BASE_URL.includes("127.0.0.1") ||
+          API_BASE_URL.includes("localhost")
+        ) {
+          errMsg = `Frontend is connected to "${API_BASE_URL}". On Vercel, Vite bakes variables at build-time. Go to Vercel Settings > Environment Variables, add "VITE_API_URL" with your Render URL, then go to Deployments and click "Redeploy".`;
+        } else {
+          errMsg = `Cannot connect to backend server at "${API_BASE_URL}". Verify your Render Web Service is Active (not suspended or crashed) and that it allows CORS requests.`;
+        }
       } else if (err.response.data?.detail) {
         errMsg = err.response.data.detail;
       } else if (err.response.data?.error) {
         errMsg = err.response.data.error;
+      } else if (err.response.data?.non_field_errors) {
+        errMsg = Array.isArray(err.response.data.non_field_errors)
+          ? err.response.data.non_field_errors.join(", ")
+          : err.response.data.non_field_errors;
       }
       return { success: false, message: errMsg };
     }
@@ -147,6 +161,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         refreshUser,
         loading,
+        apiBaseUrl: API_BASE_URL,
       }}
     >
       {children}
