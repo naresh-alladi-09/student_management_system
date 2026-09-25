@@ -23,8 +23,13 @@ import {
   FaClock,
   FaUsers,
   FaCheckCircle,
+  FaTimesCircle,
   FaChartLine,
   FaExclamationTriangle,
+  FaCheck,
+  FaTimes,
+  FaSearch,
+  FaQuestionCircle,
 } from "react-icons/fa";
 
 function Attendance() {
@@ -35,6 +40,7 @@ function Attendance() {
   const [error, setError] = useState(null);
   const [attendance, setAttendance] = useState({});
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -158,7 +164,9 @@ function Attendance() {
           setTimeRemaining(0);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Error checking active QR session:", err);
+      });
   };
 
   useEffect(() => {
@@ -166,7 +174,7 @@ function Attendance() {
       checkActiveQrSession();
       pollIntervalRef.current = setInterval(() => {
         checkActiveQrSession();
-      }, 4000);
+      }, 3000);
     } else {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     }
@@ -187,17 +195,35 @@ function Attendance() {
   const handleStartQrSession = async () => {
     if (!selectedSubjectId) return;
     setQrLoading(true);
+    setError(null);
     try {
       const targetClass = academicClasses.find((c) => String(c.id) === String(selectedClassId));
       const secVal = targetClass ? targetClass.section : "A";
-      await createAttendanceSession(
+      const res = await createAttendanceSession(
         parseInt(selectedSubjectId, 10),
         sessionDuration,
         selectedClassId ? parseInt(selectedClassId, 10) : null,
         secVal
       );
+      if (res.data?.session) {
+        const sess = res.data.session;
+        const expiresAt = new Date(sess.expires_at).getTime();
+        const now = new Date().getTime();
+        const rem = Math.max(0, Math.floor((expiresAt - now) / 1000));
+        setActiveSessionData({
+          active: true,
+          session: sess,
+          total_enrolled: 0,
+          present_count: 0,
+          absent_count: 0,
+          attendance_rate: 0,
+          attendees: [],
+        });
+        setTimeRemaining(rem > 0 ? rem : sessionDuration);
+      }
       checkActiveQrSession();
     } catch (err) {
+      console.error("Failed to start QR session:", err);
       setError(err.response?.data?.detail || "Failed to start QR session.");
     } finally {
       setQrLoading(false);
@@ -271,6 +297,18 @@ function Attendance() {
   ).length;
   const percentage =
     students.length > 0 ? Math.round((presentCount / students.length) * 100) : 0;
+
+  const filteredStudents = students.filter((s) => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      (s.name && s.name.toLowerCase().includes(q)) ||
+      (s.roll_no && s.roll_no.toLowerCase().includes(q)) ||
+      (s.student_id_str && s.student_id_str.toLowerCase().includes(q)) ||
+      (s.branch && s.branch.toLowerCase().includes(q)) ||
+      (s.section && s.section.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <div className="sideandmain">
@@ -525,7 +563,7 @@ function Attendance() {
                       }}
                     >
                       <QRCodeSVG
-                        value={`${window.location.origin}/mark-attendance?token=${activeSessionData.session.qr_token}`}
+                        value={`${window.location.origin}/mark-attendance?token=${activeSessionData.session.qr_token || activeSessionData.session.token || ""}`}
                         size={230}
                         level="M"
                         includeMargin={true}
@@ -545,7 +583,8 @@ function Attendance() {
                       <button
                         type="button"
                         onClick={() => {
-                          const directUrl = `${window.location.origin}/mark-attendance?token=${activeSessionData.session.qr_token}`;
+                          const sessToken = activeSessionData.session.qr_token || activeSessionData.session.token || "";
+                          const directUrl = `${window.location.origin}/mark-attendance?token=${sessToken}`;
                           navigator.clipboard?.writeText(directUrl);
                           setCopiedLink(true);
                           setTimeout(() => setCopiedLink(false), 3000);
@@ -565,7 +604,7 @@ function Attendance() {
                       </button>
 
                       <a
-                        href={`/mark-attendance?token=${activeSessionData.session.qr_token}`}
+                        href={`/mark-attendance?token=${activeSessionData.session.qr_token || activeSessionData.session.token || ""}`}
                         target="_blank"
                         rel="noreferrer"
                         style={{
@@ -899,76 +938,184 @@ function Attendance() {
 
               {/* Table */}
               <div className="attendance-table-card">
+                {/* Search Bar & Header Controls */}
+                <div className="att-table-header-controls">
+                  <div className="att-search-box">
+                    <FaSearch className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Search student by name, roll number, or ID..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        className="clear-search-btn"
+                        onClick={() => setSearchQuery("")}
+                        title="Clear search"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  <div className="att-search-count">
+                    Showing <strong>{filteredStudents.length}</strong> of {students.length} students
+                  </div>
+                </div>
+
                 {loading ? (
-                  <div className="att-loading">
+                  <div className="att-loading" style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
                     <i className="fa-solid fa-spinner fa-spin"></i> Loading attendance records from database...
                   </div>
                 ) : (
-                  <table className="modern-att-table">
-                    <thead>
-                      <tr>
-                        <th>Student ID / Roll No</th>
-                        <th>Student Name</th>
-                        <th>Branch</th>
-                        <th>Year</th>
-                        <th style={{ textAlign: "center" }}>Attendance Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {students.length > 0 ? (
-                        students.map((student) => {
-                          const currentStatus = attendance[student.id] || "Not Marked";
-                          return (
-                            <tr key={student.id}>
-                              <td>
-                                <strong>{student.roll_no || student.student_id_str}</strong>
-                              </td>
-                              <td>{student.name}</td>
-                              <td>{student.branch}</td>
-                              <td>Year {student.year}</td>
-                              <td style={{ textAlign: "center" }}>
-                                <div className="status-toggle-group">
-                                  <button
-                                    type="button"
-                                    className={`toggle-pill-btn present ${
-                                      currentStatus === "Present" ? "active" : ""
-                                    }`}
-                                    onClick={() => handleStatusChange(student.id, "Present")}
-                                  >
-                                    Present
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`toggle-pill-btn absent ${
-                                      currentStatus === "Absent" ? "active" : ""
-                                    }`}
-                                    onClick={() => handleStatusChange(student.id, "Absent")}
-                                  >
-                                    Absent
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`toggle-pill-btn late ${
-                                      currentStatus === "Late" ? "active" : ""
-                                    }`}
-                                    onClick={() => handleStatusChange(student.id, "Late")}
-                                  >
-                                    Late
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      ) : (
+                  <div className="table-responsive-wrapper">
+                    <table className="modern-att-table">
+                      <thead>
                         <tr>
-                          <td colSpan="5" style={{ textAlign: "center", padding: "30px", color: "#94a3b8" }}>
-                            No students found matching selected branch.
-                          </td>
+                          <th style={{ width: "16%" }}>Roll No / ID</th>
+                          <th style={{ width: "26%" }}>Student Name</th>
+                          <th style={{ width: "18%" }}>Branch & Year</th>
+                          <th style={{ width: "10%" }}>Section</th>
+                          <th style={{ width: "15%" }}>Status</th>
+                          <th style={{ width: "15%", textAlign: "center" }}>Mark Attendance</th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {filteredStudents.length > 0 ? (
+                          filteredStudents.map((student) => {
+                            const currentStatus = attendance[student.id] || "Not Marked";
+                            return (
+                              <tr
+                                key={student.id}
+                                className={
+                                  currentStatus === "Present"
+                                    ? "att-row-present"
+                                    : currentStatus === "Absent"
+                                    ? "att-row-absent"
+                                    : currentStatus === "Late"
+                                    ? "att-row-late"
+                                    : "att-row-unmarked"
+                                }
+                              >
+                                <td>
+                                  <span className="att-roll-badge">
+                                    {student.roll_no || student.student_id_str || `#${student.id}`}
+                                  </span>
+                                </td>
+                                <td>
+                                  <div className="att-student-profile">
+                                    <div
+                                      className="att-avatar-circle"
+                                      style={{
+                                        backgroundColor:
+                                          currentStatus === "Present"
+                                            ? "#dcfce7"
+                                            : currentStatus === "Absent"
+                                            ? "#fee2e2"
+                                            : "#eff6ff",
+                                        color:
+                                          currentStatus === "Present"
+                                            ? "#15803d"
+                                            : currentStatus === "Absent"
+                                            ? "#b91c1c"
+                                            : "#2563eb",
+                                      }}
+                                    >
+                                      {student.name ? student.name[0].toUpperCase() : "S"}
+                                    </div>
+                                    <div>
+                                      <div className="att-student-name">{student.name}</div>
+                                      <div className="att-student-sub">
+                                        {student.student_id_str ? `ID: ${student.student_id_str}` : `ID: #${student.id}`}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                                    <span className={`att-branch-pill ${student.branch?.toLowerCase() || "cse"}`}>
+                                      {student.branch || "CSE"}
+                                    </span>
+                                    <span className="att-year-badge">
+                                      Year {student.year || 1} {student.semester ? `• Sem ${student.semester}` : ""}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td>
+                                  <span className="att-sec-badge">
+                                    Sec {student.section || "A"}
+                                  </span>
+                                </td>
+                                <td>
+                                  {currentStatus === "Present" && (
+                                    <span className="att-status-pill pill-present">
+                                      <FaCheckCircle className="pill-icon green-icon" /> Present
+                                    </span>
+                                  )}
+                                  {currentStatus === "Absent" && (
+                                    <span className="att-status-pill pill-absent">
+                                      <FaTimesCircle className="pill-icon red-icon" /> Absent
+                                    </span>
+                                  )}
+                                  {currentStatus === "Late" && (
+                                    <span className="att-status-pill pill-late">
+                                      <FaClock className="pill-icon amber-icon" /> Late
+                                    </span>
+                                  )}
+                                  {currentStatus !== "Present" && currentStatus !== "Absent" && currentStatus !== "Late" && (
+                                    <span className="att-status-pill pill-unmarked">
+                                      <FaQuestionCircle className="pill-icon gray-icon" /> Not Marked
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  <div className="att-action-group">
+                                    <button
+                                      type="button"
+                                      className={`att-action-btn present-btn ${
+                                        currentStatus === "Present" ? "is-selected" : ""
+                                      }`}
+                                      onClick={() => handleStatusChange(student.id, "Present")}
+                                      title="Mark Student Present"
+                                    >
+                                      <FaCheck /> Present
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`att-action-btn absent-btn ${
+                                        currentStatus === "Absent" ? "is-selected" : ""
+                                      }`}
+                                      onClick={() => handleStatusChange(student.id, "Absent")}
+                                      title="Mark Student Absent"
+                                    >
+                                      <FaTimes /> Absent
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`att-action-btn late-btn ${
+                                        currentStatus === "Late" ? "is-selected" : ""
+                                      }`}
+                                      onClick={() => handleStatusChange(student.id, "Late")}
+                                      title="Mark Student Late"
+                                    >
+                                      <FaClock /> Late
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan="6" style={{ textAlign: "center", padding: "40px", color: "#94a3b8" }}>
+                              {searchQuery ? `No students found matching "${searchQuery}".` : "No students found matching selected filters."}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
 

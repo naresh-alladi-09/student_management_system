@@ -152,7 +152,7 @@ def get_active_session(request):
     return Response({
         "active": True,
         "session": serializer.data,
-        "total_enrolled": total_branch_students,
+        "total_enrolled": total_enrolled,
         "present_count": present_count,
         "absent_count": absent_count,
         "attendance_rate": rate,

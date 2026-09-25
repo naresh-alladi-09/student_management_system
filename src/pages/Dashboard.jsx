@@ -98,8 +98,12 @@ const Dashboard = () => {
     setStartingSlotId(slot.id);
     try {
       const res = await startAttendanceFromSlot(slot.id, 120);
-      setActiveSessionModal(res.data);
-      setTimeRemaining(res.data.duration_seconds || 120);
+      const data = res.data;
+      if (!data.qr_value && (data.token || data.qr_token)) {
+        data.qr_value = `${window.location.origin}/mark-attendance?token=${data.token || data.qr_token}`;
+      }
+      setActiveSessionModal(data);
+      setTimeRemaining(data.duration_seconds || 120);
       fetchSchedule(selectedDayOverride || null);
     } catch (err) {
       alert(err.response?.data?.detail || "Failed to start attendance session for this class.");

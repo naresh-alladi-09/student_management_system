@@ -272,3 +272,367 @@
   color: #94a3b8;
   font-style: italic;
 }
+
+/* ============================================================== */
+/* MODERN UNCLUTTERED ATTENDANCE TABLE CARD & STATUS INDICATORS   */
+/* ============================================================== */
+.attendance-table-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.att-table-header-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.att-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 420px;
+}
+
+.att-search-box .search-icon {
+  position: absolute;
+  left: 12px;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.att-search-box input {
+  width: 100%;
+  padding: 9px 36px 9px 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #ffffff;
+  outline: none;
+  color: #1e293b;
+  transition: all 0.2s;
+}
+
+.att-search-box input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.clear-search-btn:hover {
+  color: #475569;
+}
+
+.att-search-count {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.table-responsive-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.modern-att-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+}
+
+.modern-att-table th {
+  background: #f8fafc;
+  color: #475569;
+  padding: 14px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.modern-att-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #1e293b;
+  vertical-align: middle;
+  transition: background-color 0.15s ease;
+}
+
+/* Row status color highlighting */
+.att-row-present {
+  background-color: #f0fdf4 !important;
+  border-left: 4px solid #16a34a !important;
+}
+
+.att-row-present:hover {
+  background-color: #dcfce7 !important;
+}
+
+.att-row-absent {
+  background-color: #fef2f2 !important;
+  border-left: 4px solid #dc2626 !important;
+}
+
+.att-row-absent:hover {
+  background-color: #fee2e2 !important;
+}
+
+.att-row-late {
+  background-color: #fffbeb !important;
+  border-left: 4px solid #d97706 !important;
+}
+
+.att-row-late:hover {
+  background-color: #fef3c7 !important;
+}
+
+.att-row-unmarked {
+  background-color: #ffffff;
+  border-left: 4px solid transparent;
+}
+
+.att-row-unmarked:hover {
+  background-color: #f8fafc;
+}
+
+/* Roll badge */
+.att-roll-badge {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  background: #f1f5f9;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+/* Student profile cell */
+.att-student-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.att-avatar-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.att-student-name {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.att-student-sub {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Branch & Year pills */
+.att-branch-pill {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.att-branch-pill.cse { background: #eff6ff; color: #1d4ed8; }
+.att-branch-pill.ece { background: #faf5ff; color: #7e22ce; }
+.att-branch-pill.aiml { background: #f0fdfa; color: #0f766e; }
+.att-branch-pill.it { background: #f0fdf4; color: #15803d; }
+.att-branch-pill.mech { background: #fff7ed; color: #c2410c; }
+.att-branch-pill.civil { background: #fef2f2; color: #b91c1c; }
+
+.att-year-badge {
+  font-size: 12px;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.att-sec-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  background: #f8fafc;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+}
+
+/* Prominent Status Pills with Red/Green Icons */
+.att-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.att-status-pill .pill-icon {
+  font-size: 15px;
+}
+
+.att-status-pill.pill-present {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.att-status-pill .green-icon {
+  color: #16a34a;
+}
+
+.att-status-pill.pill-absent {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.att-status-pill .red-icon {
+  color: #dc2626;
+}
+
+.att-status-pill.pill-late {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+
+.att-status-pill .amber-icon {
+  color: #d97706;
+}
+
+.att-status-pill.pill-unmarked {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.att-status-pill .gray-icon {
+  color: #94a3b8;
+}
+
+/* Quick Action Button Group */
+.att-action-group {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.att-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.att-action-btn.present-btn {
+  background: #ffffff;
+  color: #15803d;
+  border-color: #86efac;
+}
+
+.att-action-btn.present-btn:hover {
+  background: #f0fdf4;
+  border-color: #22c55e;
+}
+
+.att-action-btn.present-btn.is-selected {
+  background: #16a34a !important;
+  color: #ffffff !important;
+  border-color: #16a34a !important;
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35);
+  font-weight: 700;
+}
+
+.att-action-btn.absent-btn {
+  background: #ffffff;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.att-action-btn.absent-btn:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
+
+.att-action-btn.absent-btn.is-selected {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  border-color: #dc2626 !important;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
+  font-weight: 700;
+}
+
+.att-action-btn.late-btn {
+  background: #ffffff;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.att-action-btn.late-btn:hover {
+  background: #fffbeb;
+  border-color: #f59e0b;
+}
+
+.att-action-btn.late-btn.is-selected {
+  background: #d97706 !important;
+  color: #ffffff !important;
+  border-color: #d97706 !important;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
+  font-weight: 700;
+}
