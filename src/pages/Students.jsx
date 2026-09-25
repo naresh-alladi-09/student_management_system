@@ -12,6 +12,25 @@ import Sidebar from "../components/Sidebar";
 import StudentTable from "../components/StudentTable";
 import "../styles/studenttable.css";
 
+const YEAR_SEMESTERS = {
+  "1": [
+    { value: "1", label: "Semester 1" },
+    { value: "2", label: "Semester 2" },
+  ],
+  "2": [
+    { value: "3", label: "Semester 3" },
+    { value: "4", label: "Semester 4" },
+  ],
+  "3": [
+    { value: "5", label: "Semester 5" },
+    { value: "6", label: "Semester 6" },
+  ],
+  "4": [
+    { value: "7", label: "Semester 7" },
+    { value: "8", label: "Semester 8" },
+  ],
+};
+
 const Students = () => {
   const [students, setStudents] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -121,9 +140,9 @@ const Students = () => {
       return;
     }
 
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
-      setErrorMessage("Please enter a valid email address (e.g. student@college.edu).");
+    const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+    if (!trimmedEmail || !gmailRegex.test(trimmedEmail)) {
+      setErrorMessage("Email address must end with @gmail.com only (e.g. student@gmail.com).");
       setTimeout(() => setErrorMessage(null), 4000);
       return;
     }
@@ -134,15 +153,24 @@ const Students = () => {
       return;
     }
 
+    const parsedYear = parseInt(editFormData.year, 10) || 1;
+    const parsedSem = parseInt(editFormData.semester, 10) || 1;
+    const validSems = YEAR_SEMESTERS[String(parsedYear)]?.map((s) => Number(s.value)) || [];
+    if (!validSems.includes(parsedSem)) {
+      setErrorMessage(`For Academic Year ${parsedYear}, valid semesters are: ${validSems.map((s) => `Semester ${s}`).join(", ")}.`);
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+
     try {
       setSavingEdit(true);
       const payload = {
         name: trimmedName,
-        year: parseInt(editFormData.year, 10) || 1,
+        year: parsedYear,
         email: trimmedEmail,
         phone: trimmedPhone,
         branch: editFormData.branch,
-        semester: String(editFormData.semester),
+        semester: String(parsedSem),
         roll_no: editFormData.roll_no.trim() || undefined,
       };
 
@@ -451,9 +479,20 @@ const Students = () => {
                       <select
                         id="edit-year"
                         value={editFormData.year}
-                        onChange={(e) =>
-                          setEditFormData({ ...editFormData, year: e.target.value })
-                        }
+                        onChange={(e) => {
+                          const newYear = e.target.value;
+                          const available = YEAR_SEMESTERS[newYear] || [];
+                          const semMatches = available.some(
+                            (s) => s.value === editFormData.semester
+                          );
+                          setEditFormData({
+                            ...editFormData,
+                            year: newYear,
+                            semester: semMatches
+                              ? editFormData.semester
+                              : available[0]?.value || "1",
+                          });
+                        }}
                       >
                         <option value="1">1st Year</option>
                         <option value="2">2nd Year</option>
@@ -481,7 +520,7 @@ const Students = () => {
                     </div>
 
                     <div className="form-group">
-                      <label htmlFor="edit-sem">Semester *</label>
+                      <label htmlFor="edit-sem">Semester * (Year {editFormData.year} • 2 Semesters)</label>
                       <select
                         id="edit-sem"
                         value={editFormData.semester}
@@ -489,9 +528,9 @@ const Students = () => {
                           setEditFormData({ ...editFormData, semester: e.target.value })
                         }
                       >
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
-                          <option key={s} value={String(s)}>
-                            Semester {s}
+                        {(YEAR_SEMESTERS[editFormData.year] || []).map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
                           </option>
                         ))}
                       </select>
@@ -513,10 +552,11 @@ const Students = () => {
                     </div>
 
                     <div className="form-group">
-                      <label htmlFor="edit-email">Email Address *</label>
+                      <label htmlFor="edit-email">Email Address * (Must end with @gmail.com)</label>
                       <input
                         id="edit-email"
                         type="email"
+                        placeholder="e.g. student@gmail.com"
                         value={editFormData.email}
                         required
                         onChange={(e) =>

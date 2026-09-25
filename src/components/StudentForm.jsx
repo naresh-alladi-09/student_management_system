@@ -3,6 +3,26 @@ import { useNavigate, Link } from "react-router-dom";
 import { addStudent } from "../services/studentservice";
 import "../styles/studentform.css";
 
+// Map each academic year to its corresponding 2 semesters
+const YEAR_SEMESTERS = {
+  "1": [
+    { value: "1", label: "Semester 1" },
+    { value: "2", label: "Semester 2" },
+  ],
+  "2": [
+    { value: "3", label: "Semester 3" },
+    { value: "4", label: "Semester 4" },
+  ],
+  "3": [
+    { value: "5", label: "Semester 5" },
+    { value: "6", label: "Semester 6" },
+  ],
+  "4": [
+    { value: "7", label: "Semester 7" },
+    { value: "8", label: "Semester 8" },
+  ],
+};
+
 const StudentForm = () => {
   const navigate = useNavigate();
 
@@ -43,6 +63,17 @@ const StudentForm = () => {
     if (errorMessage) setErrorMessage("");
   };
 
+  const handleYearChange = (e) => {
+    const selectedYear = e.target.value;
+    setYear(selectedYear);
+    const availableSems = YEAR_SEMESTERS[selectedYear] || [];
+    // Reset semester to the first semester of the newly selected year if current selection is invalid
+    if (!availableSems.some((s) => s.value === semester)) {
+      setSemester(availableSems[0]?.value || "1");
+    }
+    if (errorMessage) setErrorMessage("");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage("");
@@ -71,14 +102,18 @@ const StudentForm = () => {
       return;
     }
 
-    // 2. Email validation: standard RFC email pattern
+    // 2. Email validation: must end with @gmail.com only
     if (!trimmedEmail) {
       setErrorMessage("Please enter an email address.");
       return;
     }
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!emailRegex.test(trimmedEmail)) {
-      setErrorMessage("Please enter a valid email address (e.g. student@college.edu).");
+    const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+    if (!gmailRegex.test(trimmedEmail)) {
+      if (!trimmedEmail.endsWith("@gmail.com")) {
+        setErrorMessage("Email address must end with @gmail.com only (e.g. student@gmail.com).");
+      } else {
+        setErrorMessage("Please enter a valid Gmail address format before @gmail.com.");
+      }
       return;
     }
 
@@ -96,7 +131,7 @@ const StudentForm = () => {
       return;
     }
 
-    // 4. Year & Semester validation
+    // 4. Year & Semester validation (2 semesters per year)
     const parsedYear = parseInt(year, 10);
     if (isNaN(parsedYear) || parsedYear < 1 || parsedYear > 4) {
       setErrorMessage("Academic year must be a number between 1 and 4.");
@@ -104,8 +139,11 @@ const StudentForm = () => {
     }
 
     const parsedSem = parseInt(semester, 10);
-    if (isNaN(parsedSem) || parsedSem < 1 || parsedSem > 8) {
-      setErrorMessage("Semester must be a number between 1 and 8.");
+    const validSems = YEAR_SEMESTERS[String(parsedYear)]?.map((s) => Number(s.value)) || [];
+    if (isNaN(parsedSem) || !validSems.includes(parsedSem)) {
+      setErrorMessage(
+        `For Academic Year ${parsedYear}, valid semesters are: ${validSems.map((s) => `Semester ${s}`).join(", ")}.`
+      );
       return;
     }
 
@@ -170,6 +208,12 @@ const StudentForm = () => {
     setCreatedStudentId(null);
   };
 
+  // 2 semesters per academic year
+  const availableSemesters = YEAR_SEMESTERS[year] || [
+    { value: "1", label: "Semester 1" },
+    { value: "2", label: "Semester 2" },
+  ];
+
   return (
     <div className="form-wrapper">
       <div className="form-page-header">
@@ -223,7 +267,7 @@ const StudentForm = () => {
               <select
                 id="stu-year"
                 value={year}
-                onChange={(e) => setYear(e.target.value)}
+                onChange={handleYearChange}
               >
                 <option value="1">1st Year</option>
                 <option value="2">2nd Year</option>
@@ -237,12 +281,12 @@ const StudentForm = () => {
             <div className="form-group">
               <label htmlFor="stu-email">
                 Email Address <span style={{ color: "#ef4444" }}>*</span>
-                <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "6px" }}>(Must be valid email format)</span>
+                <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "6px" }}>(Must end with @gmail.com)</span>
               </label>
               <input
                 id="stu-email"
                 type="email"
-                placeholder="e.g. student@college.edu"
+                placeholder="e.g. student@gmail.com"
                 value={email}
                 required
                 onChange={handleEmailChange}
@@ -288,21 +332,23 @@ const StudentForm = () => {
             <div className="form-group">
               <label htmlFor="stu-sem">
                 Semester <span style={{ color: "#ef4444" }}>*</span>
-                <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "6px" }}>(Numeric 1 - 8)</span>
+                <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "6px" }}>
+                  (Year {year} • 2 Semesters)
+                </span>
               </label>
               <select
                 id="stu-sem"
                 value={semester}
-                onChange={(e) => setSemester(e.target.value)}
+                onChange={(e) => {
+                  setSemester(e.target.value);
+                  if (errorMessage) setErrorMessage("");
+                }}
               >
-                <option value="1">Semester 1</option>
-                <option value="2">Semester 2</option>
-                <option value="3">Semester 3</option>
-                <option value="4">Semester 4</option>
-                <option value="5">Semester 5</option>
-                <option value="6">Semester 6</option>
-                <option value="7">Semester 7</option>
-                <option value="8">Semester 8</option>
+                {availableSemesters.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
             </div>
 
