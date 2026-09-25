@@ -330,3 +330,58 @@ def list_create_subjects(request):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsTeacherOrAdmin])
+def performance_summary(request):
+    """
+    Returns aggregate performance analytics:
+    - average score calculated among branches
+    - top branch and individual branch averages
+    - total students scored
+    """
+    students = Student.objects.filter(is_active=True)
+    branch_data = {}
+    total_scored_students = 0
+
+    for s in students:
+        b = (s.branch or 'General').strip().upper()
+        scores = StudentScore.objects.filter(student=s)
+        if scores.exists():
+            s_avg = sum(sc.total for sc in scores) / scores.count()
+            if b not in branch_data:
+                branch_data[b] = []
+            branch_data[b].append(s_avg)
+            total_scored_students += 1
+
+    branch_performance = []
+    top_branch_name = "—"
+    top_branch_avg = 0.0
+
+    for b, avgs in sorted(branch_data.items()):
+        b_avg = round(sum(avgs) / len(avgs), 1)
+        branch_performance.append({
+            "branch": b,
+            "average_score": b_avg,
+            "student_count": len(avgs)
+        })
+        if b_avg > top_branch_avg:
+            top_branch_avg = b_avg
+            top_branch_name = b
+
+    avg_among_branches = (
+        round(sum(item['average_score'] for item in branch_performance) / len(branch_performance), 1)
+        if branch_performance else 0.0
+    )
+
+    top_branch_display = f"{top_branch_name} ({top_branch_avg}%)" if top_branch_name != "—" else "—"
+
+    return Response({
+        "average_score": avg_among_branches,
+        "top_branch": top_branch_name,
+        "top_branch_avg": top_branch_avg,
+        "top_branch_display": top_branch_display,
+        "branch_performance": branch_performance,
+        "total_scored_students": total_scored_students
+    }, status=status.HTTP_200_OK)

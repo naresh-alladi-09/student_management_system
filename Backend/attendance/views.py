@@ -789,12 +789,14 @@ def attendance_summary(request):
     active_students = list(Student.objects.filter(is_active=True))
     total_students = len(active_students)
 
-    # Today's records
+    # Today's records (distinct students present/absent today)
     records_today = AttendanceRecord.objects.filter(date=today)
-    present_today = records_today.filter(status='Present').count()
-    absent_today = records_today.filter(status='Absent').count()
-    not_marked_today = max(0, total_students - present_today - absent_today)
-    today_rate = round((present_today / total_students * 100), 1) if total_students > 0 else 0.0
+    present_students_today = records_today.filter(status='Present').values('student_id').distinct().count()
+    absent_students_today = records_today.filter(status='Absent').exclude(
+        student_id__in=records_today.filter(status='Present').values('student_id')
+    ).values('student_id').distinct().count()
+    not_marked_today = max(0, total_students - present_students_today - absent_students_today)
+    today_rate = round((present_students_today / total_students * 100), 1) if total_students > 0 else 0.0
 
     # Cumulative records
     all_records = AttendanceRecord.objects.all()
@@ -943,10 +945,15 @@ def attendance_summary(request):
     return Response({
         "threshold": threshold,
         "date": today.isoformat(),
+        "present_today": present_students_today,
+        "absent_today": absent_students_today,
+        "attendance_rate": today_rate,
+        "cumulative_attendance_rate": cumulative_rate,
+        "total_students": total_students,
         "overall": {
             "total_students": total_students,
-            "present_today": present_today,
-            "absent_today": absent_today,
+            "present_today": present_students_today,
+            "absent_today": absent_students_today,
             "not_marked_today": not_marked_today,
             "today_attendance_rate": today_rate,
             "cumulative_attendance_rate": cumulative_rate,

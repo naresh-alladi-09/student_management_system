@@ -141,6 +141,10 @@ export const getAllPerformance = (branch = "ALL") => {
   return apiClient.get(`/api/performance/${query}`);
 };
 
+export const getPerformanceSummary = () => {
+  return apiClient.get("/api/performance/summary/");
+};
+
 export const getStudentReportCard = (studentId) => {
   return apiClient.get(`/api/performance/student/${studentId}/`);
 };
