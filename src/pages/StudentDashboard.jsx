@@ -65,6 +65,20 @@ const StudentDashboard = () => {
   const [qrSubmitting, setQrSubmitting] = useState(false);
   const [qrResult, setQrResult] = useState(null);
   const [cameraError, setCameraError] = useState(null);
+  const [currentTimeStr, setCurrentTimeStr] = useState(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const d = new Date();
+      setCurrentTimeStr(
+        `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`
+      );
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   const extractTokenFromInput = (text) => {
     if (!text) return "";
@@ -212,11 +226,18 @@ const StudentDashboard = () => {
   const earnedCredits = reportData?.earned_credits ?? 0;
   const totalCredits = reportData?.total_credits ?? 0;
 
-  // Filter today's timetable
+  // Filter today's timetable with automatic vanishing:
+  // Morning periods disappear after their end time (in afternoon)
+  // Afternoon periods disappear after their end time (in evening)
   const todayDayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
-  const todaysClasses = timetableSlots.filter(
+  const allTodayClasses = timetableSlots.filter(
     (slot) => (slot.day || "").toLowerCase() === todayDayName.toLowerCase()
   );
+  const todaysClasses = allTodayClasses.filter((slot) => {
+    const endStr = (slot.end_time || "").slice(0, 8);
+    return endStr > currentTimeStr.slice(0, 8);
+  });
+  const completedTodayCount = allTodayClasses.length - todaysClasses.length;
 
   return (
     <div className="student-dashboard-page">
@@ -534,27 +555,81 @@ const StudentDashboard = () => {
 
               <div className="notice-list">
                 {todaysClasses.length > 0 ? (
-                  todaysClasses.map((slot) => (
-                    <div key={slot.id} className="notice-item alert-info">
-                      <div className="notice-icon-box">
-                        <FaClock />
+                  todaysClasses.map((slot) => {
+                    const startStr = (slot.start_time || "").slice(0, 8);
+                    const endStr = (slot.end_time || "").slice(0, 8);
+                    const isLiveNow = startStr <= currentTimeStr.slice(0, 8) && currentTimeStr.slice(0, 8) < endStr;
+
+                    return (
+                      <div
+                        key={slot.id}
+                        className={`notice-item ${isLiveNow ? "alert-success" : "alert-info"}`}
+                        style={{
+                          border: isLiveNow ? "2px solid #10b981" : undefined,
+                          background: isLiveNow ? "#f0fdf4" : undefined,
+                        }}
+                      >
+                        <div className="notice-icon-box" style={{ background: isLiveNow ? "#10b981" : undefined, color: isLiveNow ? "#fff" : undefined }}>
+                          {isLiveNow ? <FaQrcode /> : <FaClock />}
+                        </div>
+                        <div className="notice-body" style={{ flex: 1 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+                            <h4>
+                              {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
+                            </h4>
+                            {isLiveNow ? (
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "#059669", background: "#dcfce7", padding: "2px 8px", borderRadius: "10px" }}>
+                                ● LIVE CLASS NOW
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: "11px", color: "#64748b" }}>
+                                Starts at {slot.start_time.slice(0, 5)}
+                              </span>
+                            )}
+                          </div>
+                          <p>
+                            {slot.subject_details?.name || slot.subject} • {slot.room}
+                          </p>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
+                            <span className="notice-date">
+                              Faculty: {slot.teacher_name || "Assigned Faculty"}
+                            </span>
+                            {isLiveNow && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowQrModal(true);
+                                  setQrMode("camera");
+                                }}
+                                style={{
+                                  padding: "4px 10px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  background: "#10b981",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                }}
+                              >
+                                <FaQrcode /> Scan QR
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="notice-body">
-                        <h4>
-                          {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
-                        </h4>
-                        <p>
-                          {slot.subject_details?.name || slot.subject} • {slot.room}
-                        </p>
-                        <span className="notice-date">
-                          Faculty: {slot.teacher_name || "Assigned Faculty"}
-                        </span>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
-                  <div style={{ padding: "20px", textAlign: "center", color: "#64748b" }}>
-                    No lecture classes scheduled for today ({todayDayName}).
+                  <div style={{ padding: "20px", textAlign: "center", color: "#64748b", fontSize: "13px" }}>
+                    {completedTodayCount > 0 ? (
+                      <>All {completedTodayCount} scheduled lecture periods for today have completed and concluded.</>
+                    ) : (
+                      <>No lecture classes scheduled for today ({todayDayName}).</>
+                    )}
                   </div>
                 )}
               </div>

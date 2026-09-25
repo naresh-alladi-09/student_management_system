@@ -38,10 +38,12 @@ class AttendanceSession(models.Model):
         ordering = ['-created_at']
 
     @classmethod
-    def create_session(cls, subject, teacher, duration_seconds=60, academic_class=None, section='A'):
+    def create_session(cls, subject, teacher, duration_seconds=60, academic_class=None, section='A', expires_at=None, end_time=None):
         token = secrets.token_urlsafe(32)
         now = timezone.now()
-        expires = now + timedelta(seconds=duration_seconds)
+        expires = expires_at if expires_at else (now + timedelta(seconds=duration_seconds))
+        if expires_at and duration_seconds == 60:
+            duration_seconds = max(1, int((expires - now).total_seconds()))
         return cls.objects.create(
             subject=subject,
             teacher=teacher,
@@ -50,6 +52,7 @@ class AttendanceSession(models.Model):
             duration_seconds=duration_seconds,
             academic_class=academic_class,
             section=section,
+            end_time=end_time,
             is_active=True
         )
 
@@ -62,7 +65,13 @@ class AttendanceSession(models.Model):
         return self.qr_token
 
     def is_expired(self):
-        return timezone.now() > self.expires_at
+        now = timezone.now()
+        if now > self.expires_at:
+            return True
+        if self.end_time and self.date == timezone.localdate():
+            if timezone.localtime().time() >= self.end_time:
+                return True
+        return False
 
     def close(self):
         self.is_active = False

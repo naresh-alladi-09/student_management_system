@@ -91,7 +91,9 @@ class TimetableAPITests(APITestCase):
     def test_start_attendance_from_slot_success(self):
         self.client.force_authenticate(user=self.teacher_user)
         response = self.client.post(f'/api/timetable/{self.slot.id}/start-attendance/', {
-            'duration_seconds': 180
+            'duration_seconds': 180,
+            'ignore_time': True,
+            'ignore_day': True,
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn('token', response.data)
@@ -110,10 +112,95 @@ class TimetableAPITests(APITestCase):
         log_entry = AuditLog.objects.filter(action="ATTENDANCE_SESSION_START").first()
         self.assertIsNotNone(log_entry)
 
+    def test_start_attendance_time_window_validation(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        self.client.force_authenticate(user=self.teacher_user)
+
+        now = timezone.localtime()
+        today_day = now.strftime('%A')
+
+        # 1. Period in the future (not started yet)
+        future_slot = TimetableSlot.objects.create(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            day=today_day,
+            start_time=(now + timedelta(hours=2)).time(),
+            end_time=(now + timedelta(hours=3)).time(),
+            room="Room 401",
+            branch="CSE",
+            academic_class=self.academic_class
+        )
+        resp_future = self.client.post(f'/api/timetable/{future_slot.id}/start-attendance/')
+        self.assertEqual(resp_future.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("scheduled from", resp_future.data['detail'])
+
+        # 2. Period in the past (already ended)
+        past_slot = TimetableSlot.objects.create(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            day=today_day,
+            start_time=(now - timedelta(hours=3)).time(),
+            end_time=(now - timedelta(hours=2)).time(),
+            room="Room 402",
+            branch="CSE",
+            academic_class=self.academic_class
+        )
+        resp_past = self.client.post(f'/api/timetable/{past_slot.id}/start-attendance/')
+        self.assertEqual(resp_past.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("concluded at", resp_past.data['detail'])
+
+    def test_today_timetable_vanishing_of_completed_periods(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        self.client.force_authenticate(user=self.teacher_user)
+
+        now = timezone.localtime()
+        today_day = now.strftime('%A')
+
+        # Create a past slot (concluded) and an upcoming slot
+        concluded_slot = TimetableSlot.objects.create(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            day=today_day,
+            start_time=(now - timedelta(hours=2)).time(),
+            end_time=(now - timedelta(hours=1)).time(),
+            room="Room 101",
+            branch="CSE",
+            academic_class=self.academic_class
+        )
+        upcoming_slot = TimetableSlot.objects.create(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            day=today_day,
+            start_time=(now + timedelta(hours=1)).time(),
+            end_time=(now + timedelta(hours=2)).time(),
+            room="Room 102",
+            branch="CSE",
+            academic_class=self.academic_class
+        )
+
+        # Default query for today: completed slot vanishes!
+        resp_default = self.client.get('/api/timetable/today/')
+        self.assertEqual(resp_default.status_code, status.HTTP_200_OK)
+        slot_ids = [s['id'] for s in resp_default.data['slots']]
+        self.assertNotIn(concluded_slot.id, slot_ids, "Concluded period must vanish from active today's timetable")
+        self.assertIn(upcoming_slot.id, slot_ids)
+
+        # With ?all=true: completed slot is included
+        resp_all = self.client.get('/api/timetable/today/?all=true')
+        self.assertEqual(resp_all.status_code, status.HTTP_200_OK)
+        all_ids = [s['id'] for s in resp_all.data['slots']]
+        self.assertIn(concluded_slot.id, all_ids)
+        self.assertIn(upcoming_slot.id, all_ids)
+
     def test_start_attendance_unauthorized_teacher_forbidden(self):
         # Another teacher tries to start attendance for Alan's slot
         self.client.force_authenticate(user=self.other_teacher)
-        response = self.client.post(f'/api/timetable/{self.slot.id}/start-attendance/')
+        response = self.client.post(f'/api/timetable/{self.slot.id}/start-attendance/', {
+            'ignore_time': True,
+            'ignore_day': True,
+        })
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_create_and_manage_timetable_slot(self):

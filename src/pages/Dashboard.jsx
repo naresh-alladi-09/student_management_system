@@ -26,6 +26,7 @@ const Dashboard = () => {
   const [todaySchedule, setTodaySchedule] = useState({ day: "", count: 0, slots: [] });
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [selectedDayOverride, setSelectedDayOverride] = useState("");
+  const [showCompleted, setShowCompleted] = useState(false);
   const [startingSlotId, setStartingSlotId] = useState(null);
 
   // Active QR Session Modal State
@@ -57,9 +58,11 @@ const Dashboard = () => {
     };
   };
 
-  const fetchSchedule = (day = null) => {
+  const fetchSchedule = (day = selectedDayOverride, showAll = showCompleted) => {
     setScheduleLoading(true);
-    const params = day ? { day } : {};
+    const params = {};
+    if (day) params.day = day;
+    if (showAll) params.all = true;
     getTodayTimetable(params)
       .then((res) => {
         setTodaySchedule(res.data || { day: "", count: 0, slots: [] });
@@ -74,8 +77,15 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    fetchSchedule();
-  }, []);
+    fetchSchedule(selectedDayOverride, showCompleted);
+
+    // Auto-refresh schedule every 30 seconds so concluded slots vanish automatically
+    const ticker = setInterval(() => {
+      fetchSchedule(selectedDayOverride, showCompleted);
+    }, 30000);
+
+    return () => clearInterval(ticker);
+  }, [selectedDayOverride, showCompleted]);
 
   // Timer countdown for active QR session modal
   useEffect(() => {
@@ -85,6 +95,9 @@ const Dashboard = () => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
+          setTimeout(() => {
+            fetchSchedule(selectedDayOverride, showCompleted);
+          }, 2500);
           return 0;
         }
         return prev - 1;
@@ -92,19 +105,19 @@ const Dashboard = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeSessionModal]);
+  }, [activeSessionModal, selectedDayOverride, showCompleted]);
 
   const handleStartAttendance = async (slot) => {
     setStartingSlotId(slot.id);
     try {
-      const res = await startAttendanceFromSlot(slot.id, 120);
+      const res = await startAttendanceFromSlot(slot.id);
       const data = res.data;
       if (!data.qr_value && (data.token || data.qr_token)) {
         data.qr_value = `${window.location.origin}/mark-attendance?token=${data.token || data.qr_token}`;
       }
       setActiveSessionModal(data);
       setTimeRemaining(data.duration_seconds || 120);
-      fetchSchedule(selectedDayOverride || null);
+      fetchSchedule(selectedDayOverride, showCompleted);
     } catch (err) {
       alert(err.response?.data?.detail || "Failed to start attendance session for this class.");
     } finally {
@@ -166,14 +179,42 @@ const Dashboard = () => {
                 </p>
               </div>
 
-              {/* Day filter selector for simulation/schedule review */}
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {/* Day filter selector and Concluded toggle */}
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                {todaySchedule.completed_count > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextShow = !showCompleted;
+                      setShowCompleted(nextShow);
+                      fetchSchedule(selectedDayOverride || null, nextShow);
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      background: showCompleted ? "#e0e7ff" : "#f8fafc",
+                      color: showCompleted ? "#3730a3" : "#475569",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {showCompleted
+                      ? "Hide Concluded"
+                      : `Show Concluded (${todaySchedule.completed_count})`}
+                  </button>
+                )}
+
                 <span style={{ fontSize: "13px", color: "#64748b" }}>Filter Day:</span>
                 <select
                   value={selectedDayOverride}
                   onChange={(e) => {
                     setSelectedDayOverride(e.target.value);
-                    fetchSchedule(e.target.value || null);
+                    fetchSchedule(e.target.value || null, showCompleted);
                   }}
                   style={{
                     padding: "6px 12px",
@@ -211,15 +252,31 @@ const Dashboard = () => {
                 {todaySchedule.slots.map((slot) => {
                   const isCurrentStarting = startingSlotId === slot.id;
                   const hasActive = slot.has_active_session;
+                  const isCompleted = slot.status === "completed";
+                  const isUpcoming = slot.status === "upcoming";
+                  const isActivePeriod = slot.status === "active" || slot.can_open_qr;
 
                   return (
                     <div
                       key={slot.id}
                       style={{
-                        border: hasActive ? "2px solid #10b981" : "1px solid #e2e8f0",
+                        border: hasActive
+                          ? "2px solid #10b981"
+                          : isActivePeriod
+                          ? "2px solid #2563eb"
+                          : isCompleted
+                          ? "1px dashed #cbd5e1"
+                          : "1px solid #e2e8f0",
                         borderRadius: "12px",
                         padding: "18px",
-                        background: hasActive ? "#f0fdf4" : "#ffffff",
+                        background: hasActive
+                          ? "#f0fdf4"
+                          : isActivePeriod
+                          ? "#f8faff"
+                          : isCompleted
+                          ? "#f8fafc"
+                          : "#ffffff",
+                        opacity: isCompleted ? 0.75 : 1,
                         transition: "all 0.2s ease",
                         display: "flex",
                         flexDirection: "column",
@@ -237,36 +294,62 @@ const Dashboard = () => {
                         >
                           <span
                             style={{
-                              background: "#eff6ff",
-                              color: "#2563eb",
+                              background: hasActive
+                                ? "#dcfce7"
+                                : isActivePeriod
+                                ? "#eff6ff"
+                                : isCompleted
+                                ? "#f1f5f9"
+                                : "#eff6ff",
+                              color: hasActive
+                                ? "#15803d"
+                                : isActivePeriod
+                                ? "#2563eb"
+                                : isCompleted
+                                ? "#64748b"
+                                : "#2563eb",
                               padding: "4px 10px",
                               borderRadius: "20px",
                               fontSize: "12px",
                               fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
                             }}
                           >
+                            {isActivePeriod && (
+                              <span
+                                style={{
+                                  width: "8px",
+                                  height: "8px",
+                                  borderRadius: "50%",
+                                  background: "#2563eb",
+                                  display: "inline-block",
+                                }}
+                              ></span>
+                            )}
                             {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
                           </span>
 
                           <span
                             style={{
-                              fontSize: "12px",
+                              fontSize: "11px",
                               fontWeight: 600,
-                              color: "#475569",
-                              background: "#f1f5f9",
+                              color: isActivePeriod ? "#1d4ed8" : isCompleted ? "#64748b" : "#475569",
+                              background: isActivePeriod ? "#dbeafe" : isCompleted ? "#e2e8f0" : "#f1f5f9",
                               padding: "3px 8px",
                               borderRadius: "6px",
                             }}
                           >
-                            {slot.room}
+                            {slot.time_status_label || slot.room}
                           </span>
                         </div>
 
-                        <h4 style={{ margin: "0 0 4px 0", fontSize: "16px", color: "#0f172a" }}>
+                        <h4 style={{ margin: "0 0 4px 0", fontSize: "16px", color: isCompleted ? "#64748b" : "#0f172a" }}>
                           {slot.subject_details?.name || `Subject #${slot.subject}`}
                         </h4>
                         <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "8px" }}>
-                          Code: <strong>{slot.subject_details?.code || "—"}</strong>
+                          Code: <strong>{slot.subject_details?.code || "—"}</strong> • {slot.room}
                         </div>
 
                         <div
@@ -286,27 +369,72 @@ const Dashboard = () => {
                       <div>
                         {hasActive ? (
                           <div style={{ display: "flex", gap: "8px" }}>
-                            <Link
-                              to="/attendance"
+                            <button
+                              type="button"
+                              onClick={() => handleStartAttendance(slot)}
                               style={{
                                 flex: 1,
-                                padding: "8px 12px",
+                                padding: "10px 14px",
                                 background: "#10b981",
                                 color: "#fff",
                                 borderRadius: "8px",
                                 fontSize: "13px",
                                 fontWeight: 600,
-                                textAlign: "center",
-                                textDecoration: "none",
+                                border: "none",
+                                cursor: "pointer",
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
                                 gap: "6px",
                               }}
                             >
-                              <FaCheckCircle /> Session Active (View)
-                            </Link>
+                              <FaCheckCircle /> Session Active (View QR)
+                            </button>
                           </div>
+                        ) : isCompleted ? (
+                          <button
+                            type="button"
+                            disabled
+                            style={{
+                              width: "100%",
+                              padding: "10px 14px",
+                              background: "#e2e8f0",
+                              color: "#64748b",
+                              border: "none",
+                              borderRadius: "8px",
+                              fontSize: "13px",
+                              fontWeight: 600,
+                              cursor: "not-allowed",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "8px",
+                            }}
+                          >
+                            Period Concluded
+                          </button>
+                        ) : isUpcoming ? (
+                          <button
+                            type="button"
+                            disabled
+                            style={{
+                              width: "100%",
+                              padding: "10px 14px",
+                              background: "#f1f5f9",
+                              color: "#64748b",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "8px",
+                              fontSize: "13px",
+                              fontWeight: 600,
+                              cursor: "not-allowed",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "8px",
+                            }}
+                          >
+                            <FaClock /> Opens at {slot.start_time.slice(0, 5)}
+                          </button>
                         ) : (
                           <button
                             type="button"
@@ -349,10 +477,37 @@ const Dashboard = () => {
               >
                 <FaCalendarAlt style={{ fontSize: "32px", color: "#94a3b8", marginBottom: "8px" }} />
                 <h4 style={{ margin: "0 0 4px 0", color: "#334155" }}>
-                  No Lecture Slots Scheduled for {todaySchedule.day || "Today"}
+                  {todaySchedule.completed_count > 0 && !showCompleted
+                    ? "All Scheduled Periods For Today Have Completed"
+                    : `No Lecture Slots Scheduled for ${todaySchedule.day || "Today"}`}
                 </h4>
                 <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                  You do not have any teaching lectures assigned for this day. You can review attendance or examine student performance.
+                  {todaySchedule.completed_count > 0 && !showCompleted ? (
+                    <>
+                      All {todaySchedule.completed_count} earlier lecture period(s) have concluded and vanished on time.
+                      <br />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCompleted(true);
+                          fetchSchedule(selectedDayOverride || null, true);
+                        }}
+                        style={{
+                          marginTop: "10px",
+                          background: "none",
+                          border: "none",
+                          color: "#2563eb",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                          textDecoration: "underline",
+                        }}
+                      >
+                        Show concluded periods for today
+                      </button>
+                    </>
+                  ) : (
+                    "You do not have any teaching lectures assigned for this day. You can review attendance or examine student performance."
+                  )}
                 </p>
               </div>
             )}
@@ -559,11 +714,23 @@ const Dashboard = () => {
               style={{
                 fontSize: "14px",
                 fontWeight: 600,
-                color: timeRemaining < 30 ? "#ef4444" : "#2563eb",
+                color: timeRemaining <= 0 ? "#ef4444" : timeRemaining < 60 ? "#f97316" : "#2563eb",
                 marginBottom: "16px",
               }}
             >
-              Expires in: <strong>{timeRemaining} seconds</strong>
+              {timeRemaining <= 0 ? (
+                <div style={{ color: "#ef4444", fontWeight: 700 }}>
+                  ● Period Concluded • QR Session Closed & Vanished
+                </div>
+              ) : (
+                <>
+                  Closes at {activeSessionModal.end_time || "Period End"} (
+                  <strong>
+                    {Math.floor(timeRemaining / 60)}m {timeRemaining % 60}s remaining
+                  </strong>
+                  )
+                </>
+              )}
             </div>
 
             {/* Action buttons */}

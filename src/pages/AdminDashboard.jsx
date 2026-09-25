@@ -2814,6 +2814,37 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
+                {/* Standard Period Time Slot Selector */}
+                <div style={{ marginBottom: "12px", background: "#f8fafc", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "4px" }}>
+                    Select Standard Period / Time Slot Preset
+                  </label>
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      const [st, et] = val.split("|");
+                      if (st && et) {
+                        setTimetableFormData((prev) => ({
+                          ...prev,
+                          start_time: st,
+                          end_time: et,
+                        }));
+                      }
+                    }}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", background: "#fff" }}
+                  >
+                    <option value="">-- Choose Standard Time Slot Preset --</option>
+                    <option value="09:00:00|10:00:00">Period 1: 09:00 AM - 10:00 AM (Morning)</option>
+                    <option value="10:00:00|11:00:00">Period 2: 10:00 AM - 11:00 AM (Morning)</option>
+                    <option value="11:15:00|12:15:00">Period 3: 11:15 AM - 12:15 PM (Morning)</option>
+                    <option value="12:15:00|13:15:00">Period 4: 12:15 PM - 01:15 PM (Afternoon)</option>
+                    <option value="14:00:00|15:00:00">Period 5: 02:00 PM - 03:00 PM (Afternoon)</option>
+                    <option value="15:00:00|16:00:00">Period 6: 03:00 PM - 04:00 PM (Afternoon)</option>
+                    <option value="16:00:00|17:00:00">Period 7: 04:00 PM - 05:00 PM (Evening)</option>
+                  </select>
+                </div>
+
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "12px" }}>
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
@@ -2858,6 +2889,26 @@ const AdminDashboard = () => {
                       style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1" }}
                     />
                   </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    fontSize: "12px",
+                    color: "#166534",
+                    marginBottom: "14px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <FaClock />
+                  <span>
+                    QR Attendance opens at <strong>{timetableFormData.start_time.slice(0, 5)}</strong>, auto-closes at <strong>{timetableFormData.end_time.slice(0, 5)}</strong>, and vanishes once completed.
+                  </span>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "10px", marginBottom: "16px" }}>

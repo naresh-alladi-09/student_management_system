@@ -275,7 +275,7 @@ def mark_qr_attendance(request):
         session.is_active = False
         session.save(update_fields=['is_active'])
         return Response(
-            {"detail": "QR code has expired. Please ask the faculty to refresh the code."},
+            {"detail": "This lecture period has ended. QR attendance is closed."},
             status=status.HTTP_400_BAD_REQUEST
         )
 
