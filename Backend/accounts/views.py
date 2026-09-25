@@ -1,5 +1,5 @@
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
@@ -16,6 +16,7 @@ from students.models import Student
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def login_view(request):
     """
@@ -35,21 +36,88 @@ def login_view(request):
     # 1. Try direct username authentication
     user = authenticate(username=raw_ident, password=password)
 
-    # 2. If direct auth failed and input looks like an email or roll_no, resolve User
+    # 2. If direct auth failed, resolve User by username, email, or Student (student_id / roll_no / email)
     if user is None:
-        user_obj = User.objects.filter(email__iexact=raw_ident).first()
+        user_obj = User.objects.filter(username__iexact=raw_ident).first()
         if not user_obj:
-            # Check student by roll_no or email or phone
+            user_obj = User.objects.filter(email__iexact=raw_ident).first()
+
+        student = None
+        if not user_obj:
+            # Check student by direct match
             student = (
+                Student.objects.filter(student_id__iexact=raw_ident).first() or
                 Student.objects.filter(roll_no__iexact=raw_ident).first() or
                 Student.objects.filter(email__iexact=raw_ident).first() or
                 Student.objects.filter(phone=raw_ident).first()
             )
-            if student and hasattr(student, 'user_profile'):
-                user_obj = student.user_profile.user
+            # If not matched directly, check normalized format (e.g., STU2024001 matching STU-2024-001 or STU20240001)
+            if not student:
+                clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+                for s in Student.objects.all():
+                    s_roll_clean = (s.roll_no or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+                    s_id_clean = (s.student_id or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+                    if clean_ident in (s_roll_clean, s_id_clean) or s_roll_clean == clean_ident or s_id_clean == clean_ident:
+                        student = s
+                        break
+
+            if student:
+                if hasattr(student, 'user_profile') and student.user_profile and student.user_profile.user:
+                    user_obj = student.user_profile.user
+                else:
+                    # Provision user on the fly if missing
+                    ident = (student.student_id or student.roll_no or f"STU{student.id}").strip()
+                    user_obj, _ = User.objects.get_or_create(
+                        username=ident,
+                        defaults={"email": student.email or '', "first_name": student.name or ''}
+                    )
+                    user_obj.set_password(ident)
+                    user_obj.save()
+                    UserProfile.objects.update_or_create(
+                        user=user_obj,
+                        defaults={
+                            "role": "student",
+                            "student": student,
+                            "phone": (student.phone or '')[:30],
+                            "department": student.department or ''
+                        }
+                    )
+        else:
+            if hasattr(user_obj, 'profile') and user_obj.profile.student:
+                student = user_obj.profile.student
 
         if user_obj:
+            # First try standard authentication
             user = authenticate(username=user_obj.username, password=password)
+
+            # If user is a student, check if password matches their studentid from backend
+            if not user and student:
+                clean_pass = password.replace('-', '').replace('_', '').replace(' ', '').upper()
+                s_roll_clean = (student.roll_no or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+                s_id_clean = (student.student_id or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+
+                valid_passwords = [
+                    (student.student_id or '').strip(),
+                    (student.student_id or '').strip().upper(),
+                    (student.student_id or '').strip().lower(),
+                    (student.roll_no or '').strip(),
+                    (student.roll_no or '').strip().upper(),
+                    (student.roll_no or '').strip().lower(),
+                    s_roll_clean,
+                    s_id_clean,
+                ]
+                valid_passwords = [p for p in valid_passwords if p]
+                if (
+                    password in valid_passwords or
+                    clean_pass in (s_roll_clean, s_id_clean) or
+                    password.upper() in valid_passwords or
+                    password.lower() in valid_passwords
+                ):
+                    # Password matches studentid in backend! Sync password on user
+                    user_obj.set_password(student.student_id or password)
+                    user_obj.save()
+                    user = user_obj
+
 
     if not user:
         return Response(
@@ -238,13 +306,9 @@ def manage_users_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Enforce Django password validators
-        temp_user = User(username=username, email=email)
-        try:
-            validate_password(password, user=temp_user)
-        except ValidationError as e:
+        if len(password) < 4:
             return Response(
-                {"detail": "Password does not meet security requirements: " + "; ".join(e.messages)},
+                {"detail": "Password must be at least 4 characters long."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

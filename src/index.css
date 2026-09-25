@@ -23,3 +23,18 @@ body {
 button, input, select, textarea {
   font-family: inherit;
 }
+
+select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+::selection {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background-color: #2563eb;
+  color: #ffffff;
+}

@@ -46,6 +46,10 @@
   background: linear-gradient(135deg, #065f46 0%, #0f172a 100%);
 }
 
+.login-left.admin-mode {
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+}
+
 .login-branding {
   display: flex;
   flex-direction: column;
@@ -60,6 +64,10 @@
 
 .student-mode .login-hero-icon {
   color: #34d399;
+}
+
+.admin-mode .login-hero-icon {
+  color: #818cf8;
 }
 
 .login-branding h2 {
@@ -188,6 +196,12 @@
   box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
 }
 
+.role-tab-btn.active.admin {
+  background: #1e1b4b;
+  color: white;
+  box-shadow: 0 4px 12px rgba(30, 27, 75, 0.25);
+}
+
 .form-header-badge {
   display: inline-flex;
   align-items: center;
@@ -210,6 +224,11 @@
 .form-header-badge.student {
   background: #d1fae5;
   color: #047857;
+}
+
+.form-header-badge.admin {
+  background: #ede9fe;
+  color: #5b21b6;
 }
 
 .login-form h2 {
@@ -287,6 +306,11 @@
   box-shadow: 0 0 0 3.5px rgba(5, 150, 105, 0.12);
 }
 
+.admin-focus:focus-within {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3.5px rgba(79, 70, 229, 0.15);
+}
+
 .login-field-icon {
   color: #94a3b8;
   font-size: 16px;
@@ -357,6 +381,13 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.login-submit-btn:hover {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  transform: translateY(-1px);
 }
 
 .login-submit-btn.teacher-btn {
@@ -376,6 +407,16 @@
 
 .login-submit-btn.student-btn:hover {
   background: linear-gradient(135deg, #047857, #065f46);
+  transform: translateY(-1px);
+}
+
+.login-submit-btn.admin-btn {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  box-shadow: 0 4px 14px rgba(30, 27, 75, 0.35);
+}
+
+.login-submit-btn.admin-btn:hover {
+  background: linear-gradient(135deg, #0f172a, #1e1b4b);
   transform: translateY(-1px);
 }
 

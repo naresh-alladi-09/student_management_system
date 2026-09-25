@@ -111,13 +111,36 @@ const Students = () => {
     e.preventDefault();
     if (!editingStudent) return;
 
+    const trimmedName = editFormData.name.trim();
+    const trimmedEmail = editFormData.email.trim().toLowerCase();
+    const trimmedPhone = editFormData.phone.trim();
+
+    if (!trimmedName || /\d/.test(trimmedName) || !/^[a-zA-Z\s.'-]+$/.test(trimmedName)) {
+      setErrorMessage("Student name must contain only letters and cannot contain numbers.");
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
+      setErrorMessage("Please enter a valid email address (e.g. student@college.edu).");
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+
+    if (!trimmedPhone || !/^\d{10,15}$/.test(trimmedPhone)) {
+      setErrorMessage("Phone number must contain between 10 and 15 numeric digits.");
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+
     try {
       setSavingEdit(true);
       const payload = {
-        name: editFormData.name.trim(),
+        name: trimmedName,
         year: parseInt(editFormData.year, 10) || 1,
-        email: editFormData.email.trim(),
-        phone: editFormData.phone.trim(),
+        email: trimmedEmail,
+        phone: trimmedPhone,
         branch: editFormData.branch,
         semester: String(editFormData.semester),
         roll_no: editFormData.roll_no.trim() || undefined,
@@ -132,6 +155,8 @@ const Students = () => {
       console.error("Update error:", error.response?.data || error);
       const detail = error.response?.data?.email?.[0] ||
                      error.response?.data?.roll_no?.[0] ||
+                     error.response?.data?.phone?.[0] ||
+                     error.response?.data?.name?.[0] ||
                      error.response?.data?.detail ||
                      "Failed to update student. Please check inputs.";
       setErrorMessage(detail);
@@ -394,15 +419,18 @@ const Students = () => {
                 <form onSubmit={handleSaveEdit} className="modal-form">
                   <div className="modal-form-grid">
                     <div className="form-group">
-                      <label htmlFor="edit-name">Full Name *</label>
+                      <label htmlFor="edit-name">Full Name * (Letters only)</label>
                       <input
                         id="edit-name"
                         type="text"
                         value={editFormData.name}
                         required
-                        onChange={(e) =>
-                          setEditFormData({ ...editFormData, name: e.target.value })
-                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!/[0-9]/.test(val)) {
+                            setEditFormData({ ...editFormData, name: val });
+                          }
+                        }}
                       />
                     </div>
 
@@ -498,15 +526,19 @@ const Students = () => {
                     </div>
 
                     <div className="form-group">
-                      <label htmlFor="edit-phone">Phone Number *</label>
+                      <label htmlFor="edit-phone">Phone Number * (Numbers only, 10-15 digits)</label>
                       <input
                         id="edit-phone"
                         type="tel"
+                        inputMode="numeric"
                         value={editFormData.phone}
                         required
-                        onChange={(e) =>
-                          setEditFormData({ ...editFormData, phone: e.target.value })
-                        }
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, "");
+                          if (digits.length <= 15) {
+                            setEditFormData({ ...editFormData, phone: digits });
+                          }
+                        }}
                       />
                     </div>
                   </div>

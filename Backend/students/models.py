@@ -204,27 +204,46 @@ class Student(models.Model):
             import logging
             from django.contrib.auth.models import User
             from accounts.models import UserProfile
-            uname = self.roll_no.lower().replace("-", "_")
-            user, created = User.objects.get_or_create(
-                username=uname,
-                defaults={"email": self.email, "first_name": self.name}
-            )
-            if created or not user.has_usable_password():
-                default_pw = os.environ.get('STUDENT_DEFAULT_PASSWORD', 'student123')
-                user.set_password(default_pw)
-                user.save()
-            user.is_active = self.is_active
-            user.save(update_fields=['is_active'])
 
-            UserProfile.objects.update_or_create(
-                user=user,
-                defaults={
-                    "role": "student",
-                    "student": self,
-                    "phone": self.phone,
-                    "department": self.department
-                }
-            )
+            # Student ID is the primary login credential for students (both username & password from backend)
+            student_ident = (self.student_id or self.roll_no or f"STU{self.id}").strip()
+            user = None
+
+            # 1. If this student already has a linked user profile, update that user
+            if hasattr(self, 'user_profile') and self.user_profile and self.user_profile.user:
+                user = self.user_profile.user
+                if user.username.lower() != student_ident.lower():
+                    existing = User.objects.filter(username__iexact=student_ident).exclude(pk=user.pk).first()
+                    if not existing:
+                        user.username = student_ident
+            else:
+                # 2. Check if user with username == student_ident already exists
+                user = User.objects.filter(username__iexact=student_ident).first()
+                if not user:
+                    user = User.objects.create(
+                        username=student_ident,
+                        email=self.email or '',
+                        first_name=self.name or ''
+                    )
+
+            if user:
+                user.first_name = self.name or user.first_name
+                if self.email:
+                    user.email = self.email
+                user.is_active = self.is_active
+                # Ensure the student password in backend is their studentid
+                user.set_password(student_ident)
+                user.save()
+
+                UserProfile.objects.update_or_create(
+                    user=user,
+                    defaults={
+                        "role": "student",
+                        "student": self,
+                        "phone": (self.phone or '')[:30],
+                        "department": self.department or ''
+                    }
+                )
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Could not provision user account for student '{self.roll_no}': {e}")

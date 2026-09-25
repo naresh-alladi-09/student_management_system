@@ -52,15 +52,15 @@ const Navbar = () => {
           />
         </div>
 
-        <div className="nav-profile-badge">
+        <div className={`nav-profile-badge ${isAdmin ? "admin-badge" : "teacher-badge"}`}>
           {isAdmin ? (
-            <FaUserShield size={22} color="#059669" />
+            <FaUserShield size={22} color="#7c3aed" />
           ) : (
-            <FaUserCircle size={22} color="#3b82f6" />
+            <FaUserCircle size={22} color="#2563eb" />
           )}
           <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
-            <span className="teacher-name">{userDisplayName}</span>
-            <span style={{ fontSize: "10px", color: isAdmin ? "#059669" : "#64748b", fontWeight: 700 }}>
+            <span className={`teacher-name ${isAdmin ? "admin-name" : ""}`}>{userDisplayName}</span>
+            <span style={{ fontSize: "10px", color: isAdmin ? "#7c3aed" : "#64748b", fontWeight: 700 }}>
               {userRole}
             </span>
           </div>

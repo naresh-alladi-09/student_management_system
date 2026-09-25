@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getMyNotifications, markNotificationAsRead } from "../services/studentservice";
 import "../styles/navbar.css";
+import "../styles/studentdashboard.css";
 
 const StudentNavbar = ({ activeTab, setActiveTab }) => {
   const navigate = useNavigate();
@@ -132,9 +133,9 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
             className="nav-notification-btn"
             style={{
               position: "relative",
-              background: "rgba(255,255,255,0.12)",
-              border: "none",
-              color: "#fff",
+              background: "#ecfdf5",
+              border: "1px solid #a7f3d0",
+              color: "#047857",
               padding: "8px 12px",
               borderRadius: "8px",
               cursor: "pointer",

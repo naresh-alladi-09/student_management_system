@@ -31,6 +31,13 @@ export const AuthProvider = ({ children }) => {
     const trimmedPass = (password || "").trim();
 
     try {
+      // Clear any prior stale session token before attempting new authentication
+      try {
+        localStorage.removeItem("sms_auth_user");
+      } catch {
+        // ignore
+      }
+
       setLoading(true);
       const res = await loginApi({
         identifier: trimmedId,

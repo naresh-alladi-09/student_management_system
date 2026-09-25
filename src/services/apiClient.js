@@ -28,9 +28,18 @@ const apiClient = axios.create({
   },
 });
 
-// Attach Auth Token to every request if available
+// Attach Auth Token to every request if available, EXCEPT for login / public endpoints
 apiClient.interceptors.request.use(
   (config) => {
+    const url = config.url || "";
+    // Never send an old/stale token on login or health endpoints
+    if (url.includes("/auth/login") || url.includes("/health")) {
+      if (config.headers && config.headers.Authorization) {
+        delete config.headers.Authorization;
+      }
+      return config;
+    }
+
     try {
       const stored = localStorage.getItem("sms_auth_user");
       if (stored) {
@@ -46,6 +55,25 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
+// Response interceptor: automatically wipe invalid/stale tokens on 401
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      const detail = String(error.response.data?.detail || "").toLowerCase();
+      if (detail.includes("invalid token") || detail.includes("token")) {
+        try {
+          localStorage.removeItem("sms_auth_user");
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 
 // Diagnostic helper to ping backend status and health
 export const pingBackend = async () => {

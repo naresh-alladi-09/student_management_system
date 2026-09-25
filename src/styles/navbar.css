@@ -60,12 +60,22 @@
   background: #eff6ff;
   padding: 6px 12px;
   border-radius: 20px;
+  border: 1px solid #dbeafe;
+}
+
+.nav-profile-badge.admin-badge {
+  background: #ede9fe;
+  border-color: #ddd6fe;
 }
 
 .teacher-name {
   font-size: 13px;
   font-weight: 600;
   color: #1e40af;
+}
+
+.teacher-name.admin-name {
+  color: #5b21b6;
 }
 
 .nav-logout-btn {

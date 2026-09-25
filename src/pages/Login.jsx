@@ -8,7 +8,6 @@ import {
   FaChalkboardTeacher,
   FaUserShield,
   FaIdCard,
-  FaBolt,
   FaCheckCircle,
   FaExclamationCircle,
   FaExclamationTriangle,
@@ -53,20 +52,6 @@ const Login = ({ initialRole }) => {
     setUsername("");
     setPassword("");
     navigate(`/login/${newRole}`, { replace: true });
-  };
-
-  const handleAutofillDemo = () => {
-    setError("");
-    if (activeRole === "admin") {
-      setUsername("admin");
-      setPassword("admin");
-    } else if (activeRole === "teacher") {
-      setUsername("madam");
-      setPassword("123456");
-    } else {
-      setUsername("STU-2024-001");
-      setPassword("student123");
-    }
   };
 
   const handleTestBackend = async () => {
@@ -199,29 +184,10 @@ const Login = ({ initialRole }) => {
             </ul>
           </div>
 
-          <div className="login-demo-pill">
-            <small>
-              {isAdminMode
-                ? "Admin Demo Credentials"
-                : isStudentMode
-                ? "Student Demo Credentials"
-                : "Faculty Demo Credentials"}
-            </small>
-            <span>
-              {isAdminMode ? (
-                <>
-                  User: <code>admin</code> | Pass: <code>admin</code>
-                </>
-              ) : isStudentMode ? (
-                <>
-                  Roll No: <code>STU-2024-001</code> | Pass: <code>student123</code>
-                </>
-              ) : (
-                <>
-                  User: <code>madam</code> | Pass: <code>123456</code>
-                </>
-              )}
-            </span>
+          <div style={{ marginTop: "auto", paddingTop: "24px", opacity: 0.8, fontSize: "12px", color: "#cbd5e1" }}>
+            {isAdminMode && "Authorized institutional administrators only."}
+            {isStudentMode && "Students must use their Student ID (studentid) from the backend to sign in."}
+            {!isAdminMode && !isStudentMode && "Faculty must sign in with profiles provisioned by the Administrator."}
           </div>
         </div>
 
@@ -245,8 +211,7 @@ const Login = ({ initialRole }) => {
             </button>
             <button
               type="button"
-              className={`role-tab-btn ${activeRole === "admin" ? "active" : ""}`}
-              style={activeRole === "admin" ? { background: "#0f172a", color: "#fff", borderColor: "#0f172a" } : {}}
+              className={`role-tab-btn ${activeRole === "admin" ? "active admin" : ""}`}
               onClick={() => switchRole("admin")}
             >
               <FaUserShield /> Admin
@@ -254,7 +219,7 @@ const Login = ({ initialRole }) => {
           </div>
 
           <span
-            className={`form-header-badge ${isStudentMode ? "student" : "teacher"}`}
+            className={`form-header-badge ${isAdminMode ? "admin" : isStudentMode ? "student" : "teacher"}`}
           >
             {isAdminMode ? "Admin Console" : isStudentMode ? "Student Portal" : "Faculty Portal"}
           </span>
@@ -270,8 +235,8 @@ const Login = ({ initialRole }) => {
             {isAdminMode
               ? "Sign in with institutional administrative privileges"
               : isStudentMode
-              ? "Sign in using your Roll Number or university email"
-              : "Sign in with your faculty department credentials"}
+              ? "Sign in using your Student ID (studentid) and password"
+              : "Sign in with your admin-provisioned faculty credentials"}
           </p>
 
           {error && (
@@ -281,17 +246,27 @@ const Login = ({ initialRole }) => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="login-inner-form">
+          <form onSubmit={handleSubmit} className="login-inner-form" autoComplete="off">
             <div className="field-group">
               <label className="input-label-text">
-                {isStudentMode ? "Roll Number or Student Email" : "Username"}
+                {isAdminMode
+                  ? "Administrator Username"
+                  : isStudentMode
+                  ? "Student ID (or Roll Number / Email)"
+                  : "Faculty Username or Email"}
               </label>
               <div
                 className={`username-cont ${
-                  isStudentMode ? "student-focus" : "teacher-focus"
+                  isAdminMode
+                    ? "admin-focus"
+                    : isStudentMode
+                    ? "student-focus"
+                    : "teacher-focus"
                 }`}
               >
-                {isStudentMode ? (
+                {isAdminMode ? (
+                  <FaUserShield className="login-field-icon" />
+                ) : isStudentMode ? (
                   <FaIdCard className="login-field-icon" />
                 ) : (
                   <FaUser className="login-field-icon" />
@@ -300,13 +275,14 @@ const Login = ({ initialRole }) => {
                   type="text"
                   placeholder={
                     isAdminMode
-                      ? "Enter admin username (admin)"
+                      ? "Enter admin username"
                       : isStudentMode
-                      ? "Enter Roll No (e.g. STU-2024-001)"
-                      : "Enter faculty username (e.g. madam)"
+                      ? "Enter Student ID (e.g. STU20240001)"
+                      : "Enter faculty username or email"
                   }
                   value={username}
                   required
+                  autoComplete="off"
                   onChange={(e) => {
                     setUsername(e.target.value);
                     setError("");
@@ -319,15 +295,26 @@ const Login = ({ initialRole }) => {
               <label className="input-label-text">Password</label>
               <div
                 className={`password-cont ${
-                  isStudentMode ? "student-focus" : "teacher-focus"
+                  isAdminMode
+                    ? "admin-focus"
+                    : isStudentMode
+                    ? "student-focus"
+                    : "teacher-focus"
                 }`}
               >
                 <FaLock className="login-field-icon" />
                 <input
                   type="password"
-                  placeholder="Enter your password"
+                  placeholder={
+                    isAdminMode
+                      ? "Enter admin password"
+                      : isStudentMode
+                      ? "Enter your Student ID as password"
+                      : "Enter faculty password"
+                  }
                   value={password}
                   required
+                  autoComplete="new-password"
                   onChange={(e) => {
                     setPassword(e.target.value);
                     setError("");
@@ -340,13 +327,6 @@ const Login = ({ initialRole }) => {
               <label className="remember-me-label">
                 <input type="checkbox" defaultChecked /> Remember session
               </label>
-              <button
-                type="button"
-                className="autofill-demo-btn"
-                onClick={handleAutofillDemo}
-              >
-                <FaBolt /> Auto-Fill Demo
-              </button>
             </div>
 
             {wakeUpNotice && (
@@ -358,7 +338,13 @@ const Login = ({ initialRole }) => {
 
             <button
               type="submit"
-              className={`login-submit-btn ${isStudentMode ? "student-btn" : ""}`}
+              className={`login-submit-btn ${
+                isAdminMode
+                  ? "admin-btn"
+                  : isStudentMode
+                  ? "student-btn"
+                  : "teacher-btn"
+              }`}
               disabled={isSubmitting}
             >
               {isSubmitting ? (

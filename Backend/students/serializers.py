@@ -1,3 +1,4 @@
+import re
 from rest_framework import serializers
 from .models import Department, Branch, AcademicClass, FacultyAssignment, Student
 
@@ -91,14 +92,42 @@ class StudentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'student_id', 'created_at', 'updated_at']
 
+    def validate_name(self, value):
+        val = (value or '').strip()
+        if not val:
+            raise serializers.ValidationError("Student full name is required.")
+        if val.isdigit() or re.match(r'^\d+$', val):
+            raise serializers.ValidationError("Student name must contain letters and cannot be numeric.")
+        if not re.search(r'[a-zA-Z]', val):
+            raise serializers.ValidationError("Student name must contain valid alphabetic characters.")
+        if not re.match(r"^[a-zA-Z\s.'-]+$", val):
+            raise serializers.ValidationError("Student name can only contain letters, spaces, hyphens, and periods.")
+        return val
+
+    def validate_phone(self, value):
+        val = str(value or '').strip()
+        digits = re.sub(r'[\s\-+()]', '', val)
+        if not digits.isdigit():
+            raise serializers.ValidationError("Phone number must contain only numeric digits (no letters or symbols).")
+        if len(digits) < 10 or len(digits) > 15:
+            raise serializers.ValidationError("Phone number must be between 10 and 15 digits.")
+        return digits
+
     def validate_email(self, value):
+        val = (value or '').strip().lower()
+        if not val:
+            raise serializers.ValidationError("Email address is required.")
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, val):
+            raise serializers.ValidationError("Please enter a valid email address (e.g. student@college.edu).")
+
         instance = self.instance
-        qs = Student.objects.filter(email__iexact=value)
+        qs = Student.objects.filter(email__iexact=val)
         if instance:
             qs = qs.exclude(pk=instance.pk)
         if qs.exists():
             raise serializers.ValidationError("A student with this email address already exists.")
-        return value.lower()
+        return val
 
     def validate_roll_no(self, value):
         if value:
@@ -112,5 +141,14 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def validate_year(self, value):
         if value < 1 or value > 5:
-            raise serializers.ValidationError("Academic year must be between 1 and 5.")
+            raise serializers.ValidationError("Academic year must be between 1 and 4.")
         return value
+
+    def validate_semester(self, value):
+        try:
+            sem_int = int(str(value).strip())
+            if sem_int < 1 or sem_int > 8:
+                raise serializers.ValidationError("Semester must be between 1 and 8.")
+            return str(sem_int)
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Semester must be a valid number between 1 and 8.")
