@@ -9,6 +9,7 @@ from .views import (
     get_active_session,
     refresh_session_token,
     close_attendance_session,
+    get_session_attendees,
     mark_qr_attendance,
 )
 
@@ -24,5 +25,6 @@ urlpatterns = [
     path('sessions/active/', get_active_session, name='get_active_session'),
     path('sessions/<int:session_id>/refresh/', refresh_session_token, name='refresh_session_token'),
     path('sessions/<int:session_id>/close/', close_attendance_session, name='close_attendance_session'),
+    path('sessions/<int:session_id>/attendees/', get_session_attendees, name='get_session_attendees'),
     path('mark-qr/', mark_qr_attendance, name='mark_qr_attendance'),
 ]

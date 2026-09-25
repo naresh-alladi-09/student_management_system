@@ -1,5 +1,6 @@
 import math
 from datetime import date, timedelta
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count, Q
@@ -98,34 +99,117 @@ def create_attendance_session(request):
     }, status=status.HTTP_201_CREATED)
 
 
+def finalize_session_attendance(session):
+    """
+    Ensure all enrolled students for this session's class/cohort have an AttendanceRecord
+    in the database. Those who marked QR are already 'Present'. Remaining enrolled students
+    are saved as 'Absent'.
+    """
+    if not session:
+        return
+    try:
+        if session.academic_class:
+            students = Student.objects.filter(academic_class=session.academic_class, is_active=True)
+            if not students.exists():
+                ac = session.academic_class
+                students = Student.objects.filter(
+                    branch__iexact=ac.branch.code,
+                    year=ac.year,
+                    semester=str(ac.semester),
+                    is_active=True
+                )
+                if ac.section and ac.section.upper() != 'ALL':
+                    students = students.filter(section__iexact=ac.section)
+        elif session.subject and session.subject.branch:
+            students = Student.objects.filter(branch__iexact=session.subject.branch, is_active=True)
+        else:
+            students = Student.objects.filter(is_active=True)
+
+        existing_student_ids = set(
+            AttendanceRecord.objects.filter(session=session).values_list('student_id', flat=True)
+        )
+
+        absent_records = []
+        for s in students:
+            if s.id not in existing_student_ids:
+                absent_records.append(
+                    AttendanceRecord(
+                        student=s,
+                        session=session,
+                        subject=session.subject,
+                        date=session.date,
+                        status='Absent',
+                        marked_via='System',
+                        remarks='Absent - QR session completed'
+                    )
+                )
+        if absent_records:
+            AttendanceRecord.objects.bulk_create(absent_records, ignore_conflicts=True)
+    except Exception as e:
+        print(f"Error finalizing attendance: {e}")
+
+
 @api_view(['GET'])
 @permission_classes([IsTeacherOrAdmin])
 def get_active_session(request):
     """
     Returns the most recent active session for the logged-in teacher,
     along with attendees and live stats.
+    If the session recently expired, it will continue to appear for 10 minutes
+    showing all students who are marked Present.
     """
+    now_local = timezone.localtime()
+    today_date = now_local.date()
+
+    # 1. Check for live active session today
     session = AttendanceSession.objects.filter(
         teacher=request.user,
         is_active=True,
-        date=date.today()
+        date=today_date
     ).order_by('-created_at').first()
 
-    if not session:
+    is_live = False
+    target_session = None
+
+    if session:
+        if not session.is_expired():
+            is_live = True
+            target_session = session
+        else:
+            session.is_active = False
+            session.save(update_fields=['is_active'])
+            finalize_session_attendance(session)
+            # Check if within 10-minute post-session review window
+            if now_local <= session.expires_at + timedelta(minutes=10):
+                target_session = session
+                is_live = False
+
+    # 2. If no active session, look for the most recent session conducted today that completed within the last 10 minutes
+    if not target_session:
+        ten_mins_ago = now_local - timedelta(minutes=10)
+        recent = AttendanceSession.objects.filter(
+            teacher=request.user,
+            date=today_date,
+            expires_at__gte=ten_mins_ago,
+            expires_at__lte=now_local
+        ).order_by('-expires_at').first()
+
+        if recent:
+            target_session = recent
+            is_live = False
+
+    if not target_session:
         return Response({"active": False, "session": None}, status=status.HTTP_200_OK)
 
-    # Check if expired
-    if session.is_expired():
-        session.is_active = False
-        session.save(update_fields=['is_active'])
-        return Response({
-            "active": False,
-            "session": None,
-            "detail": "Session expired."
-        }, status=status.HTTP_200_OK)
+    review_expires_at = target_session.expires_at + timedelta(minutes=10)
+    review_remaining_seconds = max(0, int((review_expires_at - now_local).total_seconds()))
 
-    serializer = AttendanceSessionSerializer(session)
-    records = AttendanceRecord.objects.filter(session=session).select_related('student')
+    serializer = AttendanceSessionSerializer(target_session)
+    present_records = AttendanceRecord.objects.filter(
+        session=target_session,
+        status='Present'
+    ).select_related('student').order_by('marked_at')
+
     attendees = [
         {
             "student_id": r.student.id,
@@ -135,13 +219,13 @@ def get_active_session(request):
             "status": r.status,
             "marked_at": r.marked_at.isoformat(),
         }
-        for r in records
+        for r in present_records
     ]
 
-    if session.academic_class:
-        total_enrolled = Student.objects.filter(academic_class=session.academic_class, is_active=True).count()
+    if target_session.academic_class:
+        total_enrolled = Student.objects.filter(academic_class=target_session.academic_class, is_active=True).count()
     else:
-        total_enrolled = Student.objects.filter(branch__iexact=session.subject.branch, is_active=True).count()
+        total_enrolled = Student.objects.filter(branch__iexact=target_session.subject.branch, is_active=True).count()
     if total_enrolled == 0:
         total_enrolled = Student.objects.filter(is_active=True).count()
 
@@ -150,7 +234,11 @@ def get_active_session(request):
     rate = round((present_count / total_enrolled * 100), 1) if total_enrolled > 0 else 0.0
 
     return Response({
-        "active": True,
+        "active": is_live,
+        "is_completed": not is_live,
+        "show_present_for_10_mins": True,
+        "review_remaining_seconds": review_remaining_seconds if not is_live else None,
+        "review_expires_at": review_expires_at.isoformat() if not is_live else None,
         "session": serializer.data,
         "total_enrolled": total_enrolled,
         "present_count": present_count,
@@ -186,6 +274,7 @@ def refresh_session_token(request, session_id):
 def close_attendance_session(request, session_id):
     """
     Teacher closes an active attendance session.
+    Permanently stores all attendance records in database.
     """
     try:
         session = AttendanceSession.objects.get(id=session_id, teacher=request.user)
@@ -193,20 +282,90 @@ def close_attendance_session(request, session_id):
         return Response({"detail": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
 
     session.close()
+    finalize_session_attendance(session)
 
     AuditLog.log(
         action='ATTENDANCE_SESSION_CLOSE',
         entity='AttendanceSession',
         entity_id=str(session.id),
-        description=f"Faculty '{request.user.username}' closed attendance session #{session.id} for {session.subject.code} (Section {session.section or 'All'}).",
+        description=f"Faculty '{request.user.username}' closed attendance session #{session.id} for {session.subject.code} (Section {session.section or 'All'}). Records saved to database.",
         user=request.user,
         request=request
     )
 
     return Response({
-        "message": "Attendance session closed successfully.",
+        "message": "Attendance session closed and stored in database successfully.",
         "session_id": session.id,
-        "is_active": False
+        "is_active": False,
+        "show_present_for_10_mins": True
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsTeacherOrAdmin])
+def get_session_attendees(request, session_id):
+    """
+    Get full list of students marked Present (stored in database) for a specific session.
+    Provides 10-minute review window metadata if session recently concluded.
+    """
+    session = get_object_or_404(AttendanceSession, pk=session_id)
+
+    # Permission check: must be assigned teacher or admin
+    is_admin = request.user.is_staff or getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
+    if not is_admin and session.teacher != request.user:
+        return Response(
+            {'detail': 'You can only view attendance for sessions conducted by you.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    now_local = timezone.localtime()
+    review_expires_at = session.expires_at + timedelta(minutes=10)
+    is_within_10_mins = (now_local <= review_expires_at)
+    review_remaining_seconds = max(0, int((review_expires_at - now_local).total_seconds())) if is_within_10_mins else 0
+
+    present_records = AttendanceRecord.objects.filter(
+        session=session,
+        status='Present'
+    ).select_related('student').order_by('marked_at')
+
+    attendees = [
+        {
+            "student_id": r.student.id,
+            "name": r.student.name,
+            "roll_no": r.student.roll_no,
+            "branch": r.student.branch,
+            "status": r.status,
+            "marked_at": r.marked_at.isoformat(),
+        }
+        for r in present_records
+    ]
+
+    if session.academic_class:
+        total_enrolled = Student.objects.filter(academic_class=session.academic_class, is_active=True).count()
+    else:
+        total_enrolled = Student.objects.filter(branch__iexact=session.subject.branch, is_active=True).count()
+    if total_enrolled == 0:
+        total_enrolled = Student.objects.filter(is_active=True).count()
+
+    present_count = len(attendees)
+    absent_count = max(0, total_enrolled - present_count)
+    rate = round((present_count / total_enrolled * 100), 1) if total_enrolled > 0 else 0.0
+
+    return Response({
+        "session_id": session.id,
+        "subject_name": session.subject.name,
+        "subject_code": session.subject.code,
+        "date": session.date.isoformat(),
+        "is_active": session.is_active,
+        "is_within_10_mins": is_within_10_mins,
+        "review_remaining_seconds": review_remaining_seconds,
+        "review_expires_at": review_expires_at.isoformat(),
+        "stored_in_db": True,
+        "total_enrolled": total_enrolled,
+        "present_count": present_count,
+        "absent_count": absent_count,
+        "attendance_rate": rate,
+        "attendees": attendees,
     }, status=status.HTTP_200_OK)
 
 
@@ -290,7 +449,7 @@ def mark_qr_attendance(request):
             student.branch.upper() == target_class.branch.code.upper() and
             int(student.year) == int(target_class.year) and
             str(student.semester) == str(target_class.semester) and
-            student.section.upper() == target_class.section.upper()
+            (target_class.section.upper() in ['ALL', ''] or student.section.upper() in ['ALL', ''] or student.section.upper() == target_class.section.upper())
         ):
             is_enrolled = True
 

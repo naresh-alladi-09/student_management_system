@@ -122,6 +122,10 @@ export const closeAttendanceSession = (sessionId) => {
   return apiClient.post(`/api/attendance/sessions/${sessionId}/close/`);
 };
 
+export const getSessionAttendees = (sessionId) => {
+  return apiClient.get(`/api/attendance/sessions/${sessionId}/attendees/`);
+};
+
 export const markQrAttendance = (qrToken) => {
   return apiClient.post("/api/attendance/mark-qr/", {
     qr_token: qrToken,

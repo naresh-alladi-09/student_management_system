@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -9,7 +9,8 @@ from django.utils import timezone
 
 from accounts.permissions import IsTeacherOrAdmin, IsAdmin
 from audit.models import AuditLog
-from attendance.models import AttendanceSession
+from attendance.models import AttendanceSession, AttendanceRecord
+from attendance.views import finalize_session_attendance
 from .models import TimetableSlot
 from .serializers import TimetableSlotSerializer
 
@@ -90,11 +91,15 @@ def get_today_timetable(request):
     show_all = request.query_params.get('all', '').lower() in ['true', '1']
 
     # Auto-expire any active attendance sessions today whose expires_at or end_time has passed
-    AttendanceSession.objects.filter(
+    expired_sessions = AttendanceSession.objects.filter(
         date=today_date,
         is_active=True,
         expires_at__lt=now_local
-    ).update(is_active=False)
+    )
+    for exp_s in expired_sessions:
+        exp_s.is_active = False
+        exp_s.save(update_fields=['is_active'])
+        finalize_session_attendance(exp_s)
 
     slots = TimetableSlot.objects.filter(day__iexact=today_day).select_related(
         'subject', 'teacher', 'academic_class'
@@ -157,31 +162,45 @@ def get_today_timetable(request):
             item['is_current_slot'] = False
             item['time_status_label'] = f"{item.get('day')} {start_t.strftime('%I:%M %p')} - {end_t.strftime('%I:%M %p')}"
 
-        # Check for active attendance sessions today for each slot
-        active_session = AttendanceSession.objects.filter(
+        # Check for attendance sessions today for this slot (live or completed within 10-minute window)
+        session_today = AttendanceSession.objects.filter(
             subject_id=item['subject'],
             teacher_id=item['teacher'],
-            date=today_date,
-            is_active=True
-        ).first()
+            date=today_date
+        ).order_by('-created_at').first()
 
-        if active_session and not active_session.is_expired():
-            item['has_active_session'] = True
-            item['active_session_id'] = active_session.id
-            item['active_token'] = active_session.qr_token
-            item['active_expires_at'] = active_session.expires_at
-            item['duration_seconds'] = max(1, int((active_session.expires_at - now_local).total_seconds()))
-        else:
-            item['has_active_session'] = False
-            item['active_session_id'] = None
-            item['active_token'] = None
-            item['active_expires_at'] = None
+        item['has_active_session'] = False
+        item['has_review_session'] = False
+        item['active_session_id'] = None
+        item['active_token'] = None
+        item['active_expires_at'] = None
+        item['present_count'] = 0
+
+        if session_today:
+            ten_min_window = session_today.expires_at + timedelta(minutes=10)
+            if session_today.is_active and not session_today.is_expired():
+                item['has_active_session'] = True
+                item['active_session_id'] = session_today.id
+                item['active_token'] = session_today.qr_token
+                item['active_expires_at'] = session_today.expires_at
+                item['duration_seconds'] = max(1, int((session_today.expires_at - now_local).total_seconds()))
+                item['present_count'] = AttendanceRecord.objects.filter(session=session_today, status='Present').count()
+            elif now_local <= ten_min_window:
+                # 10-minute post-session review window: appears for 10 minutes after QR time completed!
+                item['has_review_session'] = True
+                item['active_session_id'] = session_today.id
+                item['review_remaining_seconds'] = max(0, int((ten_min_window - now_local).total_seconds()))
+                item['present_count'] = AttendanceRecord.objects.filter(session=session_today, status='Present').count()
+                item['status'] = 'review'
+                item['time_status_label'] = f"Completed • {item['present_count']} Present (Appearing for 10m)"
 
         # Vanishing logic:
-        # If it is today and show_all is false, completed periods disappear / vanish!
-        # Morning periods vanish in the afternoon, afternoon periods vanish in the evening.
-        if is_today and not show_all and item['status'] == 'completed':
-            continue
+        # If it is today and show_all is false:
+        # A completed slot vanishes ONLY IF it has no active 10-minute review session!
+        # During the 10 minutes after QR time completes, it appears showing who is Present!
+        if is_today and not show_all:
+            if item['status'] == 'completed' and not item.get('has_review_session'):
+                continue
 
         filtered_slots.append(item)
 
@@ -277,6 +296,7 @@ def start_attendance_from_slot(request, slot_id):
         else:
             active_session.is_active = False
             active_session.save(update_fields=['is_active'])
+            finalize_session_attendance(active_session)
             session = None
     else:
         session = None

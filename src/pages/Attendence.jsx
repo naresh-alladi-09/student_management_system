@@ -153,12 +153,20 @@ function Attendance() {
   const checkActiveQrSession = () => {
     getActiveSession()
       .then((res) => {
-        if (res.data?.active && res.data.session) {
+        if (res.data?.session && (res.data.active || res.data.show_present_for_10_mins)) {
           setActiveSessionData(res.data);
-          const expiresAt = new Date(res.data.session.expires_at).getTime();
-          const now = new Date().getTime();
-          const rem = Math.max(0, Math.floor((expiresAt - now) / 1000));
-          setTimeRemaining(rem);
+          if (res.data.active) {
+            const expiresAt = new Date(res.data.session.expires_at).getTime();
+            const now = new Date().getTime();
+            const rem = Math.max(0, Math.floor((expiresAt - now) / 1000));
+            setTimeRemaining(rem);
+          } else {
+            // Concluded session appearing for 10 minutes
+            const rem = res.data.review_remaining_seconds != null
+              ? res.data.review_remaining_seconds
+              : (res.data.review_expires_at ? Math.max(0, Math.floor((new Date(res.data.review_expires_at).getTime() - Date.now()) / 1000)) : 0);
+            setTimeRemaining(rem);
+          }
         } else {
           setActiveSessionData(null);
           setTimeRemaining(0);
@@ -247,11 +255,15 @@ function Attendance() {
     if (!activeSessionData?.session?.id) return;
     try {
       await closeAttendanceSession(activeSessionData.session.id);
-      setActiveSessionData(null);
-      setTimeRemaining(0);
+      checkActiveQrSession();
     } catch (err) {
       setError("Failed to close session.");
     }
+  };
+
+  const handleDismissSession = () => {
+    setActiveSessionData(null);
+    setTimeRemaining(0);
   };
 
   const handleStatusChange = (studentId, status) => {
@@ -526,6 +538,89 @@ function Attendance() {
                       <FaPlayCircle /> {qrLoading ? "Initializing..." : "Launch QR Attendance Session"}
                     </button>
                   </div>
+                ) : activeSessionData.is_completed || !activeSessionData.active ? (
+                  <div style={{ textAlign: "center" }}>
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "6px 14px",
+                        background: "#ecfdf5",
+                        color: "#059669",
+                        borderRadius: "20px",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        marginBottom: "14px",
+                      }}
+                    >
+                      <FaCheckCircle /> ATTENDANCE COMPLETED & STORED IN DATABASE
+                    </div>
+
+                    <h3 style={{ margin: "0 0 6px 0", color: "#0f172a" }}>
+                      {activeSessionData.session?.subject_details?.name || "Attendance Session"}
+                    </h3>
+                    <p style={{ color: "#64748b", fontSize: "13px", margin: "0 0 16px 0" }}>
+                      {activeSessionData.session?.subject_details?.code} • {activeSessionData.session?.class_display || `Section ${activeSessionData.session?.section || 'A'}`}
+                    </p>
+
+                    {/* 10-Minute Present Review Banner */}
+                    <div
+                      style={{
+                        background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)",
+                        border: "1px solid #a7f3d0",
+                        borderRadius: "14px",
+                        padding: "18px",
+                        marginBottom: "18px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: "13px", fontWeight: 700, color: "#065f46", marginBottom: "4px" }}>
+                        ⏱ Present Students Appearing for 10 Minutes
+                      </div>
+                      <div style={{ fontSize: "24px", fontWeight: 800, color: "#059669", fontFamily: "monospace", margin: "6px 0" }}>
+                        {Math.floor(timeRemaining / 60)}m {String(timeRemaining % 60).padStart(2, "0")}s
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#047857" }}>
+                        Attendance is permanently saved in the database. Review vanishes automatically after countdown.
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "10px",
+                        padding: "12px",
+                        fontSize: "13px",
+                        color: "#334155",
+                        marginBottom: "20px",
+                        display: "flex",
+                        justifyContent: "space-around",
+                      }}
+                    >
+                      <span><strong>Enrolled:</strong> {activeSessionData.total_enrolled}</span>
+                      <span style={{ color: "#059669" }}><strong>Present:</strong> {activeSessionData.present_count}</span>
+                      <span style={{ color: "#dc2626" }}><strong>Absent:</strong> {activeSessionData.absent_count}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleDismissSession}
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        background: "#0f172a",
+                        color: "#fff",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Dismiss & Start New Session
+                    </button>
+                  </div>
                 ) : (
                   <div style={{ textAlign: "center" }}>
                     <div
@@ -540,11 +635,11 @@ function Attendance() {
                         marginBottom: "14px",
                       }}
                     >
-                      ● SESSION ACTIVE • {activeSessionData.session.subject_details?.code} • {activeSessionData.session.class_display || `Section ${activeSessionData.session.section || 'A'}`}
+                      ● SESSION ACTIVE • {activeSessionData.session?.subject_details?.code} • {activeSessionData.session?.class_display || `Section ${activeSessionData.session?.section || 'A'}`}
                     </div>
 
                     <h3 style={{ margin: "0 0 6px 0", color: "#0f172a" }}>
-                      {activeSessionData.session.subject_details?.name}
+                      {activeSessionData.session?.subject_details?.name}
                     </h3>
                     <p style={{ color: "#64748b", fontSize: "13px", margin: "0 0 16px 0" }}>
                       Students can scan this QR code with their phone camera, or use the camera scanner on their dashboard.
@@ -563,7 +658,7 @@ function Attendance() {
                       }}
                     >
                       <QRCodeSVG
-                        value={`${window.location.origin}/mark-attendance?token=${activeSessionData.session.qr_token || activeSessionData.session.token || ""}`}
+                        value={`${window.location.origin}/mark-attendance?token=${activeSessionData.session?.qr_token || activeSessionData.session?.token || ""}`}
                         size={230}
                         level="M"
                         includeMargin={true}
@@ -583,7 +678,7 @@ function Attendance() {
                       <button
                         type="button"
                         onClick={() => {
-                          const sessToken = activeSessionData.session.qr_token || activeSessionData.session.token || "";
+                          const sessToken = activeSessionData.session?.qr_token || activeSessionData.session?.token || "";
                           const directUrl = `${window.location.origin}/mark-attendance?token=${sessToken}`;
                           navigator.clipboard?.writeText(directUrl);
                           setCopiedLink(true);
@@ -604,7 +699,7 @@ function Attendance() {
                       </button>
 
                       <a
-                        href={`/mark-attendance?token=${activeSessionData.session.qr_token || activeSessionData.session.token || ""}`}
+                        href={`/mark-attendance?token=${activeSessionData.session?.qr_token || activeSessionData.session?.token || ""}`}
                         target="_blank"
                         rel="noreferrer"
                         style={{
@@ -643,12 +738,12 @@ function Attendance() {
                     >
                       <span>
                         <strong>Raw Token: </strong>
-                        <code>{activeSessionData.session.qr_token}</code>
+                        <code>{activeSessionData.session?.qr_token}</code>
                       </span>
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard?.writeText(activeSessionData.session.qr_token);
+                          navigator.clipboard?.writeText(activeSessionData.session?.qr_token);
                           setCopiedLink(true);
                           setTimeout(() => setCopiedLink(false), 2000);
                         }}
@@ -747,7 +842,9 @@ function Attendance() {
                 }}
               >
                 <h3 style={{ margin: "0 0 16px 0", color: "#0f172a" }}>
-                  Live Attendance Check-Ins
+                  {activeSessionData?.is_completed || !activeSessionData?.active
+                    ? "Present Students (Stored in Database • 10-Min Review)"
+                    : "Live Attendance Check-Ins"}
                 </h3>
 
                 {/* Live Stats Pills */}
@@ -773,7 +870,9 @@ function Attendance() {
                 </div>
 
                 <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", color: "#475569" }}>
-                  Verified Checked-In Students ({activeSessionData?.attendees?.length ?? 0}):
+                  {activeSessionData?.is_completed || !activeSessionData?.active
+                    ? `Students Marked Present (${activeSessionData?.present_count ?? 0}):`
+                    : `Verified Checked-In Students (${activeSessionData?.attendees?.length ?? 0}):`}
                 </h4>
 
                 <div style={{ maxHeight: "350px", overflowY: "auto" }}>
