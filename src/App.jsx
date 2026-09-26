@@ -101,7 +101,7 @@ function App() {
             path="/exam-scanner"
             element={
               <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher', 'admin']}>
+                <RoleRoute allowedRoles={['teacher']} excludeAdmin={true}>
                   <ExamHallScanner />
                 </RoleRoute>
               </ProtectedRoute>

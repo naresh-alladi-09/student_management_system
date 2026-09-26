@@ -1,11 +1,15 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const RoleRoute = ({ allowedRoles = [], children }) => {
+const RoleRoute = ({ allowedRoles = [], excludeAdmin = false, children }) => {
   const { currentUser, role, isStudent, isAdmin } = useAuth();
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (excludeAdmin && isAdmin) {
+    return <Navigate to="/admin" replace />;
   }
 
   // Admins have access to teacher routes as well
