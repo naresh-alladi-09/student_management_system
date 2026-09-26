@@ -189,3 +189,46 @@ class LeaveRequest(models.Model):
     def __str__(self):
         return f"{self.student.name} - {self.get_leave_type_display()} ({self.start_date} to {self.end_date}): {self.status}"
 
+
+class AttendanceAlertLog(models.Model):
+    ALERT_CHANNELS = (
+        ('EMAIL', 'Email'),
+        ('SMS', 'SMS Text Message'),
+        ('BOTH', 'Email & SMS'),
+    )
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='attendance_alerts'
+    )
+    percentage = models.FloatField()
+    attended_classes = models.IntegerField()
+    total_classes = models.IntegerField()
+    classes_needed = models.IntegerField(default=0)
+    threshold = models.FloatField(default=75.0)
+    channel = models.CharField(max_length=10, choices=ALERT_CHANNELS, default='BOTH')
+    student_email = models.CharField(max_length=255, blank=True)
+    parent_email = models.CharField(max_length=255, blank=True)
+    student_phone = models.CharField(max_length=50, blank=True)
+    parent_phone = models.CharField(max_length=50, blank=True)
+    email_sent = models.BooleanField(default=False)
+    sms_sent = models.BooleanField(default=False)
+    trigger_source = models.CharField(max_length=30, default='MANUAL')  # 'AUTOMATED' | 'MANUAL' | 'SCHEDULED'
+    message_content = models.TextField(blank=True)
+    sent_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dispatched_attendance_alerts'
+    )
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-sent_at']
+
+    def __str__(self):
+        return f"Shortage Alert: {self.student.name} ({self.percentage}%) on {self.sent_at.strftime('%Y-%m-%d %H:%M')}"
+
+

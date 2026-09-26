@@ -76,6 +76,14 @@ export const getAttendanceSummary = (params = {}) => {
   return apiClient.get("/api/attendance/summary/", { params });
 };
 
+export const dispatchLowAttendanceAlerts = (payload = {}) => {
+  return apiClient.post("/api/attendance/alerts/dispatch/", payload);
+};
+
+export const getAttendanceAlertHistory = (params = {}) => {
+  return apiClient.get("/api/attendance/alerts/history/", { params });
+};
+
 // QR Session Services
 export const createAttendanceSession = (subjectId, durationSeconds = 60, classId = null, section = 'A') => {
   return apiClient.post("/api/attendance/sessions/create/", {

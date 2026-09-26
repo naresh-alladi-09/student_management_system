@@ -511,6 +511,13 @@ def mark_qr_attendance(request):
             request=request
         )
 
+    # Check if student's cumulative attendance is below 75% and trigger alert if due
+    try:
+        from .alerts import check_and_trigger_low_attendance_alert
+        check_and_trigger_low_attendance_alert(student)
+    except Exception:
+        pass
+
     return Response({
         "success": True,
         "message": f"Attendance successfully recorded for {session.subject.name} ({session.subject.code})!",
@@ -639,6 +646,16 @@ def bulk_save_attendance(request):
                     {"error": f"Error saving student {student_id_raw}: {str(e)}"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+    # Check attendance rates and trigger alerts for any affected students below 75%
+    try:
+        from .alerts import check_and_trigger_low_attendance_alert
+        for sid_raw in attendance_map.keys():
+            st_obj = Student.objects.filter(id=int(sid_raw)).first()
+            if st_obj:
+                check_and_trigger_low_attendance_alert(st_obj)
+    except Exception:
+        pass
 
     return Response({
         "message": f"Attendance successfully saved for {saved_count} students on {target_date}.",
@@ -831,6 +848,7 @@ def attendance_summary(request):
 
         if s_total > 0 and s_rate < threshold:
             needed = max(0, math.ceil(3 * s_total - 4 * s_present))
+            last_alert = AttendanceAlertLog.objects.filter(student=s).first()
             low_attendance_list.append({
                 "student_id": s.id,
                 "name": s.name,
@@ -843,6 +861,12 @@ def attendance_summary(request):
                 "total": s_total,
                 "attendance_rate": s_rate,
                 "classes_needed": needed,
+                "student_email": s.email or "",
+                "parent_name": getattr(s, 'parent_name', '') or "",
+                "parent_email": getattr(s, 'parent_email', '') or "",
+                "student_phone": s.phone or "",
+                "parent_phone": getattr(s, 'parent_phone', '') or "",
+                "last_alert_at": last_alert.sent_at.isoformat() if last_alert else None,
                 "warning": f"{s.name}'s attendance is {s_rate}%, which is below the {threshold}% threshold."
             })
 
@@ -1195,5 +1219,126 @@ def delete_leave_request(request, leave_id):
 
     leave.delete()
     return Response({"detail": "Leave request cancelled successfully."}, status=status.HTTP_200_OK)
+
+
+# =====================================================================
+# LOW ATTENDANCE (<75%) PARENT & STUDENT ALERTS (EMAIL / SMS)
+# =====================================================================
+
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def dispatch_low_attendance_alerts(request):
+    """
+    Teacher or Administrator triggers official low-attendance warning alerts (Email & SMS)
+    to students and parents whose cumulative attendance is below the threshold (default: 75%).
+    Payload:
+      - student_id: optional int (alert single student)
+      - threshold: optional float (default: 75.0)
+      - branch, year, section: optional filters
+      - custom_note: optional string
+    """
+    from .alerts import send_low_attendance_alert, calculate_classes_needed
+    from .models import AttendanceAlertLog
+
+    student_id = request.data.get('student_id')
+    threshold = float(request.data.get('threshold', 75.0))
+    branch = request.data.get('branch')
+    year = request.data.get('year')
+    section = request.data.get('section')
+    custom_note = (request.data.get('custom_note') or '').strip()
+
+    students = Student.objects.filter(is_active=True)
+    if student_id:
+        students = students.filter(id=student_id)
+    if branch and branch.upper() != 'ALL':
+        students = students.filter(branch__iexact=branch)
+    if year and year != 'ALL':
+        students = students.filter(year=year)
+    if section and section.upper() != 'ALL':
+        students = students.filter(section__iexact=section)
+
+    dispatched_results = []
+    skipped_count = 0
+
+    for s in students:
+        recs = AttendanceRecord.objects.filter(student=s)
+        total = recs.count()
+        if total > 0:
+            present = recs.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).count()
+            rate = round((present / total * 100), 1)
+            if rate < threshold:
+                needed = calculate_classes_needed(total, present, target_ratio=threshold / 100.0)
+                res = send_low_attendance_alert(
+                    student=s,
+                    percentage=rate,
+                    total_classes=total,
+                    attended_classes=present,
+                    classes_needed=needed,
+                    threshold=threshold,
+                    trigger_source='MANUAL',
+                    user=request.user,
+                    custom_note=custom_note
+                )
+                dispatched_results.append(res)
+            else:
+                skipped_count += 1
+
+    return Response({
+        "success": True,
+        "message": f"Successfully dispatched alerts for {len(dispatched_results)} students below {threshold}% threshold.",
+        "threshold": threshold,
+        "total_dispatched": len(dispatched_results),
+        "total_eligible_checked": students.count(),
+        "alerts": dispatched_results,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsTeacherOrAdmin])
+def get_attendance_alert_history(request):
+    """
+    Returns recent dispatch logs of low attendance shortage alerts.
+    """
+    from .models import AttendanceAlertLog
+    limit = int(request.query_params.get('limit', 50))
+    student_id = request.query_params.get('student_id')
+
+    logs = AttendanceAlertLog.objects.select_related('student', 'sent_by').all()
+    if student_id:
+        logs = logs.filter(student_id=student_id)
+
+    logs = logs[:limit]
+
+    data = [
+        {
+            "id": log.id,
+            "student_id": log.student.id,
+            "student_name": log.student.name,
+            "roll_no": log.student.roll_no,
+            "cohort": f"{log.student.branch} Y{log.student.year}S{log.student.semester}-{log.student.section}",
+            "percentage": log.percentage,
+            "threshold": log.threshold,
+            "attended": log.attended_classes,
+            "total": log.total_classes,
+            "classes_needed": log.classes_needed,
+            "channel": log.channel,
+            "student_email": log.student_email,
+            "parent_email": log.parent_email,
+            "student_phone": log.student_phone,
+            "parent_phone": log.parent_phone,
+            "email_sent": log.email_sent,
+            "sms_sent": log.sms_sent,
+            "trigger_source": log.trigger_source,
+            "sent_by": log.sent_by.username if log.sent_by else "System",
+            "sent_at": log.sent_at.isoformat(),
+        }
+        for log in logs
+    ]
+
+    return Response({
+        "total": len(data),
+        "history": data
+    }, status=status.HTTP_200_OK)
+
 
 

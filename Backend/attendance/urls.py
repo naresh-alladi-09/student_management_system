@@ -14,6 +14,8 @@ from .views import (
     list_create_leave_requests,
     review_leave_request,
     delete_leave_request,
+    dispatch_low_attendance_alerts,
+    get_attendance_alert_history,
 )
 
 urlpatterns = [
@@ -22,6 +24,10 @@ urlpatterns = [
     path('summary/', attendance_summary, name='attendance_summary'),
     path('student/<int:student_id>/', student_attendance_detail, name='student_attendance_detail'),
     path('my/', my_attendance_view, name='my_attendance_view'),
+
+    # Low Attendance Shortage Warning Alerts (Email & SMS to Students & Parents)
+    path('alerts/dispatch/', dispatch_low_attendance_alerts, name='dispatch_low_attendance_alerts'),
+    path('alerts/history/', get_attendance_alert_history, name='get_attendance_alert_history'),
 
     # Student Leave & On-Duty (OD) Endpoints
     path('leaves/', list_create_leave_requests, name='list_create_leave_requests'),

@@ -13,6 +13,7 @@ import {
   refreshSessionToken,
   closeAttendanceSession,
   getAttendanceSummary,
+  dispatchLowAttendanceAlerts,
   getLeaveRequests,
   reviewLeaveRequest,
 } from "../services/studentservice";
@@ -34,6 +35,9 @@ import {
   FaQuestionCircle,
   FaFileAlt,
   FaExternalLinkAlt,
+  FaEnvelope,
+  FaPhoneAlt,
+  FaPaperPlane,
 } from "react-icons/fa";
 
 function Attendance() {
@@ -79,6 +83,35 @@ function Attendance() {
       .finally(() => {
         setSummaryLoading(false);
       });
+  };
+
+  // Alert dispatch states
+  const [alertSending, setAlertSending] = useState(false);
+  const [alertingStudentId, setAlertingStudentId] = useState(null);
+  const [alertSuccessModal, setAlertSuccessModal] = useState(null);
+  const [alertError, setAlertError] = useState(null);
+
+  const handleDispatchAlerts = async (targetStudentId = null) => {
+    setAlertSending(true);
+    setAlertingStudentId(targetStudentId);
+    setAlertError(null);
+    try {
+      const payload = {
+        threshold: threshold,
+      };
+      if (targetStudentId) {
+        payload.student_id = targetStudentId;
+      }
+      const res = await dispatchLowAttendanceAlerts(payload);
+      setAlertSuccessModal(res.data);
+      fetchSummary(threshold);
+    } catch (err) {
+      console.error("Failed to dispatch attendance alerts:", err);
+      setAlertError(err.response?.data?.detail || "Failed to dispatch alerts. Please check connectivity.");
+    } finally {
+      setAlertSending(false);
+      setAlertingStudentId(null);
+    }
   };
 
   useEffect(() => {
@@ -1475,24 +1508,65 @@ function Attendance() {
                       marginBottom: "24px",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                      <h4 style={{ margin: 0, fontSize: "16px", color: "#0f172a", display: "flex", alignItems: "center", gap: "8px" }}>
-                        <FaExclamationTriangle style={{ color: "#dc2626" }} />
-                        Students Below {threshold}% Required Threshold
-                      </h4>
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          background: "#fef2f2",
-                          color: "#dc2626",
-                          padding: "4px 10px",
-                          borderRadius: "12px",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {summaryData.low_attendance_students?.length || 0} At-Risk Students
-                      </span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: "16px", color: "#0f172a", display: "flex", alignItems: "center", gap: "8px" }}>
+                          <FaExclamationTriangle style={{ color: "#dc2626" }} />
+                          Students Below {threshold}% Required Threshold
+                        </h4>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#64748b" }}>
+                          Instant official shortage notifications delivered to students &amp; parents via Email and SMS text message.
+                        </p>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            background: "#fef2f2",
+                            color: "#dc2626",
+                            padding: "6px 12px",
+                            borderRadius: "20px",
+                            fontWeight: 700,
+                            border: "1px solid #fecaca",
+                          }}
+                        >
+                          {summaryData.low_attendance_students?.length || 0} At-Risk Students
+                        </span>
+
+                        {summaryData.low_attendance_students && summaryData.low_attendance_students.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDispatchAlerts(null)}
+                            disabled={alertSending}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              padding: "8px 16px",
+                              borderRadius: "10px",
+                              background: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
+                              color: "#ffffff",
+                              border: "none",
+                              cursor: alertSending ? "not-allowed" : "pointer",
+                              fontSize: "12.5px",
+                              fontWeight: 700,
+                              boxShadow: "0 4px 12px rgba(220, 38, 38, 0.25)",
+                              opacity: alertSending ? 0.7 : 1,
+                            }}
+                          >
+                            <FaPaperPlane />
+                            {alertSending && !alertingStudentId ? "Dispatching..." : `Alert All (${summaryData.low_attendance_students.length}) Defaulters`}
+                          </button>
+                        )}
+                      </div>
                     </div>
+
+                    {alertError && (
+                      <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#b91c1c", padding: "10px 14px", borderRadius: "8px", marginBottom: "16px", fontSize: "13px" }}>
+                        {alertError}
+                      </div>
+                    )}
 
                     <div className="table-responsive">
                       <table className="grades-table">
@@ -1504,6 +1578,8 @@ function Attendance() {
                             <th>Classes Attended</th>
                             <th>Attendance Rate</th>
                             <th>Recovery Requirement</th>
+                            <th>Parent &amp; Student Contacts</th>
+                            <th>Alert Dispatch</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1552,11 +1628,53 @@ function Attendance() {
                                     Needs next {stu.classes_needed} classes
                                   </span>
                                 </td>
+                                <td>
+                                  <div style={{ fontSize: "12px", color: "#334155" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "3px" }} title="Parent / Student Email">
+                                      <FaEnvelope style={{ color: "#2563eb", fontSize: "11px" }} />
+                                      <span style={{ fontWeight: 600 }}>{stu.parent_email || stu.student_email || "No email"}</span>
+                                    </div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "5px", color: "#64748b" }} title="Parent / Student Phone">
+                                      <FaPhoneAlt style={{ color: "#059669", fontSize: "11px" }} />
+                                      <span>{stu.parent_phone || stu.student_phone || "No phone"}</span>
+                                    </div>
+                                    {stu.last_alert_at && (
+                                      <div style={{ fontSize: "10.5px", color: "#7c3aed", marginTop: "2px", fontWeight: 600 }}>
+                                        Last alerted: {new Date(stu.last_alert_at).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDispatchAlerts(stu.student_id)}
+                                    disabled={alertSending}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "6px",
+                                      padding: "5px 10px",
+                                      borderRadius: "6px",
+                                      background: "#fef2f2",
+                                      color: "#dc2626",
+                                      border: "1px solid #fecaca",
+                                      cursor: alertSending ? "not-allowed" : "pointer",
+                                      fontSize: "11.5px",
+                                      fontWeight: 700,
+                                      transition: "all 0.15s ease",
+                                    }}
+                                    title="Send immediate Email &amp; SMS alert to student and parents"
+                                  >
+                                    <FaPaperPlane />
+                                    {alertSending && alertingStudentId === stu.student_id ? "Sending..." : "Send Alert"}
+                                  </button>
+                                </td>
                               </tr>
                             ))
                           ) : (
                             <tr>
-                              <td colSpan="6" style={{ textAlign: "center", padding: "24px", color: "#059669" }}>
+                              <td colSpan="8" style={{ textAlign: "center", padding: "24px", color: "#059669" }}>
                                 ✓ Great news! No students are currently below the {threshold}% attendance threshold.
                               </td>
                             </tr>
@@ -2231,6 +2349,106 @@ function Attendance() {
                     <FaCheck /> Approve & Credit
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+          {/* Alert Success Confirmation Modal */}
+          {alertSuccessModal && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "rgba(15, 23, 42, 0.6)",
+                backdropFilter: "blur(4px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+                padding: "16px",
+              }}
+              onClick={() => setAlertSuccessModal(null)}
+            >
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: "16px",
+                  padding: "28px",
+                  maxWidth: "520px",
+                  width: "100%",
+                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
+                  textAlign: "center",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "50%",
+                    background: "#ecfdf5",
+                    color: "#059669",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "26px",
+                    margin: "0 auto 16px auto",
+                  }}
+                >
+                  <FaCheckCircle />
+                </div>
+
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "19px", color: "#0f172a" }}>
+                  Attendance Warning Notices Dispatched!
+                </h3>
+                <p style={{ margin: "0 0 20px 0", fontSize: "14px", color: "#475569", lineHeight: 1.5 }}>
+                  Official shortage notices with attendance rates and recovery requirements have been dispatched via <strong>Email</strong> and <strong>SMS text message</strong> to students and their parents/guardians.
+                </p>
+
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    textAlign: "left",
+                    marginBottom: "20px",
+                    border: "1px solid #e2e8f0",
+                    fontSize: "13px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                    <span style={{ color: "#64748b" }}>Recipients Notified:</span>
+                    <strong style={{ color: "#0f172a" }}>{alertSuccessModal.total_dispatched} Student(s) &amp; Families</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                    <span style={{ color: "#64748b" }}>Threshold Applied:</span>
+                    <strong style={{ color: "#dc2626" }}>&lt; {alertSuccessModal.threshold}% Mandatory</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#64748b" }}>Delivery Channels:</span>
+                    <strong style={{ color: "#059669" }}>Email (Official HTML Notice) + SMS</strong>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setAlertSuccessModal(null)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "10px",
+                    background: "#0f172a",
+                    color: "#ffffff",
+                    border: "none",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Close
+                </button>
               </div>
             </div>
           )}

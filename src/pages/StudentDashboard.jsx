@@ -560,7 +560,7 @@ const StudentDashboard = () => {
             <h4 style={{ margin: "0 0 4px 0", fontSize: "15px", fontWeight: 700 }}>
               Attendance Shortage Warning: {attendanceRate}%
             </h4>
-            <p style={{ margin: 0, fontSize: "13px", color: "#b91c1c" }}>
+            <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#b91c1c" }}>
               Your current attendance is below the mandatory 75% examination threshold.
               {classesNeeded > 0 && (
                 <strong>
@@ -568,6 +568,9 @@ const StudentDashboard = () => {
                 </strong>
               )}
             </p>
+            <div style={{ fontSize: "12px", color: "#991b1b", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>⚠️ Official shortage alert has been sent via Email &amp; SMS to your registered email and your parent/guardian.</span>
+            </div>
           </div>
         </div>
       )}
