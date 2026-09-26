@@ -1,16 +1,34 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.db import transaction
+from django.utils import timezone
 
 from accounts.permissions import IsTeacherOrAdmin, IsSelfOrStaff, IsAdmin
 from students.models import Student, FacultyAssignment
 from attendance.models import AttendanceRecord
 from audit.models import AuditLog
 from notifications.models import Notification
-from .models import Subject, Assessment, Marks, StudentScore, calculate_grade_and_points
-from .serializers import SubjectSerializer, AssessmentSerializer, MarksSerializer, StudentScoreSerializer
+from .models import (
+    Subject,
+    Assessment,
+    Marks,
+    StudentScore,
+    calculate_grade_and_points,
+    ExamSession,
+    ExamTimetable,
+    HallTicket,
+)
+from .serializers import (
+    SubjectSerializer,
+    AssessmentSerializer,
+    MarksSerializer,
+    StudentScoreSerializer,
+    ExamSessionSerializer,
+    ExamTimetableSerializer,
+    HallTicketSerializer,
+)
 
 
 # =====================================================================
@@ -434,3 +452,465 @@ def performance_summary(request):
         "branch_performance": branch_performance,
         "total_scored_students": total_scored_students
     }, status=status.HTTP_200_OK)
+
+
+# =====================================================================
+# EXAM SESSIONS & HALL TICKET MANAGEMENT VIEWS
+# =====================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def list_create_exam_sessions(request):
+    """
+    GET: List exam sessions. Students see published exams; teachers/admins see all.
+    POST: Create an exam session with optional timetable schedules (Faculty/Admin only).
+    """
+    if request.method == 'GET':
+        profile = getattr(request.user, 'profile', None)
+        role = getattr(profile, 'role', 'admin') if profile else ('admin' if request.user.is_staff else 'student')
+
+        qs = ExamSession.objects.all().order_by('-start_date')
+        if role == 'student':
+            qs = qs.filter(is_published=True)
+
+        branch = request.query_params.get('branch')
+        semester = request.query_params.get('semester')
+        if branch and branch.upper() != 'ALL':
+            qs = qs.filter(branch__in=['ALL', branch.upper(), branch])
+        if semester and semester.upper() != 'ALL':
+            qs = qs.filter(semester__in=['ALL', str(semester)])
+
+        serializer = ExamSessionSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    elif request.method == 'POST':
+        profile = getattr(request.user, 'profile', None)
+        role = getattr(profile, 'role', 'admin') if profile else ('admin' if request.user.is_staff else 'student')
+        if role == 'student':
+            return Response({"detail": "Only faculty or administrators can schedule examinations."}, status=status.HTTP_403_FORBIDDEN)
+
+        data = request.data
+        name = data.get('name')
+        if not name:
+            return Response({"detail": "Examination name is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            exam = ExamSession.objects.create(
+                name=name,
+                academic_year=data.get('academic_year', '2025-2026'),
+                exam_type=data.get('exam_type', 'REGULAR'),
+                branch=data.get('branch', 'ALL'),
+                semester=str(data.get('semester', 'ALL')),
+                start_date=data.get('start_date'),
+                end_date=data.get('end_date'),
+                min_attendance_percentage=float(data.get('min_attendance_percentage', 75.0)),
+                is_published=bool(data.get('is_published', True)),
+                instructions=data.get('instructions') or (
+                    "1. Candidates must arrive at the examination hall at least 15 minutes before commencement.\n"
+                    "2. Possession of mobile phones, smartwatches, or unauthorized study material is strictly prohibited.\n"
+                    "3. Candidates must carry their valid College Identity Card and this printed Hall Ticket.\n"
+                    "4. No candidate will be admitted to the examination hall 30 minutes after the exam start time."
+                )
+            )
+
+            timetable_list = data.get('timetable', [])
+            for idx, item in enumerate(timetable_list, start=1):
+                sub_id = item.get('subject_id') or item.get('subject')
+                if sub_id:
+                    ExamTimetable.objects.create(
+                        exam_session=exam,
+                        subject_id=sub_id,
+                        exam_date=item.get('exam_date') or exam.start_date,
+                        start_time=item.get('start_time', '10:00:00'),
+                        end_time=item.get('end_time', '13:00:00'),
+                        hall_number=item.get('hall_number', 'Main Exam Block'),
+                        order=item.get('order', idx)
+                    )
+
+            AuditLog.log(
+                action='CREATE',
+                entity='ExamSession',
+                entity_id=str(exam.id),
+                description=f"Created Exam Session '{exam.name}' ({exam.academic_year}) with {len(timetable_list)} timetable papers.",
+                user=request.user,
+                request=request
+            )
+
+            return Response(ExamSessionSerializer(exam).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def exam_session_detail(request, exam_id):
+    """
+    GET, update, or delete an exam session.
+    """
+    try:
+        exam = ExamSession.objects.get(id=exam_id)
+    except ExamSession.DoesNotExist:
+        return Response({"detail": "Exam session not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(ExamSessionSerializer(exam).data, status=status.HTTP_200_OK)
+
+    profile = getattr(request.user, 'profile', None)
+    role = getattr(profile, 'role', 'admin') if profile else ('admin' if request.user.is_staff else 'student')
+    if role == 'student':
+        return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method in ['PUT', 'PATCH']:
+        data = request.data
+        if 'name' in data:
+            exam.name = data['name']
+        if 'academic_year' in data:
+            exam.academic_year = data['academic_year']
+        if 'exam_type' in data:
+            exam.exam_type = data['exam_type']
+        if 'branch' in data:
+            exam.branch = data['branch']
+        if 'semester' in data:
+            exam.semester = str(data['semester'])
+        if 'start_date' in data and data['start_date']:
+            exam.start_date = data['start_date']
+        if 'end_date' in data and data['end_date']:
+            exam.end_date = data['end_date']
+        if 'min_attendance_percentage' in data:
+            exam.min_attendance_percentage = float(data['min_attendance_percentage'])
+        if 'is_published' in data:
+            exam.is_published = bool(data['is_published'])
+        if 'instructions' in data:
+            exam.instructions = data['instructions']
+        exam.save()
+
+        if 'timetable' in data:
+            with transaction.atomic():
+                exam.timetable.all().delete()
+                for idx, item in enumerate(data['timetable'], start=1):
+                    sub_id = item.get('subject_id') or item.get('subject')
+                    if sub_id:
+                        ExamTimetable.objects.create(
+                            exam_session=exam,
+                            subject_id=sub_id,
+                            exam_date=item.get('exam_date') or exam.start_date,
+                            start_time=item.get('start_time', '10:00:00'),
+                            end_time=item.get('end_time', '13:00:00'),
+                            hall_number=item.get('hall_number', 'Main Exam Block'),
+                            order=item.get('order', idx)
+                        )
+
+        return Response(ExamSessionSerializer(exam).data, status=status.HTTP_200_OK)
+
+    elif request.method == 'DELETE':
+        name = exam.name
+        exam.delete()
+        AuditLog.log(
+            action='DELETE',
+            entity='ExamSession',
+            entity_id=str(exam_id),
+            description=f"Deleted Exam Session '{name}'.",
+            user=request.user,
+            request=request
+        )
+        return Response({"detail": f"Exam session '{name}' deleted successfully."}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def generate_hall_tickets(request, exam_id):
+    """
+    Automated Hall Ticket Generation & Attendance Eligibility Engine:
+    - Queries all students belonging to the target branch/semester.
+    - Calculates live attendance percentage using AttendanceRecord (counting Present, On-Duty, Medical, Excused).
+    - If attendance >= min_attendance_percentage or condoned, marks is_eligible=True.
+    - Generates or updates HallTicket records with secure verification tokens and hall ticket numbers.
+    - Dispatches notifications to students.
+    """
+    try:
+        exam = ExamSession.objects.get(id=exam_id)
+    except ExamSession.DoesNotExist:
+        return Response({"detail": "Exam session not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    students_qs = Student.objects.filter(is_active=True)
+    if exam.branch and exam.branch.upper() != 'ALL':
+        students_qs = students_qs.filter(branch__iexact=exam.branch)
+    if exam.semester and str(exam.semester).upper() != 'ALL':
+        students_qs = students_qs.filter(semester=str(exam.semester))
+
+    eligible_count = 0
+    shortage_count = 0
+    generated_count = 0
+
+    with transaction.atomic():
+        for student in students_qs:
+            recs = AttendanceRecord.objects.filter(student=student)
+            total = recs.count()
+            attended = recs.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).count()
+            att_pct = round((attended / total * 100.0), 1) if total > 0 else 85.0
+
+            existing_ticket = HallTicket.objects.filter(exam_session=exam, student=student).first()
+            is_condoned = existing_ticket.is_condoned if existing_ticket else False
+
+            is_eligible = (att_pct >= exam.min_attendance_percentage) or is_condoned
+
+            ticket, created = HallTicket.objects.update_or_create(
+                exam_session=exam,
+                student=student,
+                defaults={
+                    'calculated_attendance_pct': att_pct,
+                    'is_eligible': is_eligible,
+                    'is_condoned': is_condoned,
+                }
+            )
+
+            generated_count += 1
+            if is_eligible:
+                eligible_count += 1
+            else:
+                shortage_count += 1
+
+            user_profile = getattr(student, 'user_profile', None)
+            profile_user = getattr(user_profile, 'user', None) if user_profile else None
+            if profile_user:
+                if is_eligible:
+                    Notification.objects.create(
+                        user=profile_user,
+                        title="Exam Hall Ticket Generated 🎓",
+                        message=f"Your Hall Ticket for '{exam.name}' is now available. Attendance: {att_pct}%. You are eligible to download and print.",
+                        notification_type='academic'
+                    )
+                else:
+                    Notification.objects.create(
+                        user=profile_user,
+                        title="Exam Eligibility Shortage Alert ⚠️",
+                        message=f"Attendance Shortage for '{exam.name}': Your attendance is {att_pct}% (minimum required: {exam.min_attendance_percentage}%). Contact department or apply for OD/Medical leave.",
+                        notification_type='attendance'
+                    )
+
+    AuditLog.log(
+        action='GENERATE_HALL_TICKETS',
+        entity='ExamSession',
+        entity_id=str(exam.id),
+        description=f"Generated {generated_count} hall tickets for '{exam.name}'. Eligible: {eligible_count}, Shortage: {shortage_count}.",
+        user=request.user,
+        request=request
+    )
+
+    return Response({
+        "detail": f"Processed {generated_count} students. {eligible_count} eligible, {shortage_count} with attendance shortage.",
+        "total_generated": generated_count,
+        "eligible_count": eligible_count,
+        "shortage_count": shortage_count,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsTeacherOrAdmin])
+def list_exam_hall_tickets(request, exam_id):
+    """
+    List all hall tickets generated for an exam session.
+    Supports filtering by ?status=ELIGIBLE|SHORTAGE|CONDONED and ?search=
+    """
+    try:
+        exam = ExamSession.objects.get(id=exam_id)
+    except ExamSession.DoesNotExist:
+        return Response({"detail": "Exam session not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    tickets = HallTicket.objects.filter(exam_session=exam).select_related('student', 'condoned_by', 'exam_session')
+
+    status_filter = request.query_params.get('status', 'ALL').upper()
+    if status_filter == 'ELIGIBLE':
+        tickets = tickets.filter(is_eligible=True)
+    elif status_filter == 'SHORTAGE':
+        tickets = tickets.filter(is_eligible=False)
+    elif status_filter == 'CONDONED':
+        tickets = tickets.filter(is_condoned=True)
+
+    search_query = request.query_params.get('search', '').strip()
+    if search_query:
+        tickets = tickets.filter(
+            models.Q(student__name__icontains=search_query) |
+            models.Q(student__roll_no__icontains=search_query) |
+            models.Q(hall_ticket_number__icontains=search_query)
+        )
+
+    serializer = HallTicketSerializer(tickets, many=True)
+    return Response({
+        "exam": ExamSessionSerializer(exam).data,
+        "total_tickets": tickets.count(),
+        "tickets": serializer.data
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def condone_hall_ticket(request, ticket_id):
+    """
+    Grant or revoke condonation override for a student detained due to attendance shortage.
+    """
+    try:
+        ticket = HallTicket.objects.select_related('student', 'exam_session').get(id=ticket_id)
+    except HallTicket.DoesNotExist:
+        return Response({"detail": "Hall ticket not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    is_condoned = bool(request.data.get('is_condoned', True))
+    reason = (request.data.get('reason') or '').strip()
+
+    ticket.is_condoned = is_condoned
+    if is_condoned:
+        ticket.is_eligible = True
+        ticket.condoned_by = request.user
+        ticket.condoned_at = timezone.now()
+        ticket.condonation_reason = reason or "Condonation granted by department authority."
+    else:
+        ticket.condoned_by = None
+        ticket.condoned_at = None
+        ticket.condonation_reason = ""
+        ticket.is_eligible = (ticket.calculated_attendance_pct >= ticket.exam_session.min_attendance_percentage)
+
+    ticket.save()
+
+    user_profile = getattr(ticket.student, 'user_profile', None)
+    profile_user = getattr(user_profile, 'user', None) if user_profile else None
+    if profile_user:
+        if is_condoned:
+            Notification.objects.create(
+                user=profile_user,
+                title="Condonation Approved • Hall Ticket Issued ✅",
+                message=f"Attendance condonation granted for '{ticket.exam_session.name}'. Remarks: {ticket.condonation_reason}. Your hall ticket is now available.",
+                notification_type='academic'
+            )
+        else:
+            Notification.objects.create(
+                user=profile_user,
+                title="Condonation Revoked ⚠️",
+                message=f"Condonation for '{ticket.exam_session.name}' has been revoked. Current attendance: {ticket.calculated_attendance_pct}%.",
+                notification_type='academic'
+            )
+
+    AuditLog.log(
+        action='CONDONE_HALL_TICKET',
+        entity='HallTicket',
+        entity_id=str(ticket.id),
+        description=f"{'Granted' if is_condoned else 'Revoked'} condonation for {ticket.student.name} ({ticket.student.roll_no}) in '{ticket.exam_session.name}'. Remarks: {reason}",
+        user=request.user,
+        request=request
+    )
+
+    return Response(HallTicketSerializer(ticket).data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_hall_tickets(request):
+    """
+    Returns active hall tickets for the logged-in student.
+    If hall tickets haven't been generated for a published exam matching their branch/semester,
+    computes and creates the student's ticket on demand.
+    """
+    profile = getattr(request.user, 'profile', None)
+    student = getattr(profile, 'student', None) if profile else None
+
+    if not student:
+        student = Student.objects.filter(email=request.user.email).first()
+
+    if not student:
+        return Response({"detail": "Student profile not found for this user account."}, status=status.HTTP_404_NOT_FOUND)
+
+    published_exams = ExamSession.objects.filter(is_published=True).order_by('-start_date')
+    student_branch = (student.branch or '').strip().upper()
+    student_sem = str(student.semester or '').strip()
+
+    for exam in published_exams:
+        if exam.branch and exam.branch.upper() not in ['ALL', student_branch]:
+            continue
+        if exam.semester and str(exam.semester) not in ['ALL', student_sem]:
+            continue
+
+        if not HallTicket.objects.filter(exam_session=exam, student=student).exists():
+            recs = AttendanceRecord.objects.filter(student=student)
+            total = recs.count()
+            attended = recs.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).count()
+            att_pct = round((attended / total * 100.0), 1) if total > 0 else 85.0
+            is_eligible = (att_pct >= exam.min_attendance_percentage)
+
+            HallTicket.objects.create(
+                exam_session=exam,
+                student=student,
+                calculated_attendance_pct=att_pct,
+                is_eligible=is_eligible,
+                is_condoned=False
+            )
+
+    tickets = HallTicket.objects.filter(
+        student=student,
+        exam_session__is_published=True
+    ).select_related('exam_session', 'condoned_by').order_by('-exam_session__start_date')
+
+    serializer = HallTicketSerializer(tickets, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def verify_hall_ticket(request, token):
+    """
+    Public QR-code verification endpoint for examination invigilators and proctors.
+    """
+    try:
+        ticket = HallTicket.objects.select_related('student', 'exam_session', 'condoned_by').get(verification_token=token)
+    except (HallTicket.DoesNotExist, ValueError):
+        return Response({
+            "valid": False,
+            "error": "Invalid or expired hall ticket QR code token.",
+            "status": "INVALID_TOKEN"
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    student = ticket.student
+    exam = ticket.exam_session
+
+    papers = ticket.exam_session.timetable.all()
+    student_branch = (student.branch or '').strip().upper()
+    student_sem = str(student.semester or '').strip()
+    relevant_papers = []
+    for p in papers:
+        s = p.subject
+        if student_branch and s.branch and s.branch.upper() not in ['ALL', student_branch]:
+            continue
+        if student_sem and s.semester and s.semester not in ['ALL', student_sem]:
+            continue
+        relevant_papers.append(p)
+    if not relevant_papers:
+        relevant_papers = list(papers)
+
+    return Response({
+        "valid": True,
+        "status": "VERIFIED_AUTHENTIC" if ticket.is_eligible else "INELIGIBLE_DETAINED",
+        "status_display": "Authentic & Verified for Examination" if ticket.is_eligible else "Attendance Shortage (Not Permitted)",
+        "hall_ticket_number": ticket.hall_ticket_number,
+        "student": {
+            "name": student.name,
+            "roll_no": student.roll_no,
+            "student_id": student.student_id,
+            "branch": student.branch,
+            "semester": student.semester,
+            "section": student.section,
+            "department": student.department,
+        },
+        "exam": {
+            "name": exam.name,
+            "academic_year": exam.academic_year,
+            "exam_type": exam.get_exam_type_display(),
+            "start_date": exam.start_date,
+            "end_date": exam.end_date,
+        },
+        "attendance": {
+            "percentage": ticket.calculated_attendance_pct,
+            "required_percentage": exam.min_attendance_percentage,
+            "is_eligible": ticket.is_eligible,
+            "is_condoned": ticket.is_condoned,
+            "condonation_reason": ticket.condonation_reason if ticket.is_condoned else None,
+        },
+        "timetable": ExamTimetableSerializer(relevant_papers, many=True).data,
+        "verified_at": timezone.now().isoformat(),
+    }, status=status.HTTP_200_OK)
+

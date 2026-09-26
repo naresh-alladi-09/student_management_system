@@ -13,6 +13,7 @@ import Attendence from './pages/Attendence';
 import Performance from './pages/Performance';
 import StudentDashboard from './pages/StudentDashboard';
 import MarkAttendancePage from './pages/MarkAttendancePage';
+import VerifyHallTicket from './pages/VerifyHallTicket';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="/login/teacher" element={<Login initialRole="teacher" />} />
           <Route path="/login/student" element={<Login initialRole="student" />} />
           <Route path="/mark-attendance" element={<MarkAttendancePage />} />
+          <Route path="/verify-hallticket" element={<VerifyHallTicket />} />
 
           {/* Admin Dedicated Console */}
           <Route

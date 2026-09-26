@@ -606,3 +606,56 @@
   font-weight: 600;
   color: #0f172a;
 }
+
+/* ============================================================== */
+/* PRINT STYLESHEET FOR OFFICIAL HALL TICKET / ADMIT CARD         */
+/* ============================================================== */
+@media print {
+  body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .student-dashboard-page {
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* Hide everything except the official admit card print container */
+  .student-navbar,
+  .student-hero-banner,
+  .no-print,
+  button,
+  .nav-links,
+  .student-nav-tabs,
+  .student-portal-brand {
+    display: none !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .official-admit-card-printable,
+  .official-admit-card-printable * {
+    visibility: visible;
+  }
+
+  .official-admit-card-printable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    box-shadow: none !important;
+    border: 2px solid #1e3a8a !important;
+    border-radius: 0 !important;
+    box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+

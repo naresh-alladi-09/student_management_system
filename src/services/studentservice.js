@@ -306,3 +306,67 @@ export const getStudentsRosterReport = (params = {}) => {
 export const getPerformanceReport = (params = {}) => {
   return apiClient.get("/api/reports/performance/", { params });
 };
+
+// ==========================================
+// STUDENT LEAVE & ON-DUTY (OD) SERVICES
+// ==========================================
+
+export const getLeaveRequests = (params = {}) => {
+  return apiClient.get("/api/attendance/leaves/", { params });
+};
+
+export const applyLeaveRequest = (leaveData) => {
+  return apiClient.post("/api/attendance/leaves/", leaveData);
+};
+
+export const reviewLeaveRequest = (leaveId, reviewData) => {
+  return apiClient.post(`/api/attendance/leaves/${leaveId}/review/`, reviewData);
+};
+
+export const deleteLeaveRequest = (leaveId) => {
+  return apiClient.delete(`/api/attendance/leaves/${leaveId}/`);
+};
+
+// ==========================================
+// EXAM SESSIONS & HALL TICKET SERVICES
+// ==========================================
+
+export const getExamSessions = (params = {}) => {
+  return apiClient.get("/api/performance/exams/", { params });
+};
+
+export const createExamSession = (examData) => {
+  return apiClient.post("/api/performance/exams/", examData);
+};
+
+export const getExamSessionDetail = (examId) => {
+  return apiClient.get(`/api/performance/exams/${examId}/`);
+};
+
+export const updateExamSession = (examId, examData) => {
+  return apiClient.patch(`/api/performance/exams/${examId}/`, examData);
+};
+
+export const deleteExamSession = (examId) => {
+  return apiClient.delete(`/api/performance/exams/${examId}/`);
+};
+
+export const generateExamHallTickets = (examId) => {
+  return apiClient.post(`/api/performance/exams/${examId}/generate-tickets/`);
+};
+
+export const getExamHallTickets = (examId, params = {}) => {
+  return apiClient.get(`/api/performance/exams/${examId}/tickets/`, { params });
+};
+
+export const condoneHallTicket = (ticketId, condoneData) => {
+  return apiClient.post(`/api/performance/tickets/${ticketId}/condone/`, condoneData);
+};
+
+export const getMyHallTickets = () => {
+  return apiClient.get("/api/performance/my-halltickets/");
+};
+
+export const verifyHallTicketQR = (token) => {
+  return apiClient.get(`/api/performance/hallticket/verify/${token}/`);
+};

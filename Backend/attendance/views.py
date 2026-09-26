@@ -1,5 +1,5 @@
 import math
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction
@@ -12,9 +12,14 @@ from rest_framework.response import Response
 from accounts.permissions import IsTeacherOrAdmin, IsSelfOrStaff, IsStudent
 from students.models import Student, AcademicClass, FacultyAssignment
 from performance.models import Subject
+from notifications.models import Notification
 from audit.models import AuditLog
-from .models import AttendanceSession, AttendanceRecord
-from .serializers import AttendanceSessionSerializer, AttendanceRecordSerializer
+from .models import AttendanceSession, AttendanceRecord, LeaveRequest
+from .serializers import (
+    AttendanceSessionSerializer,
+    AttendanceRecordSerializer,
+    LeaveRequestSerializer,
+)
 
 
 # =====================================================================
@@ -669,13 +674,14 @@ def student_attendance_detail(request, student_id):
 
     records = AttendanceRecord.objects.filter(student=student).order_by('-date')
     total = records.count()
-    present = records.filter(status='Present').count()
+    present = records.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).count()
     absent = records.filter(status='Absent').count()
     late = records.filter(status='Late').count()
+    od_count = records.filter(status='On-Duty').count()
+    medical_count = records.filter(status='Medical').count()
 
     rate = round((present / total * 100), 1) if total > 0 else 0.0
 
-    # Real attendance shortage calculation:
     # Real attendance shortage calculation:
     # Target = 75%. If P / T < 0.75:
     # Need x consecutive classes such that (P + x) / (T + x) >= 0.75
@@ -697,7 +703,7 @@ def student_attendance_detail(request, student_id):
     for sub in subjects:
         sub_recs = AttendanceRecord.objects.filter(student=student, subject=sub)
         sub_total = sub_recs.count()
-        sub_present = sub_recs.filter(status='Present').count()
+        sub_present = sub_recs.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).count()
         sub_absent = sub_recs.filter(status='Absent').count()
         sub_rate = round((sub_present / sub_total * 100), 1) if sub_total > 0 else 0.0
         sub_needed = max(0, math.ceil(3 * sub_total - 4 * sub_present)) if sub_total > 0 and sub_rate < threshold else 0
@@ -751,6 +757,8 @@ def student_attendance_detail(request, student_id):
         "attended_classes": present,
         "missed_classes": absent,
         "late_classes": late,
+        "on_duty_classes": od_count,
+        "medical_classes": medical_count,
         "attendance_rate": rate,
         "shortage_warning": shortage_warning,
         "warning_message": overall_warning,
@@ -791,9 +799,9 @@ def attendance_summary(request):
 
     # Today's records (distinct students present/absent today)
     records_today = AttendanceRecord.objects.filter(date=today)
-    present_students_today = records_today.filter(status='Present').values('student_id').distinct().count()
+    present_students_today = records_today.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).values('student_id').distinct().count()
     absent_students_today = records_today.filter(status='Absent').exclude(
-        student_id__in=records_today.filter(status='Present').values('student_id')
+        student_id__in=records_today.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).values('student_id')
     ).values('student_id').distinct().count()
     not_marked_today = max(0, total_students - present_students_today - absent_students_today)
     today_rate = round((present_students_today / total_students * 100), 1) if total_students > 0 else 0.0
@@ -801,7 +809,7 @@ def attendance_summary(request):
     # Cumulative records
     all_records = AttendanceRecord.objects.all()
     total_recs = all_records.count()
-    present_recs = all_records.filter(status='Present').count()
+    present_recs = all_records.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).count()
     cumulative_rate = round((present_recs / total_recs * 100), 1) if total_recs > 0 else 0.0
 
     # Low attendance students calculation
@@ -811,7 +819,7 @@ def attendance_summary(request):
         if sid not in student_records_map:
             student_records_map[sid] = {'present': 0, 'total': 0}
         student_records_map[sid]['total'] += 1
-        if rec['status'] == 'Present':
+        if rec['status'] in ['Present', 'On-Duty', 'Medical', 'Excused']:
             student_records_map[sid]['present'] += 1
 
     low_attendance_list = []
@@ -967,4 +975,225 @@ def attendance_summary(request):
         "subject_wise": subject_wise,
         "recent_trends": trends
     }, status=status.HTTP_200_OK)
+
+
+# =====================================================================
+# STUDENT LEAVE & ON-DUTY (OD) WORKFLOW
+# =====================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def list_create_leave_requests(request):
+    """
+    GET:
+      - Students get their own leave requests.
+      - Teachers/Admins get all requests with optional ?status=, ?branch=, ?q= filters.
+    POST:
+      - Student submits a new leave / On-Duty request.
+    """
+    profile = getattr(request.user, 'profile', None)
+    role = getattr(profile, 'role', 'admin') if profile else ('admin' if request.user.is_staff else None)
+
+    if request.method == 'GET':
+        if role == 'student':
+            if not profile or not profile.student:
+                return Response({"detail": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
+            leaves = LeaveRequest.objects.filter(student=profile.student).select_related('student', 'reviewed_by').order_by('-applied_at')
+        else:
+            status_param = request.query_params.get('status')
+            branch_param = request.query_params.get('branch')
+            search_param = request.query_params.get('q')
+
+            leaves = LeaveRequest.objects.all().select_related('student', 'reviewed_by').order_by('-applied_at')
+            if status_param and status_param.upper() != 'ALL':
+                leaves = leaves.filter(status=status_param.upper())
+            if branch_param and branch_param.upper() != 'ALL':
+                leaves = leaves.filter(student__branch__iexact=branch_param)
+            if search_param:
+                q = search_param.strip()
+                leaves = leaves.filter(
+                    Q(student__name__icontains=q) |
+                    Q(student__roll_no__icontains=q) |
+                    Q(reason__icontains=q)
+                )
+
+        serializer = LeaveRequestSerializer(leaves, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    elif request.method == 'POST':
+        if role != 'student':
+            return Response({"detail": "Only enrolled students can submit leave/OD requests."}, status=status.HTTP_403_FORBIDDEN)
+        student = getattr(profile, 'student', None)
+        if not student:
+            return Response({"detail": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        leave_type = data.get('leave_type', 'OD')
+        start_date_str = data.get('start_date')
+        end_date_str = data.get('end_date') or start_date_str
+        reason = (data.get('reason') or '').strip()
+        document_url = (data.get('document_url') or '').strip()
+
+        if not start_date_str or not reason:
+            return Response({"detail": "Start Date and Reason are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            start_date = datetime.strptime(str(start_date_str)[:10], '%Y-%m-%d').date()
+            end_date = datetime.strptime(str(end_date_str)[:10], '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            return Response({"detail": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if end_date < start_date:
+            return Response({"detail": "End date cannot be prior to start date."}, status=status.HTTP_400_BAD_REQUEST)
+
+        leave = LeaveRequest.objects.create(
+            student=student,
+            leave_type=leave_type,
+            start_date=start_date,
+            end_date=end_date,
+            reason=reason,
+            document_url=document_url,
+            status='PENDING'
+        )
+
+        AuditLog.log(
+            action='STUDENT_UPDATE',
+            entity='LeaveRequest',
+            entity_id=str(leave.id),
+            description=f"Student {student.name} ({student.roll_no}) applied for {leave.get_leave_type_display()} from {start_date} to {end_date}.",
+            user=request.user,
+            request=request
+        )
+
+        serializer = LeaveRequestSerializer(leave)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def review_leave_request(request, leave_id):
+    """
+    Teacher or Admin approves or rejects a student's leave / On-Duty request.
+    If APPROVED:
+      - Credits attendance for that student during the leave date range.
+      - Dispatches an in-app notification to the student.
+      - Logs audit entry.
+    """
+    try:
+        leave = LeaveRequest.objects.select_related('student').get(id=leave_id)
+    except LeaveRequest.DoesNotExist:
+        return Response({"detail": "Leave request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    new_status = request.data.get('status')
+    if new_status not in ['APPROVED', 'REJECTED']:
+        return Response({"detail": "Status must be either APPROVED or REJECTED."}, status=status.HTTP_400_BAD_REQUEST)
+
+    remarks = (request.data.get('reviewer_remarks') or '').strip()
+    leave.status = new_status
+    leave.reviewed_by = request.user
+    leave.reviewer_remarks = remarks
+    leave.reviewed_at = timezone.now()
+    leave.save()
+
+    student = leave.student
+
+    if new_status == 'APPROVED':
+        credited_status = 'On-Duty' if leave.leave_type == 'OD' else ('Medical' if leave.leave_type == 'MEDICAL' else 'Excused')
+
+        # 1. Update any existing Absent/Late records on these dates
+        AttendanceRecord.objects.filter(
+            student=student,
+            date__gte=leave.start_date,
+            date__lte=leave.end_date,
+            status__in=['Absent', 'Late']
+        ).update(
+            status=credited_status,
+            marked_via='LEAVE_APPROVAL',
+            remarks=f"Credited via approved {leave.get_leave_type_display()}"
+        )
+
+        # 2. For any weekday date in range that has no attendance records, create one so attendance is credited
+        cur_date = leave.start_date
+        while cur_date <= leave.end_date:
+            if cur_date.weekday() < 6:  # Mon to Sat
+                exists = AttendanceRecord.objects.filter(student=student, date=cur_date).exists()
+                if not exists:
+                    AttendanceRecord.objects.create(
+                        student=student,
+                        date=cur_date,
+                        status=credited_status,
+                        marked_via='LEAVE_APPROVAL',
+                        remarks=f"Approved {leave.get_leave_type_display()}: {leave.reason[:100]}"
+                    )
+            cur_date += timedelta(days=1)
+
+        # 3. Send in-app notification to student
+        user_profile = getattr(student, 'user_profile', None)
+        profile_user = getattr(user_profile, 'user', None) if user_profile else None
+        if profile_user:
+            Notification.objects.create(
+                user=profile_user,
+                title=f"Leave Application Approved ({leave.get_leave_type_display()}) ✅",
+                message=f"Your {leave.get_leave_type_display()} request for {leave.start_date} to {leave.end_date} ({leave.total_days} days) has been APPROVED by {request.user.get_full_name() or request.user.username}. Attendance credit has been granted.",
+                notification_type='attendance'
+            )
+
+        AuditLog.log(
+            action='STUDENT_UPDATE',
+            entity='LeaveRequest',
+            entity_id=str(leave.id),
+            description=f"Approved {leave.get_leave_type_display()} for {student.name} ({student.roll_no}) from {leave.start_date} to {leave.end_date}.",
+            user=request.user,
+            request=request
+        )
+
+    elif new_status == 'REJECTED':
+        user_profile = getattr(student, 'user_profile', None)
+        profile_user = getattr(user_profile, 'user', None) if user_profile else None
+        if profile_user:
+            Notification.objects.create(
+                user=profile_user,
+                title="Leave Application Rejected ❌",
+                message=f"Your {leave.get_leave_type_display()} request for {leave.start_date} to {leave.end_date} was rejected. Remarks: {remarks or 'None provided.'}",
+                notification_type='attendance'
+            )
+
+        AuditLog.log(
+            action='STUDENT_UPDATE',
+            entity='LeaveRequest',
+            entity_id=str(leave.id),
+            description=f"Rejected {leave.get_leave_type_display()} for {student.name} ({student.roll_no}). Remarks: {remarks}",
+            user=request.user,
+            request=request
+        )
+
+    serializer = LeaveRequestSerializer(leave)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_leave_request(request, leave_id):
+    """
+    Cancel / delete a leave request:
+    - Students can only cancel their own PENDING requests.
+    - Admins can delete any request.
+    """
+    try:
+        leave = LeaveRequest.objects.get(id=leave_id)
+    except LeaveRequest.DoesNotExist:
+        return Response({"detail": "Leave request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    profile = getattr(request.user, 'profile', None)
+    role = getattr(profile, 'role', 'admin') if profile else ('admin' if request.user.is_staff else None)
+
+    if role == 'student':
+        if not profile or not profile.student or leave.student.id != profile.student.id:
+            return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        if leave.status != 'PENDING':
+            return Response({"detail": "Only PENDING leave requests can be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+
+    leave.delete()
+    return Response({"detail": "Leave request cancelled successfully."}, status=status.HTTP_200_OK)
+
 

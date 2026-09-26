@@ -9,9 +9,14 @@ import {
   getAnnouncements,
   markQrAttendance,
   getAllSubjects,
+  getLeaveRequests,
+  applyLeaveRequest,
+  deleteLeaveRequest,
+  getMyHallTickets,
 } from "../services/studentservice";
 import "../styles/studentdashboard.css";
 import { Html5QrcodeScanner } from "html5-qrcode";
+import { QRCodeSVG } from "qrcode.react";
 import {
   FaGraduationCap,
   FaCalendarCheck,
@@ -31,6 +36,16 @@ import {
   FaTimes,
   FaCamera,
   FaKeyboard,
+  FaFileAlt,
+  FaPlusCircle,
+  FaTrashAlt,
+  FaInfoCircle,
+  FaIdCard,
+  FaPrint,
+  FaShieldAlt,
+  FaUniversity,
+  FaExclamationCircle,
+  FaCheck,
 } from "react-icons/fa";
 
 const StudentDashboard = () => {
@@ -60,6 +75,38 @@ const StudentDashboard = () => {
   const [curriculumCourses, setCurriculumCourses] = useState([]);
   const [studentCourseSemFilter, setStudentCourseSemFilter] = useState("CURRENT");
   const [loading, setLoading] = useState(true);
+
+  // Leave & On-Duty (OD) States
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [leaveFormData, setLeaveFormData] = useState({
+    leave_type: "OD",
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: new Date().toISOString().slice(0, 10),
+    reason: "",
+    document_url: "",
+  });
+  const [leaveModalMessage, setLeaveModalMessage] = useState(null);
+  const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
+
+  // Hall Ticket States
+  const [hallTickets, setHallTickets] = useState([]);
+  const [selectedTicketIndex, setSelectedTicketIndex] = useState(0);
+  const [hallTicketsLoading, setHallTicketsLoading] = useState(false);
+
+  const fetchStudentHallTickets = () => {
+    setHallTicketsLoading(true);
+    getMyHallTickets()
+      .then((res) => {
+        setHallTickets(res.data || []);
+      })
+      .catch((err) => {
+        console.error("Failed to load hall tickets:", err);
+      })
+      .finally(() => {
+        setHallTicketsLoading(false);
+      });
+  };
 
   // QR Modal States
   const [showQrModal, setShowQrModal] = useState(false);
@@ -195,13 +242,17 @@ const StudentDashboard = () => {
       getTimetable().catch(() => ({ data: [] })),
       getAnnouncements().catch(() => ({ data: [] })),
       getAllSubjects().catch(() => ({ data: [] })),
+      getLeaveRequests().catch(() => ({ data: [] })),
+      getMyHallTickets().catch(() => ({ data: [] })),
     ])
-      .then(([repRes, attRes, timeRes, annRes, subRes]) => {
+      .then(([repRes, attRes, timeRes, annRes, subRes, leaveRes, ticketRes]) => {
         if (repRes.data) setReportData(repRes.data);
         if (attRes.data) setAttendanceData(attRes.data);
         if (timeRes.data) setTimetableSlots(timeRes.data);
         if (annRes.data) setAnnouncements(annRes.data);
         if (subRes.data) setCurriculumCourses(subRes.data);
+        if (leaveRes.data) setLeaveRequests(leaveRes.data);
+        if (ticketRes.data) setHallTickets(ticketRes.data);
       })
       .finally(() => {
         setLoading(false);
@@ -212,6 +263,75 @@ const StudentDashboard = () => {
     if (!currentUser) return;
     fetchAllData();
   }, [currentUser]);
+
+  useEffect(() => {
+    if (activeTab === "hallticket") {
+      fetchStudentHallTickets();
+    }
+  }, [activeTab]);
+
+  const handleApplyLeave = async (e) => {
+    if (e) e.preventDefault();
+    setIsSubmittingLeave(true);
+    setLeaveModalMessage(null);
+
+    if (!leaveFormData.start_date || !leaveFormData.reason.trim()) {
+      setLeaveModalMessage({
+        success: false,
+        text: "Please provide start date and detailed reason for leave.",
+      });
+      setIsSubmittingLeave(false);
+      return;
+    }
+
+    if (leaveFormData.end_date < leaveFormData.start_date) {
+      setLeaveModalMessage({
+        success: false,
+        text: "End date cannot be earlier than start date.",
+      });
+      setIsSubmittingLeave(false);
+      return;
+    }
+
+    try {
+      await applyLeaveRequest(leaveFormData);
+      setLeaveModalMessage({
+        success: true,
+        text: "Leave application submitted successfully! Your department faculty will review it.",
+      });
+      fetchAllData();
+      setTimeout(() => {
+        setShowLeaveModal(false);
+        setLeaveModalMessage(null);
+        setLeaveFormData({
+          leave_type: "OD",
+          start_date: new Date().toISOString().slice(0, 10),
+          end_date: new Date().toISOString().slice(0, 10),
+          reason: "",
+          document_url: "",
+        });
+      }, 1500);
+    } catch (err) {
+      setLeaveModalMessage({
+        success: false,
+        text: err.response?.data?.detail || "Failed to submit leave request.",
+      });
+    } finally {
+      setIsSubmittingLeave(false);
+    }
+  };
+
+  const handleCancelLeave = async (leaveId) => {
+    if (!window.confirm("Are you sure you want to cancel this pending leave request?")) {
+      return;
+    }
+    try {
+      await deleteLeaveRequest(leaveId);
+      fetchAllData();
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to cancel leave request.");
+    }
+  };
 
   const handleMarkQr = async (e) => {
     if (e) e.preventDefault();
@@ -1388,6 +1508,1144 @@ const StudentDashboard = () => {
         </div>
       )}
 
+      {/* Tab: Leave & On-Duty (OD) Management */}
+      {activeTab === "leaves" && (
+        <div className="student-card">
+          <div
+            className="card-title-row"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div>
+              <h3 style={{ margin: "0 0 4px 0", display: "flex", alignItems: "center", gap: "8px" }}>
+                <FaFileAlt style={{ color: "#2563eb" }} /> Leave &amp; On-Duty (OD) Applications
+              </h3>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+                Apply for On-Duty (OD) representations, medical leaves, or academic duties. Approved leaves grant automatic attendance credit.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowLeaveModal(true)}
+              style={{
+                background: "#2563eb",
+                color: "#fff",
+                border: "none",
+                padding: "10px 18px",
+                borderRadius: "10px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)",
+              }}
+            >
+              <FaPlusCircle /> Apply for Leave / OD
+            </button>
+          </div>
+
+          {/* Quick Metrics Strip */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              gap: "12px",
+              marginTop: "16px",
+              marginBottom: "20px",
+              background: "#f8fafc",
+              padding: "14px",
+              borderRadius: "10px",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <div>
+              <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                Pending Reviews
+              </small>
+              <div style={{ fontSize: "18px", fontWeight: 700, color: "#d97706" }}>
+                {leaveRequests.filter((l) => l.status === "PENDING").length} Requests
+              </div>
+            </div>
+
+            <div>
+              <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                Approved Applications
+              </small>
+              <div style={{ fontSize: "18px", fontWeight: 700, color: "#059669" }}>
+                {leaveRequests.filter((l) => l.status === "APPROVED").length} Approved
+              </div>
+            </div>
+
+            <div>
+              <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                Attendance Credited
+              </small>
+              <div style={{ fontSize: "18px", fontWeight: 700, color: "#2563eb" }}>
+                {leaveRequests
+                  .filter((l) => l.status === "APPROVED")
+                  .reduce((acc, l) => acc + (l.total_days || 1), 0)}{" "}
+                Days
+              </div>
+            </div>
+
+            <div>
+              <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                75% Threshold Status
+              </small>
+              <div style={{ fontSize: "14px", fontWeight: 600, color: "#059669", marginTop: "2px" }}>
+                Automatic Protection Active
+              </div>
+            </div>
+          </div>
+
+          {/* Applications Table */}
+          <div className="table-responsive">
+            <table className="grades-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>ID</th>
+                  <th style={{ textAlign: "left" }}>Leave Type</th>
+                  <th style={{ textAlign: "center" }}>Duration</th>
+                  <th style={{ textAlign: "left" }}>Reason &amp; Purpose</th>
+                  <th style={{ textAlign: "center" }}>Proof Doc</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                  <th style={{ textAlign: "left" }}>Reviewer Notes</th>
+                  <th style={{ textAlign: "center" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaveRequests.length > 0 ? (
+                  leaveRequests.map((req) => (
+                    <tr key={req.id}>
+                      <td>
+                        <span
+                          style={{
+                            background: "#f1f5f9",
+                            color: "#475569",
+                            padding: "4px 8px",
+                            borderRadius: "6px",
+                            fontFamily: "monospace",
+                            fontWeight: 700,
+                            fontSize: "12px",
+                          }}
+                        >
+                          #LV-{String(req.id).padStart(4, "0")}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span
+                          style={{
+                            background:
+                              req.leave_type === "OD"
+                                ? "#eff6ff"
+                                : req.leave_type === "MEDICAL"
+                                ? "#ecfdf5"
+                                : req.leave_type === "CASUAL"
+                                ? "#faf5ff"
+                                : "#fef3c7",
+                            color:
+                              req.leave_type === "OD"
+                                ? "#1d4ed8"
+                                : req.leave_type === "MEDICAL"
+                                ? "#065f46"
+                                : req.leave_type === "CASUAL"
+                                ? "#7e22ce"
+                                : "#92400e",
+                            padding: "4px 10px",
+                            borderRadius: "6px",
+                            fontWeight: 700,
+                            fontSize: "12px",
+                            border:
+                              req.leave_type === "OD"
+                                ? "1px solid #bfdbfe"
+                                : req.leave_type === "MEDICAL"
+                                ? "1px solid #a7f3d0"
+                                : req.leave_type === "CASUAL"
+                                ? "1px solid #e9d5ff"
+                                : "1px solid #fde68a",
+                          }}
+                        >
+                          {req.leave_type_display}
+                        </span>
+                      </td>
+
+                      <td style={{ textAlign: "center" }}>
+                        <div style={{ fontWeight: 600, fontSize: "13px", color: "#0f172a" }}>
+                          {req.start_date === req.end_date
+                            ? req.start_date
+                            : `${req.start_date} → ${req.end_date}`}
+                        </div>
+                        <small style={{ color: "#64748b", fontSize: "11px" }}>
+                          {req.total_days} Day{req.total_days > 1 ? "s" : ""}
+                        </small>
+                      </td>
+
+                      <td style={{ maxWidth: "260px" }}>
+                        <span style={{ fontSize: "13px", color: "#334155" }}>
+                          {req.reason}
+                        </span>
+                      </td>
+
+                      <td style={{ textAlign: "center" }}>
+                        {req.document_url ? (
+                          <a
+                            href={req.document_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: "#2563eb",
+                              textDecoration: "underline",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                            }}
+                          >
+                            View Proof ↗
+                          </a>
+                        ) : (
+                          <span style={{ color: "#94a3b8", fontSize: "12px" }}>—</span>
+                        )}
+                      </td>
+
+                      <td style={{ textAlign: "center" }}>
+                        <span
+                          className={`stat-badge-tag ${
+                            req.status === "APPROVED"
+                              ? "tag-success"
+                              : req.status === "REJECTED"
+                              ? "tag-danger"
+                              : "tag-warning"
+                          }`}
+                        >
+                          {req.status_display || req.status}
+                        </span>
+                      </td>
+
+                      <td>
+                        {req.reviewed_by_name ? (
+                          <div style={{ fontSize: "12px" }}>
+                            <strong>{req.reviewed_by_name}</strong>
+                            {req.reviewer_remarks && (
+                              <div style={{ color: "#64748b", marginTop: "2px" }}>
+                                "{req.reviewer_remarks}"
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: "#94a3b8", fontSize: "12px" }}>Awaiting review</span>
+                        )}
+                      </td>
+
+                      <td style={{ textAlign: "center" }}>
+                        {req.status === "PENDING" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelLeave(req.id)}
+                            title="Cancel pending application"
+                            style={{
+                              background: "#fef2f2",
+                              color: "#dc2626",
+                              border: "1px solid #fecaca",
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <FaTrashAlt /> Cancel
+                          </button>
+                        ) : (
+                          <span style={{ color: "#94a3b8", fontSize: "12px" }}>Completed</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="8" style={{ textAlign: "center", padding: "36px", color: "#64748b" }}>
+                      <div style={{ maxWidth: "420px", margin: "0 auto" }}>
+                        <div
+                          style={{
+                            width: "48px",
+                            height: "48px",
+                            borderRadius: "50%",
+                            background: "#f1f5f9",
+                            color: "#94a3b8",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto 12px auto",
+                            fontSize: "20px",
+                          }}
+                        >
+                          <FaFileAlt />
+                        </div>
+                        <h4 style={{ margin: "0 0 6px 0", color: "#1e293b", fontSize: "16px" }}>
+                          No Leave or On-Duty Applications
+                        </h4>
+                        <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#64748b" }}>
+                          Going on leave or attending a college event? Submit an On-Duty or Medical application to safeguard your 75% attendance record.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowLeaveModal(true)}
+                          style={{
+                            background: "#2563eb",
+                            color: "#fff",
+                            border: "none",
+                            padding: "8px 16px",
+                            borderRadius: "8px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <FaPlusCircle /> Apply Now
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Hall Ticket / Admit Card */}
+      {activeTab === "hallticket" && (
+        <div>
+          {/* Header Card */}
+          <div
+            className="no-print"
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              padding: "20px 24px",
+              marginBottom: "20px",
+              boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "16px",
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin: "0 0 6px 0",
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  color: "#0f172a",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <FaIdCard style={{ color: "#2563eb" }} />
+                Semester Examination Hall Ticket / Admit Card
+              </h2>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+                Verify your attendance eligibility, view paper timetables, and download your official examination hall ticket.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={fetchStudentHallTickets}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 16px",
+                  background: "#f1f5f9",
+                  color: "#334155",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Refresh Status
+              </button>
+
+              {hallTickets.length > 0 && hallTickets[selectedTicketIndex]?.is_eligible && (
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "9px 18px",
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)",
+                  }}
+                >
+                  <FaPrint /> Print / Save PDF
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Exam Selector if multiple published exams */}
+          {hallTickets.length > 1 && (
+            <div
+              className="no-print"
+              style={{
+                display: "flex",
+                gap: "8px",
+                marginBottom: "20px",
+                overflowX: "auto",
+                paddingBottom: "4px",
+              }}
+            >
+              {hallTickets.map((t, idx) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelectedTicketIndex(idx)}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "10px",
+                    border: "none",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: selectedTicketIndex === idx ? "#0f172a" : "#e2e8f0",
+                    color: selectedTicketIndex === idx ? "#ffffff" : "#475569",
+                  }}
+                >
+                  {t.exam_session_name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {hallTicketsLoading ? (
+            <div style={{ textAlign: "center", padding: "60px", color: "#64748b" }}>
+              <div style={{ fontSize: "28px", marginBottom: "12px" }}>⏳</div>
+              <div>Retrieving examination records and calculating attendance eligibility...</div>
+            </div>
+          ) : hallTickets.length === 0 ? (
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: "16px",
+                padding: "60px 24px",
+                textAlign: "center",
+                color: "#64748b",
+                boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
+              }}
+            >
+              <div
+                style={{
+                  width: "60px",
+                  height: "60px",
+                  borderRadius: "50%",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "26px",
+                  margin: "0 auto 16px auto",
+                }}
+              >
+                <FaIdCard />
+              </div>
+              <h3 style={{ margin: "0 0 8px 0", color: "#0f172a", fontSize: "18px" }}>
+                No Active Examination Hall Tickets
+              </h3>
+              <p style={{ margin: "0 auto 20px auto", maxWidth: "460px", fontSize: "14px", lineHeight: "1.5" }}>
+                There are no published examinations currently scheduled for your branch and semester. Once the examination department publishes timetables, your admit card and eligibility status will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            (() => {
+              const currentTicket = hallTickets[selectedTicketIndex] || hallTickets[0];
+
+              if (!currentTicket.is_eligible) {
+                return (
+                  /* ================================================== */
+                  /* ATTENDANCE SHORTAGE DETAINED NOTICE                */
+                  /* ================================================== */
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      borderRadius: "16px",
+                      padding: "36px",
+                      boxShadow: "0 10px 30px rgba(239, 68, 68, 0.08)",
+                      border: "2px solid #fecaca",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "14px",
+                        marginBottom: "20px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "56px",
+                          height: "56px",
+                          borderRadius: "16px",
+                          background: "#fee2e2",
+                          color: "#dc2626",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "26px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <FaExclamationTriangle />
+                      </div>
+                      <div>
+                        <div
+                          style={{
+                            display: "inline-block",
+                            padding: "3px 10px",
+                            borderRadius: "12px",
+                            fontSize: "11px",
+                            fontWeight: 800,
+                            letterSpacing: "0.5px",
+                            background: "#fee2e2",
+                            color: "#b91c1c",
+                            textTransform: "uppercase",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          Attendance Shortage Detained
+                        </div>
+                        <h3 style={{ margin: 0, fontSize: "20px", color: "#0f172a", fontWeight: 700 }}>
+                          Hall Ticket Withheld — {currentTicket.exam_session_name}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                        gap: "16px",
+                        marginBottom: "24px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: "#fef2f2",
+                          padding: "16px 20px",
+                          borderRadius: "12px",
+                          border: "1px solid #fee2e2",
+                        }}
+                      >
+                        <div style={{ fontSize: "12px", color: "#991b1b", fontWeight: 600, textTransform: "uppercase" }}>
+                          Your Current Attendance
+                        </div>
+                        <div style={{ fontSize: "28px", fontWeight: 800, color: "#dc2626", marginTop: "4px" }}>
+                          {currentTicket.calculated_attendance_pct}%
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#b91c1c", marginTop: "4px" }}>
+                          Shortage of {(currentTicket.min_attendance - currentTicket.calculated_attendance_pct).toFixed(1)}%
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "#f8fafc",
+                          padding: "16px 20px",
+                          borderRadius: "12px",
+                          border: "1px solid #e2e8f0",
+                        }}
+                      >
+                        <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>
+                          Mandatory Threshold
+                        </div>
+                        <div style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>
+                          {currentTicket.min_attendance}%
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
+                          Minimum required by board regulations
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#fffbeb",
+                        padding: "18px 22px",
+                        borderRadius: "12px",
+                        border: "1px solid #fef3c7",
+                        marginBottom: "24px",
+                      }}
+                    >
+                      <h4 style={{ margin: "0 0 8px 0", color: "#92400e", fontSize: "15px" }}>
+                        How to Resolve Attendance Shortage:
+                      </h4>
+                      <ul style={{ margin: 0, paddingLeft: "20px", color: "#b45309", fontSize: "13.5px", lineHeight: "1.6" }}>
+                        <li>
+                          <strong>On-Duty (OD) / Medical Credit:</strong> If you represented the college in sports, symposiums, hackathons, or had medical leave, apply using the Leave &amp; OD tab. Approved applications immediately credit your attendance.
+                        </li>
+                        <li>
+                          <strong>Head of Department (HOD) Condonation:</strong> Under special circumstances (genuine medical reasons), the department authorities can grant an official condonation override to issue your hall ticket.
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("leaves");
+                          setShowLeaveModal(true);
+                        }}
+                        style={{
+                          padding: "10px 20px",
+                          borderRadius: "8px",
+                          background: "#2563eb",
+                          color: "#ffffff",
+                          border: "none",
+                          fontWeight: 700,
+                          fontSize: "13px",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <FaFileAlt /> Apply for On-Duty (OD) / Medical Leave
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={fetchStudentHallTickets}
+                        style={{
+                          padding: "10px 18px",
+                          borderRadius: "8px",
+                          background: "#f1f5f9",
+                          color: "#334155",
+                          border: "1px solid #cbd5e1",
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Recalculate &amp; Check Eligibility
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              /* ================================================== */
+              /* OFFICIAL PRINTABLE ADMIT CARD CANVAS               */
+              /* ================================================== */
+              const verifyUrl = `${window.location.origin}/verify-hallticket?token=${currentTicket.verification_token}`;
+
+              return (
+                <div>
+                  {/* Status Banner */}
+                  <div
+                    className="no-print"
+                    style={{
+                      background: currentTicket.is_condoned ? "#f5f3ff" : "#ecfdf5",
+                      border: `1px solid ${currentTicket.is_condoned ? "#ddd6fe" : "#a7f3d0"}`,
+                      borderRadius: "12px",
+                      padding: "14px 20px",
+                      marginBottom: "20px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "10px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      {currentTicket.is_condoned ? (
+                        <FaShieldAlt style={{ color: "#7c3aed", fontSize: "20px" }} />
+                      ) : (
+                        <FaCheckCircle style={{ color: "#059669", fontSize: "20px" }} />
+                      )}
+                      <div>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            color: currentTicket.is_condoned ? "#5b21b6" : "#065f46",
+                            fontSize: "14px",
+                          }}
+                        >
+                          {currentTicket.is_condoned
+                            ? "Special Condonation Granted • Hall Ticket Issued"
+                            : "Attendance Verified & Eligible for Examination"}
+                        </div>
+                        <div style={{ fontSize: "12px", color: currentTicket.is_condoned ? "#6d28d9" : "#047857" }}>
+                          Attendance: {currentTicket.calculated_attendance_pct}% • Hall Ticket No:{" "}
+                          <strong>{currentTicket.hall_ticket_number}</strong>
+                          {currentTicket.is_condoned && ` • Reason: "${currentTicket.condonation_reason}"`}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      style={{
+                        padding: "8px 16px",
+                        background: "#0f172a",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <FaPrint /> Quick Print
+                    </button>
+                  </div>
+
+                  {/* The Document Canvas */}
+                  <div
+                    className="official-admit-card-printable"
+                    style={{
+                      background: "#ffffff",
+                      border: "3px double #1e3a8a",
+                      borderRadius: "12px",
+                      padding: "32px",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+                      color: "#0f172a",
+                      position: "relative",
+                      maxWidth: "920px",
+                      margin: "0 auto",
+                    }}
+                  >
+                    {/* Institutional Header */}
+                    <div
+                      style={{
+                        borderBottom: "2px solid #1e3a8a",
+                        paddingBottom: "16px",
+                        marginBottom: "20px",
+                        textAlign: "center",
+                        position: "relative",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "14px",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "48px",
+                            height: "48px",
+                            borderRadius: "50%",
+                            background: "linear-gradient(135deg, #1e3a8a, #0284c7)",
+                            color: "#fff",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "22px",
+                          }}
+                        >
+                          <FaUniversity />
+                        </div>
+                        <div>
+                          <h1
+                            style={{
+                              margin: 0,
+                              fontSize: "21px",
+                              fontWeight: "900",
+                              letterSpacing: "1px",
+                              color: "#1e3a8a",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            National Institute of Science &amp; Technology
+                          </h1>
+                          <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, letterSpacing: "0.5px" }}>
+                            Autonomous Institution • Approved by AICTE • NAAC Grade "A++"
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          color: "#0284c7",
+                          textTransform: "uppercase",
+                          letterSpacing: "1px",
+                          marginTop: "4px",
+                        }}
+                      >
+                        Office of the Controller of Examinations
+                      </div>
+                    </div>
+
+                    {/* Examination Title Banner */}
+                    <div
+                      style={{
+                        background: "#1e3a8a",
+                        color: "#ffffff",
+                        padding: "10px 16px",
+                        borderRadius: "6px",
+                        textAlign: "center",
+                        marginBottom: "20px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                      }}
+                    >
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ fontSize: "14px", fontWeight: 800, letterSpacing: "0.5px" }}>
+                          {currentTicket.exam_session_name.toUpperCase()}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#bfdbfe" }}>
+                          Academic Year: {currentTicket.academic_year} • {currentTicket.exam_type}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "rgba(255, 255, 255, 0.15)",
+                          padding: "6px 14px",
+                          borderRadius: "6px",
+                          fontSize: "13px",
+                          fontWeight: 800,
+                          letterSpacing: "1px",
+                        }}
+                      >
+                        {currentTicket.hall_ticket_number}
+                      </div>
+                    </div>
+
+                    {/* Candidate Details & QR Code Grid */}
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 180px",
+                        gap: "20px",
+                        marginBottom: "24px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        padding: "16px",
+                        background: "#fafafa",
+                      }}
+                    >
+                      {/* Left: Candidate Information Table */}
+                      <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+                        <tbody>
+                          <tr>
+                            <td style={{ padding: "5px 8px", color: "#64748b", fontWeight: 600, width: "35%" }}>
+                              Candidate Name:
+                            </td>
+                            <td style={{ padding: "5px 8px", color: "#0f172a", fontWeight: 800, fontSize: "14px" }}>
+                              {currentTicket.student_name}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: "5px 8px", color: "#64748b", fontWeight: 600 }}>
+                              University Roll No:
+                            </td>
+                            <td style={{ padding: "5px 8px", color: "#0f172a", fontWeight: 700 }}>
+                              {currentTicket.roll_no}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: "5px 8px", color: "#64748b", fontWeight: 600 }}>
+                              Student Reg ID:
+                            </td>
+                            <td style={{ padding: "5px 8px", color: "#0f172a", fontWeight: 600 }}>
+                              {currentTicket.student_id_code || currentTicket.roll_no}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: "5px 8px", color: "#64748b", fontWeight: 600 }}>
+                              Branch &amp; Specialization:
+                            </td>
+                            <td style={{ padding: "5px 8px", color: "#0f172a", fontWeight: 600 }}>
+                              {currentTicket.branch}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: "5px 8px", color: "#64748b", fontWeight: 600 }}>
+                              Semester &amp; Section:
+                            </td>
+                            <td style={{ padding: "5px 8px", color: "#0f172a", fontWeight: 600 }}>
+                              Semester {currentTicket.semester} (Section {currentTicket.section})
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: "5px 8px", color: "#64748b", fontWeight: 600 }}>
+                              Attendance Record:
+                            </td>
+                            <td style={{ padding: "5px 8px" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "2px 8px",
+                                  borderRadius: "4px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  background: "#dcfce7",
+                                  color: "#15803d",
+                                }}
+                              >
+                                {currentTicket.calculated_attendance_pct}% (Eligible)
+                              </span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+
+                      {/* Right: Verification QR Code & Stamp */}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          textAlign: "center",
+                          borderLeft: "1px solid #cbd5e1",
+                          paddingLeft: "16px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            background: "#ffffff",
+                            padding: "6px",
+                            borderRadius: "8px",
+                            border: "1px solid #cbd5e1",
+                            display: "inline-block",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          <QRCodeSVG value={verifyUrl} size={100} level="M" />
+                        </div>
+                        <div style={{ fontSize: "10px", color: "#64748b", fontWeight: 600 }}>
+                          Official QR Verification
+                        </div>
+                        <div style={{ fontSize: "9px", color: "#94a3b8", marginTop: "2px" }}>
+                          Scan to verify credentials
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Examination Schedule Timetable */}
+                    <div style={{ marginBottom: "24px" }}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          color: "#1e3a8a",
+                          textTransform: "uppercase",
+                          marginBottom: "8px",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        Schedule of Examination Papers
+                      </div>
+
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: "12px",
+                          textAlign: "left",
+                          border: "1px solid #cbd5e1",
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ background: "#f1f5f9", borderBottom: "2px solid #cbd5e1" }}>
+                            <th style={{ padding: "8px 10px", width: "40px", color: "#334155" }}>Sl</th>
+                            <th style={{ padding: "8px 10px", width: "100px", color: "#334155" }}>Date</th>
+                            <th style={{ padding: "8px 10px", width: "130px", color: "#334155" }}>Time Slot</th>
+                            <th style={{ padding: "8px 10px", width: "85px", color: "#334155" }}>Code</th>
+                            <th style={{ padding: "8px 10px", color: "#334155" }}>Course Title</th>
+                            <th style={{ padding: "8px 10px", width: "120px", color: "#334155" }}>Exam Hall</th>
+                            <th style={{ padding: "8px 10px", width: "100px", textAlign: "center", color: "#334155" }}>
+                              Invigilator Sign
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {currentTicket.timetable && currentTicket.timetable.length > 0 ? (
+                            currentTicket.timetable.map((paper, pIdx) => (
+                              <tr key={paper.id || pIdx} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                                <td style={{ padding: "8px 10px", fontWeight: 600 }}>{pIdx + 1}</td>
+                                <td style={{ padding: "8px 10px", fontWeight: 700, color: "#1e293b" }}>
+                                  {paper.exam_date}
+                                </td>
+                                <td style={{ padding: "8px 10px", color: "#475569" }}>
+                                  {paper.start_time?.slice(0, 5)} - {paper.end_time?.slice(0, 5)}
+                                </td>
+                                <td style={{ padding: "8px 10px", fontWeight: 700, color: "#2563eb" }}>
+                                  {paper.subject_code}
+                                </td>
+                                <td style={{ padding: "8px 10px", fontWeight: 600, color: "#0f172a" }}>
+                                  {paper.subject_name}
+                                </td>
+                                <td style={{ padding: "8px 10px", color: "#64748b" }}>
+                                  {paper.hall_number}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "8px 10px",
+                                    borderLeft: "1px dashed #cbd5e1",
+                                    height: "32px",
+                                  }}
+                                ></td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="7" style={{ textAlign: "center", padding: "16px", color: "#64748b" }}>
+                                Timetable schedule to be finalized by the examination cell.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Instructions to Candidates */}
+                    <div
+                      style={{
+                        borderTop: "1px solid #cbd5e1",
+                        paddingTop: "14px",
+                        marginBottom: "36px",
+                        fontSize: "11.5px",
+                        color: "#475569",
+                        lineHeight: "1.5",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          color: "#0f172a",
+                          textTransform: "uppercase",
+                          marginBottom: "6px",
+                          fontSize: "12px",
+                        }}
+                      >
+                        Important Instructions for Candidates:
+                      </div>
+                      <div style={{ whiteSpace: "pre-wrap", color: "#475569" }}>
+                        {currentTicket.instructions}
+                      </div>
+                    </div>
+
+                    {/* Signature Blocks */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-end",
+                        paddingTop: "24px",
+                        borderTop: "1px dashed #cbd5e1",
+                      }}
+                    >
+                      <div style={{ textAlign: "center", width: "200px" }}>
+                        <div
+                          style={{
+                            borderBottom: "1px solid #475569",
+                            height: "40px",
+                            marginBottom: "6px",
+                          }}
+                        ></div>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: "#334155" }}>
+                          Candidate's Signature
+                        </div>
+                        <div style={{ fontSize: "9px", color: "#94a3b8" }}>(To be signed in Exam Hall)</div>
+                      </div>
+
+                      {/* Official Seal Emblem */}
+                      <div style={{ textAlign: "center" }}>
+                        <div
+                          style={{
+                            width: "70px",
+                            height: "70px",
+                            borderRadius: "50%",
+                            border: "2px dashed #0284c7",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto 4px auto",
+                            color: "#0284c7",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            textAlign: "center",
+                            lineHeight: "1.2",
+                          }}
+                        >
+                          Official<br />Exam<br />Seal
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: "center", width: "220px" }}>
+                        <div
+                          style={{
+                            borderBottom: "1px solid #475569",
+                            height: "40px",
+                            marginBottom: "6px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "#1e3a8a",
+                            fontStyle: "italic",
+                            fontWeight: 700,
+                            fontFamily: "cursive",
+                            fontSize: "16px",
+                          }}
+                        >
+                          Dr. R. K. Sharma
+                        </div>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: "#334155" }}>
+                          Controller of Examinations
+                        </div>
+                        <div style={{ fontSize: "9px", color: "#94a3b8" }}>NIST Autonomous</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </div>
+      )}
+
       {/* Tab 5: Announcements */}
       {activeTab === "announcements" && (
         <div className="student-card">
@@ -1836,6 +3094,267 @@ const StudentDashboard = () => {
                 Close & View Updated Dashboard ✓
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Leave Application Modal */}
+      {showLeaveModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              padding: "28px",
+              maxWidth: "520px",
+              width: "100%",
+              position: "relative",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowLeaveModal(false)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "none",
+                border: "none",
+                fontSize: "18px",
+                color: "#64748b",
+                cursor: "pointer",
+              }}
+            >
+              <FaTimes />
+            </button>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+              <div
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "8px",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "18px",
+                }}
+              >
+                <FaFileAlt />
+              </div>
+              <h3 style={{ margin: 0, fontSize: "20px", color: "#0f172a" }}>
+                Apply for Leave / On-Duty (OD)
+              </h3>
+            </div>
+            <p style={{ margin: "0 0 16px 0", color: "#64748b", fontSize: "14px" }}>
+              Request official absence authorization. Approved requests receive attendance credit.
+            </p>
+
+            {leaveModalMessage && (
+              <div
+                style={{
+                  padding: "12px",
+                  borderRadius: "8px",
+                  marginBottom: "16px",
+                  background: leaveModalMessage.success ? "#ecfdf5" : "#fef2f2",
+                  color: leaveModalMessage.success ? "#047857" : "#b91c1c",
+                  fontSize: "14px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <FaCheckCircle /> {leaveModalMessage.text}
+              </div>
+            )}
+
+            <form onSubmit={handleApplyLeave}>
+              <div style={{ marginBottom: "14px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                  Leave Type *
+                </label>
+                <select
+                  value={leaveFormData.leave_type}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, leave_type: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <option value="OD">On-Duty (OD) — Sports, Hackathon, Symposium, College Representation</option>
+                  <option value="MEDICAL">Medical Leave — Illness, Doctor Consultation, Hospitalization</option>
+                  <option value="CASUAL">Casual Leave — Personal / Family Emergency</option>
+                  <option value="ACADEMIC">Academic Duty — External Exam, Conference, Project Internship</option>
+                </select>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                    Start Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={leaveFormData.start_date}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setLeaveFormData({
+                        ...leaveFormData,
+                        start_date: newStart,
+                        end_date: leaveFormData.end_date < newStart ? newStart : leaveFormData.end_date,
+                      });
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                    End Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    min={leaveFormData.start_date}
+                    value={leaveFormData.end_date}
+                    onChange={(e) => setLeaveFormData({ ...leaveFormData, end_date: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "14px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                  Reason &amp; Activity Details *
+                </label>
+                <textarea
+                  required
+                  rows="3"
+                  placeholder="Explain why you require absence (e.g. Attending Smart India Hackathon grand finale at IIT...)"
+                  value={leaveFormData.reason}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, reason: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                  Document / Proof Link (Optional)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://drive.google.com/... or event registration link"
+                  value={leaveFormData.document_url}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, document_url: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              <div
+                style={{
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  marginBottom: "16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "12px",
+                  color: "#1e40af",
+                }}
+              >
+                <FaInfoCircle />
+                <span>
+                  Approved On-Duty and Medical Leaves automatically grant attendance credit so your 75% semester requirement is preserved.
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowLeaveModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#f8fafc",
+                    color: "#475569",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingLeave}
+                  style={{
+                    flex: 2,
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: "#2563eb",
+                    color: "#fff",
+                    fontWeight: 600,
+                    cursor: isSubmittingLeave ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  {isSubmittingLeave ? "Submitting..." : "Submit Application"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

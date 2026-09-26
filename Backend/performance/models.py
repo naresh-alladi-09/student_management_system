@@ -1,4 +1,7 @@
+import uuid
 from django.db import models
+from django.utils import timezone
+from django.contrib.auth.models import User
 from students.models import Student
 
 
@@ -130,3 +133,88 @@ class StudentScore(models.Model):
 
     def __str__(self):
         return f"{self.student.name} - {self.subject.code}: {self.total} ({self.grade})"
+
+
+# =====================================================================
+# EXAM SESSIONS, TIMETABLE & AUTOMATED HALL TICKETS
+# =====================================================================
+
+class ExamSession(models.Model):
+    EXAM_TYPE_CHOICES = (
+        ('REGULAR', 'Semester End Regular Examination'),
+        ('SUPPLEMENTARY', 'Supplementary / Backlog Examination'),
+        ('MID_TERM', 'Mid-Term Examination'),
+        ('INTERNAL', 'Internal Assessment Exam'),
+    )
+
+    name = models.CharField(max_length=200)
+    academic_year = models.CharField(max_length=50, default="2025-2026")
+    exam_type = models.CharField(max_length=50, choices=EXAM_TYPE_CHOICES, default='REGULAR')
+    branch = models.CharField(max_length=50, default='ALL')
+    semester = models.CharField(max_length=10, default='ALL')
+    start_date = models.DateField()
+    end_date = models.DateField()
+    min_attendance_percentage = models.FloatField(default=75.0)
+    is_published = models.BooleanField(default=True)
+    instructions = models.TextField(
+        default="1. Candidates must arrive at the examination hall at least 15 minutes before commencement.\n"
+                "2. Possession of mobile phones, smartwatches, or unauthorized study material is strictly prohibited.\n"
+                "3. Candidates must carry their valid College Identity Card and this printed Hall Ticket.\n"
+                "4. No candidate will be admitted to the examination hall 30 minutes after the exam start time.\n"
+                "5. Write your Roll Number and Paper Code clearly on the answer booklet."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-start_date']
+
+    def __str__(self):
+        return f"{self.name} ({self.academic_year})"
+
+
+class ExamTimetable(models.Model):
+    exam_session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name='timetable')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='exam_schedules')
+    exam_date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    hall_number = models.CharField(max_length=100, default='Main Examination Block')
+    order = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ['exam_date', 'start_time']
+        unique_together = ('exam_session', 'subject')
+
+    def __str__(self):
+        return f"{self.exam_session.name}: {self.subject.code} on {self.exam_date} {self.start_time}"
+
+
+class HallTicket(models.Model):
+    exam_session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name='hall_tickets')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='hall_tickets')
+    hall_ticket_number = models.CharField(max_length=64, unique=True, blank=True)
+    verification_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    calculated_attendance_pct = models.FloatField(default=0.0)
+    is_eligible = models.BooleanField(default=True)
+    is_condoned = models.BooleanField(default=False)
+    condonation_reason = models.TextField(blank=True, default='')
+    condoned_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='condoned_hall_tickets')
+    condoned_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('exam_session', 'student')
+        ordering = ['exam_session', 'student__roll_no']
+
+    def save(self, *args, **kwargs):
+        if not self.hall_ticket_number:
+            year_part = self.exam_session.academic_year.replace('-', '')[-4:]
+            branch_part = (self.student.branch or 'ENG')[:3].upper()
+            self.hall_ticket_number = f"HT-{year_part}-{branch_part}-{self.student.id:04d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.hall_ticket_number} - {self.student.name} ({self.exam_session.name})"
+

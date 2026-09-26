@@ -11,6 +11,9 @@ from .views import (
     close_attendance_session,
     get_session_attendees,
     mark_qr_attendance,
+    list_create_leave_requests,
+    review_leave_request,
+    delete_leave_request,
 )
 
 urlpatterns = [
@@ -19,6 +22,11 @@ urlpatterns = [
     path('summary/', attendance_summary, name='attendance_summary'),
     path('student/<int:student_id>/', student_attendance_detail, name='student_attendance_detail'),
     path('my/', my_attendance_view, name='my_attendance_view'),
+
+    # Student Leave & On-Duty (OD) Endpoints
+    path('leaves/', list_create_leave_requests, name='list_create_leave_requests'),
+    path('leaves/<int:leave_id>/review/', review_leave_request, name='review_leave_request'),
+    path('leaves/<int:leave_id>/', delete_leave_request, name='delete_leave_request'),
 
     # QR Session Endpoints
     path('sessions/create/', create_attendance_session, name='create_attendance_session'),

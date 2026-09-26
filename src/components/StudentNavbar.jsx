@@ -10,6 +10,8 @@ import {
   FaBell,
   FaCheckDouble,
   FaBook,
+  FaFileAlt,
+  FaIdCard,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -115,6 +117,22 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
         >
           <FaBook />
           <span>Curriculum</span>
+        </button>
+        <button
+          type="button"
+          className={`student-tab-pill ${activeTab === "leaves" ? "active" : ""}`}
+          onClick={() => setActiveTab("leaves")}
+        >
+          <FaFileAlt />
+          <span>Leave &amp; OD</span>
+        </button>
+        <button
+          type="button"
+          className={`student-tab-pill ${activeTab === "hallticket" ? "active" : ""}`}
+          onClick={() => setActiveTab("hallticket")}
+        >
+          <FaIdCard />
+          <span>Hall Ticket</span>
         </button>
         <button
           type="button"

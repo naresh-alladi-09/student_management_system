@@ -87,6 +87,9 @@ class AttendanceRecord(models.Model):
         ('Present', 'Present'),
         ('Absent', 'Absent'),
         ('Late', 'Late'),
+        ('On-Duty', 'On-Duty (OD)'),
+        ('Medical', 'Medical Leave'),
+        ('Excused', 'Excused Leave'),
     )
 
     student = models.ForeignKey(
@@ -109,11 +112,11 @@ class AttendanceRecord(models.Model):
         related_name='attendance_records'
     )
     date = models.DateField(default=date.today)
-    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='Present')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Present')
     marked_via = models.CharField(
         max_length=20,
         default='MANUAL',
-        choices=(('QR', 'QR Code'), ('MANUAL', 'Teacher Manual Entry'))
+        choices=(('QR', 'QR Code'), ('MANUAL', 'Teacher Manual Entry'), ('LEAVE_APPROVAL', 'Approved Leave Credit'))
     )
     remarks = models.CharField(max_length=200, blank=True, default='')
     marked_at = models.DateTimeField(default=timezone.now)
@@ -135,3 +138,54 @@ class AttendanceRecord(models.Model):
     def __str__(self):
         sub_code = self.subject.code if self.subject else 'General'
         return f"{self.student.name} - {sub_code} ({self.date}): {self.status}"
+
+
+class LeaveRequest(models.Model):
+    TYPE_CHOICES = (
+        ('OD', 'On-Duty (OD)'),
+        ('MEDICAL', 'Medical Leave'),
+        ('CASUAL', 'Casual Leave'),
+        ('ACADEMIC', 'Academic Duty / Symposium'),
+    )
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending Approval'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    )
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='leave_requests'
+    )
+    leave_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='OD')
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField()
+    document_url = models.CharField(max_length=300, blank=True, default='')
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING', db_index=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_leave_requests'
+    )
+    reviewer_remarks = models.CharField(max_length=300, blank=True, default='')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    applied_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-applied_at']
+
+    @property
+    def total_days(self):
+        if self.end_date and self.start_date:
+            diff = (self.end_date - self.start_date).days + 1
+            return max(1, diff)
+        return 1
+
+    def __str__(self):
+        return f"{self.student.name} - {self.get_leave_type_display()} ({self.start_date} to {self.end_date}): {self.status}"
+

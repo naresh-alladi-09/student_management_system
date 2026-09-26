@@ -13,6 +13,8 @@ import {
   refreshSessionToken,
   closeAttendanceSession,
   getAttendanceSummary,
+  getLeaveRequests,
+  reviewLeaveRequest,
 } from "../services/studentservice";
 import {
   FaQrcode,
@@ -30,6 +32,8 @@ import {
   FaTimes,
   FaSearch,
   FaQuestionCircle,
+  FaFileAlt,
+  FaExternalLinkAlt,
 } from "react-icons/fa";
 
 function Attendance() {
@@ -82,6 +86,55 @@ function Attendance() {
       fetchSummary(threshold);
     }
   }, [activeTab, threshold]);
+
+  // Faculty Leave & On-Duty (OD) States
+  const [facultyLeaves, setFacultyLeaves] = useState([]);
+  const [leavesLoading, setLeavesLoading] = useState(false);
+  const [leaveStatusFilter, setLeaveStatusFilter] = useState("PENDING");
+  const [leaveSearchQuery, setLeaveSearchQuery] = useState("");
+  const [reviewModalData, setReviewModalData] = useState(null);
+  const [reviewerRemarks, setReviewerRemarks] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  const fetchFacultyLeaves = () => {
+    setLeavesLoading(true);
+    getLeaveRequests({ status: leaveStatusFilter })
+      .then((res) => {
+        setFacultyLeaves(res.data || []);
+      })
+      .catch((err) => {
+        console.error("Failed to load leave requests:", err);
+      })
+      .finally(() => {
+        setLeavesLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchFacultyLeaves();
+  }, [leaveStatusFilter]);
+
+  const handleReviewAction = async (leaveId, actionStatus) => {
+    setIsSubmittingReview(true);
+    try {
+      await reviewLeaveRequest(leaveId, {
+        status: actionStatus,
+        reviewer_remarks:
+          reviewerRemarks.trim() ||
+          (actionStatus === "APPROVED"
+            ? "Approved by faculty. Attendance credited."
+            : "Rejected by faculty."),
+      });
+      setReviewModalData(null);
+      setReviewerRemarks("");
+      fetchFacultyLeaves();
+      loadDailyAttendance(selectedDate, selectedBranch, selectedSection);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to process leave review.");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   const pollIntervalRef = useRef(null);
 
@@ -400,6 +453,45 @@ function Attendance() {
                 onClick={() => setActiveTab("analytics")}
               >
                 <FaChartLine /> Analytics & Shortage Alerts
+              </button>
+
+              <button
+                type="button"
+                className={`action-btn ${activeTab === "leaves" ? "btn-primary" : ""}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "10px 18px",
+                  borderRadius: "8px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: activeTab === "leaves" ? "#7c3aed" : "#f1f5f9",
+                  color: activeTab === "leaves" ? "#fff" : "#475569",
+                  border: "none",
+                  position: "relative",
+                }}
+                onClick={() => {
+                  setActiveTab("leaves");
+                  fetchFacultyLeaves();
+                }}
+              >
+                <FaFileAlt /> Leave & OD Queue
+                {facultyLeaves.filter((l) => l.status === "PENDING").length > 0 && (
+                  <span
+                    style={{
+                      background: "#ef4444",
+                      color: "#fff",
+                      borderRadius: "999px",
+                      padding: "2px 7px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      marginLeft: "4px",
+                    }}
+                  >
+                    {facultyLeaves.filter((l) => l.status === "PENDING").length}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -1570,6 +1662,576 @@ function Attendance() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* TAB 4: LEAVE & ON-DUTY (OD) APPROVAL QUEUE                     */}
+          {/* ============================================================== */}
+          {activeTab === "leaves" && (
+            <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", boxShadow: "0 4px 15px rgba(0,0,0,0.05)" }}>
+              {/* Header */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  marginBottom: "24px",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                }}
+              >
+                <div>
+                  <h2 style={{ fontSize: "20px", fontWeight: "700", color: "#0f172a", margin: "0 0 6px 0" }}>
+                    Student Leave & On-Duty (OD) Requests
+                  </h2>
+                  <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+                    Review, approve, or reject student leave and on-duty requests. Approved requests automatically credit attendance and protect eligibility thresholds.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchFacultyLeaves}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "8px 16px",
+                    background: "#f1f5f9",
+                    color: "#334155",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                >
+                  <FaSync className={leavesLoading ? "fa-spin" : ""} /> Refresh Requests
+                </button>
+              </div>
+
+              {/* Status Stat Cards */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "16px",
+                  marginBottom: "24px",
+                }}
+              >
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    cursor: "pointer",
+                    boxShadow: leaveStatusFilter === "ALL" ? "0 0 0 2px #3b82f6" : "none",
+                  }}
+                  onClick={() => setLeaveStatusFilter("ALL")}
+                >
+                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                    Total Applications
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", marginTop: "4px" }}>
+                    {facultyLeaves.length}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#fffbeb",
+                    border: "1px solid #fef3c7",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    cursor: "pointer",
+                    boxShadow: leaveStatusFilter === "PENDING" ? "0 0 0 2px #f59e0b" : "none",
+                  }}
+                  onClick={() => setLeaveStatusFilter("PENDING")}
+                >
+                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#b45309", textTransform: "uppercase" }}>
+                    Pending Review
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "800", color: "#d97706", marginTop: "4px" }}>
+                    {facultyLeaves.filter((l) => l.status === "PENDING").length}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#f0fdf4",
+                    border: "1px solid #dcfce7",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    cursor: "pointer",
+                    boxShadow: leaveStatusFilter === "APPROVED" ? "0 0 0 2px #10b981" : "none",
+                  }}
+                  onClick={() => setLeaveStatusFilter("APPROVED")}
+                >
+                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#15803d", textTransform: "uppercase" }}>
+                    Approved
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "800", color: "#16a34a", marginTop: "4px" }}>
+                    {facultyLeaves.filter((l) => l.status === "APPROVED").length}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#fef2f2",
+                    border: "1px solid #fee2e2",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    cursor: "pointer",
+                    boxShadow: leaveStatusFilter === "REJECTED" ? "0 0 0 2px #ef4444" : "none",
+                  }}
+                  onClick={() => setLeaveStatusFilter("REJECTED")}
+                >
+                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#b91c1c", textTransform: "uppercase" }}>
+                    Rejected
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "800", color: "#dc2626", marginTop: "4px" }}>
+                    {facultyLeaves.filter((l) => l.status === "REJECTED").length}
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter Tabs & Search Bar */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "16px",
+                  marginBottom: "20px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {["ALL", "PENDING", "APPROVED", "REJECTED"].map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setLeaveStatusFilter(st)}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: "20px",
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        border: "none",
+                        background: leaveStatusFilter === st ? "#2563eb" : "#f1f5f9",
+                        color: leaveStatusFilter === st ? "#ffffff" : "#475569",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {st === "ALL" ? "All Requests" : st.charAt(0) + st.slice(1).toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ position: "relative", minWidth: "260px" }}>
+                  <FaSearch
+                    style={{
+                      position: "absolute",
+                      left: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "#94a3b8",
+                      fontSize: "13px",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search by student, roll no, reason..."
+                    value={leaveSearchQuery}
+                    onChange={(e) => setLeaveSearchQuery(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px 8px 34px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Leaves Table */}
+              {leavesLoading ? (
+                <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
+                  <FaSync className="fa-spin" style={{ fontSize: "24px", marginBottom: "8px" }} />
+                  <div>Loading leave requests...</div>
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: "13px",
+                      textAlign: "left",
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                        <th style={{ padding: "12px", color: "#475569", fontWeight: "700" }}>Student</th>
+                        <th style={{ padding: "12px", color: "#475569", fontWeight: "700" }}>Type</th>
+                        <th style={{ padding: "12px", color: "#475569", fontWeight: "700" }}>Duration</th>
+                        <th style={{ padding: "12px", color: "#475569", fontWeight: "700" }}>Reason & Document</th>
+                        <th style={{ padding: "12px", color: "#475569", fontWeight: "700" }}>Status</th>
+                        <th style={{ padding: "12px", color: "#475569", fontWeight: "700" }}>Action / Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {facultyLeaves
+                        .filter((item) => {
+                          if (leaveStatusFilter !== "ALL" && item.status !== leaveStatusFilter) {
+                            return false;
+                          }
+                          if (!leaveSearchQuery.trim()) return true;
+                          const q = leaveSearchQuery.toLowerCase();
+                          return (
+                            (item.student_name && item.student_name.toLowerCase().includes(q)) ||
+                            (item.roll_no && item.roll_no.toLowerCase().includes(q)) ||
+                            (item.leave_type_display && item.leave_type_display.toLowerCase().includes(q)) ||
+                            (item.reason && item.reason.toLowerCase().includes(q))
+                          );
+                        })
+                        .map((l) => {
+                          const typeBadgeBg =
+                            l.leave_type === "OD"
+                              ? "#eef2ff"
+                              : l.leave_type === "MEDICAL"
+                              ? "#fef2f2"
+                              : l.leave_type === "ACADEMIC"
+                              ? "#ecfdf5"
+                              : "#f0f9ff";
+                          const typeBadgeColor =
+                            l.leave_type === "OD"
+                              ? "#4f46e5"
+                              : l.leave_type === "MEDICAL"
+                              ? "#dc2626"
+                              : l.leave_type === "ACADEMIC"
+                              ? "#059669"
+                              : "#0284c7";
+
+                          const statusBadgeBg =
+                            l.status === "APPROVED"
+                              ? "#dcfce7"
+                              : l.status === "REJECTED"
+                              ? "#fee2e2"
+                              : "#fef3c7";
+                          const statusBadgeColor =
+                            l.status === "APPROVED"
+                              ? "#15803d"
+                              : l.status === "REJECTED"
+                              ? "#b91c1c"
+                              : "#b45309";
+
+                          return (
+                            <tr key={l.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                              <td style={{ padding: "14px 12px" }}>
+                                <div style={{ fontWeight: "700", color: "#0f172a" }}>{l.student_name}</div>
+                                <div style={{ fontSize: "12px", color: "#64748b" }}>
+                                  {l.roll_no} • {l.branch} (Sem {l.semester})
+                                </div>
+                              </td>
+
+                              <td style={{ padding: "14px 12px" }}>
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    padding: "4px 10px",
+                                    borderRadius: "12px",
+                                    fontSize: "11px",
+                                    fontWeight: "700",
+                                    background: typeBadgeBg,
+                                    color: typeBadgeColor,
+                                  }}
+                                >
+                                  {l.leave_type_display}
+                                </span>
+                              </td>
+
+                              <td style={{ padding: "14px 12px" }}>
+                                <div style={{ fontWeight: "600", color: "#1e293b" }}>
+                                  {l.start_date} → {l.end_date}
+                                </div>
+                                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                                  {l.total_days} {l.total_days === 1 ? "day" : "days"}
+                                </div>
+                              </td>
+
+                              <td style={{ padding: "14px 12px", maxWidth: "260px" }}>
+                                <div
+                                  style={{
+                                    color: "#334155",
+                                    whiteSpace: "pre-wrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    maxHeight: "60px",
+                                  }}
+                                >
+                                  {l.reason}
+                                </div>
+                                {l.document_url && (
+                                  <div style={{ marginTop: "4px" }}>
+                                    <a
+                                      href={l.document_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                        color: "#2563eb",
+                                        fontSize: "11px",
+                                        textDecoration: "underline",
+                                      }}
+                                    >
+                                      <FaExternalLinkAlt style={{ fontSize: "10px" }} /> Supporting Document
+                                    </a>
+                                  </div>
+                                )}
+                              </td>
+
+                              <td style={{ padding: "14px 12px" }}>
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    padding: "4px 10px",
+                                    borderRadius: "12px",
+                                    fontSize: "11px",
+                                    fontWeight: "700",
+                                    background: statusBadgeBg,
+                                    color: statusBadgeColor,
+                                  }}
+                                >
+                                  {l.status === "APPROVED" && <FaCheckCircle style={{ fontSize: "10px" }} />}
+                                  {l.status === "REJECTED" && <FaTimesCircle style={{ fontSize: "10px" }} />}
+                                  {l.status === "PENDING" && <FaClock style={{ fontSize: "10px" }} />}
+                                  {l.status_display}
+                                </span>
+                              </td>
+
+                              <td style={{ padding: "14px 12px" }}>
+                                {l.status === "PENDING" ? (
+                                  <div style={{ display: "flex", gap: "6px" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReviewModalData(l);
+                                        setReviewerRemarks("");
+                                      }}
+                                      style={{
+                                        padding: "6px 12px",
+                                        background: "#2563eb",
+                                        color: "#ffffff",
+                                        border: "none",
+                                        borderRadius: "6px",
+                                        fontWeight: "600",
+                                        fontSize: "12px",
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      Review
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: "12px", color: "#64748b" }}>
+                                    <div>
+                                      <strong>By:</strong> {l.reviewed_by_name || "Faculty/Admin"}
+                                    </div>
+                                    {l.reviewer_remarks && (
+                                      <div style={{ fontStyle: "italic", marginTop: "2px", color: "#475569" }}>
+                                        "{l.reviewer_remarks}"
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {facultyLeaves.filter((item) => {
+                        if (leaveStatusFilter !== "ALL" && item.status !== leaveStatusFilter) {
+                          return false;
+                        }
+                        if (!leaveSearchQuery.trim()) return true;
+                        const q = leaveSearchQuery.toLowerCase();
+                        return (
+                          (item.student_name && item.student_name.toLowerCase().includes(q)) ||
+                          (item.roll_no && item.roll_no.toLowerCase().includes(q)) ||
+                          (item.leave_type_display && item.leave_type_display.toLowerCase().includes(q)) ||
+                          (item.reason && item.reason.toLowerCase().includes(q))
+                        );
+                      }).length === 0 && (
+                        <tr>
+                          <td colSpan="6" style={{ textAlign: "center", padding: "36px", color: "#94a3b8" }}>
+                            No leave applications found for this filter.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Review Modal Dialog */}
+          {reviewModalData && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "rgba(15, 23, 42, 0.65)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+                padding: "16px",
+              }}
+            >
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: "16px",
+                  padding: "24px",
+                  maxWidth: "520px",
+                  width: "100%",
+                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "700", color: "#0f172a" }}>
+                    Review Leave Request
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setReviewModalData(null)}
+                    style={{ background: "transparent", border: "none", fontSize: "18px", color: "#94a3b8", cursor: "pointer" }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "10px", marginBottom: "16px", fontSize: "13px" }}>
+                  <div style={{ marginBottom: "6px" }}>
+                    <strong style={{ color: "#334155" }}>Student:</strong> {reviewModalData.student_name} ({reviewModalData.roll_no})
+                  </div>
+                  <div style={{ marginBottom: "6px" }}>
+                    <strong style={{ color: "#334155" }}>Branch & Sem:</strong> {reviewModalData.branch} • Semester {reviewModalData.semester}
+                  </div>
+                  <div style={{ marginBottom: "6px" }}>
+                    <strong style={{ color: "#334155" }}>Type:</strong> {reviewModalData.leave_type_display}
+                  </div>
+                  <div style={{ marginBottom: "6px" }}>
+                    <strong style={{ color: "#334155" }}>Duration:</strong> {reviewModalData.start_date} to {reviewModalData.end_date} ({reviewModalData.total_days} days)
+                  </div>
+                  <div style={{ marginBottom: "6px" }}>
+                    <strong style={{ color: "#334155" }}>Reason:</strong> {reviewModalData.reason}
+                  </div>
+                  {reviewModalData.document_url && (
+                    <div>
+                      <strong style={{ color: "#334155" }}>Proof Document:</strong>{" "}
+                      <a href={reviewModalData.document_url} target="_blank" rel="noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>
+                        View Document ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginBottom: "20px" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#334155", marginBottom: "6px" }}>
+                    Reviewer Remarks (Optional)
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Provide feedback or justification (visible to the student)..."
+                    value={reviewerRemarks}
+                    onChange={(e) => setReviewerRemarks(e.target.value)}
+                    style={{
+                      width: "100%",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      padding: "10px",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                  <button
+                    type="button"
+                    disabled={isSubmittingReview}
+                    onClick={() => setReviewModalData(null)}
+                    style={{
+                      padding: "8px 16px",
+                      background: "#f1f5f9",
+                      color: "#475569",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "8px",
+                      fontWeight: "600",
+                      fontSize: "13px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSubmittingReview}
+                    onClick={() => handleReviewAction(reviewModalData.id, "REJECTED")}
+                    style={{
+                      padding: "8px 16px",
+                      background: "#ef4444",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "8px",
+                      fontWeight: "600",
+                      fontSize: "13px",
+                      cursor: isSubmittingReview ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <FaTimes /> Reject
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSubmittingReview}
+                    onClick={() => handleReviewAction(reviewModalData.id, "APPROVED")}
+                    style={{
+                      padding: "8px 16px",
+                      background: "#10b981",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "8px",
+                      fontWeight: "600",
+                      fontSize: "13px",
+                      cursor: isSubmittingReview ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <FaCheck /> Approve & Credit
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
