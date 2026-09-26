@@ -245,10 +245,29 @@ const AdminDashboard = () => {
   const [timetableModalMessage, setTimetableModalMessage] = useState(null);
   const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
 
+  // College-authorized departments constant
+  const COLLEGE_DEPARTMENTS = [
+    "Computer Science & Engineering",
+    "Artificial Intelligence & Machine Learning",
+    "Information Technology",
+    "Electronics & Communication Engineering",
+    "Electrical & Electronics Engineering",
+    "Mechanical Engineering",
+    "Civil Engineering",
+    "University Administration",
+  ];
+
+  // Directory and Separate Tables States
+  const [studentsList, setStudentsList] = useState([]);
+  const [userTableTab, setUserTableTab] = useState("teachers"); // 'teachers' | 'students' | 'admins' | 'all'
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  const [userDeptFilter, setUserDeptFilter] = useState("ALL");
+
   // New User Modal
   const [showUserModal, setShowUserModal] = useState(false);
   const [userFormData, setUserFormData] = useState({
     username: "",
+    employee_id: "",
     email: "",
     password: "",
     first_name: "",
@@ -291,6 +310,7 @@ const AdminDashboard = () => {
           activeDepartments: depts.size || 5,
         });
 
+        setStudentsList(studentList);
         setUsers(userList);
         setSubjects(subjectList);
         setRecentLogs(logsList);
@@ -446,11 +466,36 @@ const AdminDashboard = () => {
     setIsSubmittingUser(true);
     setUserModalMessage(null);
 
+    // Strict Validation: Valid email ending with @gmail.com
+    const cleanEmail = (userFormData.email || "").trim().toLowerCase();
+    if (!cleanEmail.endsWith("@gmail.com")) {
+      setUserModalMessage({
+        success: false,
+        text: "Invalid email! Only valid Gmail addresses ending with @gmail.com are permitted for faculty and admins.",
+      });
+      setIsSubmittingUser(false);
+      return;
+    }
+
+    // Strict Validation: Department must be college limited
+    if (!COLLEGE_DEPARTMENTS.includes(userFormData.department)) {
+      setUserModalMessage({
+        success: false,
+        text: "Please select an authorized college department from the dropdown list.",
+      });
+      setIsSubmittingUser(false);
+      return;
+    }
+
     try {
-      await createSystemUser(userFormData);
+      const res = await createSystemUser({
+        ...userFormData,
+        email: cleanEmail,
+      });
+      const assignedId = res.data?.user_id_code || res.data?.employee_id || "";
       setUserModalMessage({
         success: true,
-        text: `User "${userFormData.username}" provisioned successfully!`,
+        text: `User "${userFormData.username}" provisioned successfully with User ID: ${assignedId || "assigned"}!`,
       });
       fetchAdminData();
       setTimeout(() => {
@@ -458,6 +503,7 @@ const AdminDashboard = () => {
         setUserModalMessage(null);
         setUserFormData({
           username: "",
+          employee_id: "",
           email: "",
           password: "",
           first_name: "",
@@ -475,6 +521,42 @@ const AdminDashboard = () => {
       setIsSubmittingUser(false);
     }
   };
+
+  const teachersList = users.filter((u) => u.profile?.role === "teacher");
+  const adminsList = users.filter((u) => u.profile?.role === "admin");
+
+  const filteredTeachers = teachersList.filter((t) => {
+    const q = userSearchTerm.toLowerCase();
+    const idStr = (t.user_id_code || t.profile?.employee_id || `TCH-${String(t.id).padStart(3, "0")}`).toLowerCase();
+    const nameStr = `${t.first_name || ""} ${t.last_name || ""} ${t.username}`.toLowerCase();
+    const emailStr = (t.email || "").toLowerCase();
+    const deptStr = (t.profile?.department || "").toLowerCase();
+    const matchesSearch = !q || idStr.includes(q) || nameStr.includes(q) || emailStr.includes(q) || deptStr.includes(q);
+    const matchesDept = userDeptFilter === "ALL" || (t.profile?.department || "") === userDeptFilter;
+    return matchesSearch && matchesDept;
+  });
+
+  const filteredStudents = studentsList.filter((s) => {
+    const q = userSearchTerm.toLowerCase();
+    const idStr = (s.student_id || s.roll_no || `STU-${s.id}`).toLowerCase();
+    const nameStr = (s.name || "").toLowerCase();
+    const emailStr = (s.email || "").toLowerCase();
+    const deptStr = (s.department || s.branch || "").toLowerCase();
+    const matchesSearch = !q || idStr.includes(q) || nameStr.includes(q) || emailStr.includes(q) || deptStr.includes(q);
+    const matchesDept = userDeptFilter === "ALL" || (s.department || "") === userDeptFilter || (s.branch || "") === userDeptFilter;
+    return matchesSearch && matchesDept;
+  });
+
+  const filteredAdmins = adminsList.filter((a) => {
+    const q = userSearchTerm.toLowerCase();
+    const idStr = (a.user_id_code || a.profile?.employee_id || `ADM-${String(a.id).padStart(3, "0")}`).toLowerCase();
+    const nameStr = `${a.first_name || ""} ${a.last_name || ""} ${a.username}`.toLowerCase();
+    const emailStr = (a.email || "").toLowerCase();
+    const deptStr = (a.profile?.department || "").toLowerCase();
+    const matchesSearch = !q || idStr.includes(q) || nameStr.includes(q) || emailStr.includes(q) || deptStr.includes(q);
+    const matchesDept = userDeptFilter === "ALL" || (a.profile?.department || "") === userDeptFilter;
+    return matchesSearch && matchesDept;
+  });
 
   return (
     <div className="sideandmain">
@@ -718,9 +800,12 @@ const AdminDashboard = () => {
                 color: activeTab === "users" ? "#fff" : "#475569",
                 fontWeight: 600,
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
               }}
             >
-              System Users & Faculty ({users.length})
+              <FaChalkboardTeacher /> Faculty &amp; Students Directory ({teachersList.length + studentsList.length + adminsList.length})
             </button>
 
             <button
@@ -1464,60 +1549,451 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* Tab 2: Users & Faculty */}
+          {/* Tab 2: Users & Faculty (with Separate Tables for Faculty/Teachers, Students, and Administrators) */}
           {activeTab === "users" && (
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: "12px",
-                border: "1px solid #e2e8f0",
-                padding: "20px",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#0f172a" }}>
-                  Authorized System Users
-                </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {/* Directory Sub-Navigation Bar & Action Toolbar */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: "14px",
+                  border: "1px solid #e2e8f0",
+                  padding: "18px 24px",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "16px",
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: "19px", color: "#0f172a" }}>
+                    Institutional Directory &amp; Accounts
+                  </h3>
+                  <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
+                    Separate records for Faculty Instructors, Enrolled Students, and System Administrators with role-specific User IDs.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowUserModal(true)}
+                  style={{
+                    background: "#2563eb",
+                    color: "#fff",
+                    border: "none",
+                    padding: "9px 16px",
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <FaPlusCircle /> Provision Faculty / Admin
+                </button>
               </div>
 
-              <table className="grades-table">
-                <thead>
-                  <tr>
-                    <th>User ID</th>
-                    <th>Username</th>
-                    <th>Name</th>
-                    <th>Role</th>
-                    <th>Department</th>
-                    <th>Email</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id}>
-                      <td>#{u.id}</td>
-                      <td>
-                        <strong>{u.username}</strong>
-                      </td>
-                      <td>{u.first_name ? `${u.first_name} ${u.last_name}` : u.username}</td>
-                      <td>
-                        <span
-                          className={`stat-badge-tag ${
-                            u.profile?.role === "admin"
-                              ? "tag-danger"
-                              : u.profile?.role === "teacher"
-                              ? "tag-info"
-                              : "tag-success"
-                          }`}
-                        >
-                          {u.profile?.role?.toUpperCase() || "USER"}
-                        </span>
-                      </td>
-                      <td>{u.profile?.department || "Academic"}</td>
-                      <td>{u.email}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* Sub-Tabs / Table Selector & Search Toolbar */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: "12px",
+                  border: "1px solid #e2e8f0",
+                  padding: "16px 20px",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "14px",
+                }}
+              >
+                {/* Table View Switcher */}
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => setUserTableTab("teachers")}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: "8px",
+                      border: userTableTab === "teachers" ? "1px solid #2563eb" : "1px solid #e2e8f0",
+                      background: userTableTab === "teachers" ? "#eff6ff" : "#fff",
+                      color: userTableTab === "teachers" ? "#1d4ed8" : "#475569",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <FaChalkboardTeacher /> Faculty &amp; Teachers ({teachersList.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUserTableTab("students")}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: "8px",
+                      border: userTableTab === "students" ? "1px solid #059669" : "1px solid #e2e8f0",
+                      background: userTableTab === "students" ? "#ecfdf5" : "#fff",
+                      color: userTableTab === "students" ? "#047857" : "#475569",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <FaUserGraduate /> Enrolled Students ({studentsList.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUserTableTab("admins")}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: "8px",
+                      border: userTableTab === "admins" ? "1px solid #7c3aed" : "1px solid #e2e8f0",
+                      background: userTableTab === "admins" ? "#faf5ff" : "#fff",
+                      color: userTableTab === "admins" ? "#6b21a8" : "#475569",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <FaUserShield /> Administrators ({adminsList.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUserTableTab("all")}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: "8px",
+                      border: userTableTab === "all" ? "1px solid #0f172a" : "1px solid #e2e8f0",
+                      background: userTableTab === "all" ? "#0f172a" : "#fff",
+                      color: userTableTab === "all" ? "#fff" : "#475569",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    View All Separate Tables
+                  </button>
+                </div>
+
+                {/* Search & Department Filter */}
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ position: "relative" }}>
+                    <FaSearch style={{ position: "absolute", left: "10px", top: "10px", color: "#94a3b8", fontSize: "12px" }} />
+                    <input
+                      type="text"
+                      placeholder="Search ID, name, email..."
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                      style={{
+                        padding: "7px 12px 7px 30px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "13px",
+                        width: "200px",
+                      }}
+                    />
+                  </div>
+
+                  <select
+                    value={userDeptFilter}
+                    onChange={(e) => setUserDeptFilter(e.target.value)}
+                    style={{
+                      padding: "7px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "13px",
+                      background: "#fff",
+                      color: "#334155",
+                    }}
+                  >
+                    <option value="ALL">All Departments</option>
+                    {COLLEGE_DEPARTMENTS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* SEPARATE TABLE 1: Faculty & Teachers */}
+              {(userTableTab === "teachers" || userTableTab === "all") && (
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    padding: "20px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <div>
+                      <h4 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#1e40af", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <FaChalkboardTeacher /> Faculty &amp; Teaching Staff ({filteredTeachers.length})
+                      </h4>
+                      <small style={{ color: "#64748b" }}>
+                        Authorized teachers and course instructors with designated Teacher IDs (TCH-XXX).
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className="table-responsive">
+                    <table className="grades-table">
+                      <thead>
+                        <tr>
+                          <th>Teacher ID</th>
+                          <th>Faculty Name</th>
+                          <th>Username</th>
+                          <th>College Department</th>
+                          <th>Staff Gmail</th>
+                          <th>Role</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredTeachers.length > 0 ? (
+                          filteredTeachers.map((t) => {
+                            const teacherId = t.user_id_code || t.profile?.employee_id || `TCH-${String(t.id).padStart(3, "0")}`;
+                            return (
+                              <tr key={t.id}>
+                                <td>
+                                  <span
+                                    style={{
+                                      background: "#eff6ff",
+                                      color: "#1d4ed8",
+                                      padding: "4px 10px",
+                                      borderRadius: "6px",
+                                      fontWeight: 700,
+                                      fontSize: "12px",
+                                      border: "1px solid #bfdbfe",
+                                      fontFamily: "monospace",
+                                    }}
+                                  >
+                                    {teacherId}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong>{t.first_name ? `${t.first_name} ${t.last_name}` : t.username}</strong>
+                                </td>
+                                <td>
+                                  <code style={{ color: "#475569" }}>{t.username}</code>
+                                </td>
+                                <td>{t.profile?.department || "Academic Operations"}</td>
+                                <td>{t.email}</td>
+                                <td>
+                                  <span className="stat-badge-tag tag-info">TEACHER</span>
+                                </td>
+                                <td>
+                                  <span className="stat-badge-tag tag-success">ACTIVE</span>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan="7" style={{ textAlign: "center", padding: "28px", color: "#94a3b8" }}>
+                              No faculty records found matching the current search/filter.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* SEPARATE TABLE 2: Enrolled Students */}
+              {(userTableTab === "students" || userTableTab === "all") && (
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    padding: "20px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <div>
+                      <h4 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#065f46", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <FaUserGraduate /> Enrolled Students Roster ({filteredStudents.length})
+                      </h4>
+                      <small style={{ color: "#64748b" }}>
+                        Separate student registry with enrolled cohorts, roll numbers, and unique Student IDs (STU-XXX).
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className="table-responsive">
+                    <table className="grades-table">
+                      <thead>
+                        <tr>
+                          <th>Student ID</th>
+                          <th>Roll Number</th>
+                          <th>Student Name</th>
+                          <th>Branch / Dept</th>
+                          <th>Year &amp; Sem</th>
+                          <th>Section</th>
+                          <th>Email Address</th>
+                          <th>Phone</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredStudents.length > 0 ? (
+                          filteredStudents.map((s) => {
+                            const studentId = s.student_id || `#${s.id}`;
+                            return (
+                              <tr key={s.id}>
+                                <td>
+                                  <span
+                                    style={{
+                                      background: "#ecfdf5",
+                                      color: "#065f46",
+                                      padding: "4px 10px",
+                                      borderRadius: "6px",
+                                      fontWeight: 700,
+                                      fontSize: "12px",
+                                      border: "1px solid #a7f3d0",
+                                      fontFamily: "monospace",
+                                    }}
+                                  >
+                                    {studentId}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong>{s.roll_no || `STU-2024-${String(s.id).padStart(3, "0")}`}</strong>
+                                </td>
+                                <td>{s.name}</td>
+                                <td>
+                                  <span className="dash-branch-badge">{s.branch || s.department}</span>
+                                </td>
+                                <td>Year {s.year}, Sem {s.semester}</td>
+                                <td>Section {s.section}</td>
+                                <td>{s.email}</td>
+                                <td>{s.phone || "—"}</td>
+                                <td>
+                                  <span className={`stat-badge-tag ${s.is_active ? "tag-success" : "tag-danger"}`}>
+                                    {s.is_active ? "ACTIVE" : "INACTIVE"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan="9" style={{ textAlign: "center", padding: "28px", color: "#94a3b8" }}>
+                              No student records found matching the current search/filter.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* SEPARATE TABLE 3: System Administrators */}
+              {(userTableTab === "admins" || userTableTab === "all") && (
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    padding: "20px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <div>
+                      <h4 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#6b21a8", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <FaUserShield /> System Administrators ({filteredAdmins.length})
+                      </h4>
+                      <small style={{ color: "#64748b" }}>
+                        Privileged administrators with console management authorizations and Admin IDs (ADM-XXX).
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className="table-responsive">
+                    <table className="grades-table">
+                      <thead>
+                        <tr>
+                          <th>Admin ID</th>
+                          <th>Administrator Name</th>
+                          <th>Username</th>
+                          <th>Department / Office</th>
+                          <th>Admin Email</th>
+                          <th>Access Level</th>
+                          <th>Role</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredAdmins.length > 0 ? (
+                          filteredAdmins.map((a) => {
+                            const adminId = a.user_id_code || a.profile?.employee_id || `ADM-${String(a.id).padStart(3, "0")}`;
+                            return (
+                              <tr key={a.id}>
+                                <td>
+                                  <span
+                                    style={{
+                                      background: "#faf5ff",
+                                      color: "#6b21a8",
+                                      padding: "4px 10px",
+                                      borderRadius: "6px",
+                                      fontWeight: 700,
+                                      fontSize: "12px",
+                                      border: "1px solid #e9d5ff",
+                                      fontFamily: "monospace",
+                                    }}
+                                  >
+                                    {adminId}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong>{a.first_name ? `${a.first_name} ${a.last_name}` : a.username}</strong>
+                                </td>
+                                <td>
+                                  <code style={{ color: "#475569" }}>{a.username}</code>
+                                </td>
+                                <td>{a.profile?.department || "University Administration"}</td>
+                                <td>{a.email}</td>
+                                <td>
+                                  <span className="stat-badge-tag tag-danger">
+                                    {a.is_superuser ? "SUPERUSER" : "STAFF ADMIN"}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className="stat-badge-tag tag-danger">ADMIN</span>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan="7" style={{ textAlign: "center", padding: "28px", color: "#94a3b8" }}>
+                              No administrator records found matching the current search/filter.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -3093,6 +3569,86 @@ const AdminDashboard = () => {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
                   <div>
                     <label
+                      htmlFor="user-role-select"
+                      style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
+                    >
+                      Account Role *
+                    </label>
+                    <select
+                      id="user-role-select"
+                      value={userFormData.role}
+                      onChange={(e) => {
+                        const newRole = e.target.value;
+                        setUserFormData({
+                          ...userFormData,
+                          role: newRole,
+                          department: newRole === "admin" ? "University Administration" : "Computer Science & Engineering",
+                        });
+                      }}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box", background: "#fff" }}
+                    >
+                      <option value="teacher">Teacher / Faculty</option>
+                      <option value="admin">System Administrator</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="user-id-input"
+                      style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
+                    >
+                      {userFormData.role === "admin" ? "Admin ID" : "Teacher ID"}
+                    </label>
+                    <input
+                      id="user-id-input"
+                      type="text"
+                      placeholder={userFormData.role === "admin" ? "e.g. ADM-101 (or auto)" : "e.g. TCH-101 (or auto)"}
+                      value={userFormData.employee_id}
+                      onChange={(e) => setUserFormData({ ...userFormData, employee_id: e.target.value.toUpperCase() })}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                  <div>
+                    <label
+                      htmlFor="user-first-name-input"
+                      style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
+                    >
+                      First Name
+                    </label>
+                    <input
+                      id="user-first-name-input"
+                      type="text"
+                      placeholder="e.g. Rajesh"
+                      value={userFormData.first_name}
+                      onChange={(e) => setUserFormData({ ...userFormData, first_name: e.target.value })}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="user-last-name-input"
+                      style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
+                    >
+                      Last Name
+                    </label>
+                    <input
+                      id="user-last-name-input"
+                      type="text"
+                      placeholder="e.g. Sharma"
+                      value={userFormData.last_name}
+                      onChange={(e) => setUserFormData({ ...userFormData, last_name: e.target.value })}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                  <div>
+                    <label
                       htmlFor="user-username-input"
                       style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
                     >
@@ -3111,20 +3667,20 @@ const AdminDashboard = () => {
 
                   <div>
                     <label
-                      htmlFor="user-role-select"
+                      htmlFor="user-password-input"
                       style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
                     >
-                      Role *
+                      Password *
                     </label>
-                    <select
-                      id="user-role-select"
-                      value={userFormData.role}
-                      onChange={(e) => setUserFormData({ ...userFormData, role: e.target.value })}
+                    <input
+                      id="user-password-input"
+                      type="password"
+                      placeholder="Create secure password"
+                      value={userFormData.password}
+                      required
+                      onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
                       style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                    >
-                      <option value="teacher">Teacher / Faculty</option>
-                      <option value="admin">System Administrator</option>
-                    </select>
+                    />
                   </div>
                 </div>
 
@@ -3133,52 +3689,47 @@ const AdminDashboard = () => {
                     htmlFor="user-email-input"
                     style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
                   >
-                    Staff Email *
+                    Email Address * <span style={{ color: "#2563eb", fontWeight: 500 }}>(@gmail.com only)</span>
                   </label>
                   <input
                     id="user-email-input"
                     type="email"
-                    placeholder="e.g. sharma@eduportal.com"
+                    placeholder="e.g. sharma@gmail.com"
                     value={userFormData.email}
                     required
                     onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
                     style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
                   />
-                </div>
-
-                <div style={{ marginBottom: "12px" }}>
-                  <label
-                    htmlFor="user-password-input"
-                    style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
-                  >
-                    Password *
-                  </label>
-                  <input
-                    id="user-password-input"
-                    type="password"
-                    placeholder="Create secure password"
-                    value={userFormData.password}
-                    required
-                    onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                  />
+                  <small style={{ color: "#64748b", fontSize: "11px", marginTop: "3px", display: "block" }}>
+                    Must be a valid email ending with <strong>@gmail.com</strong>.
+                  </small>
                 </div>
 
                 <div style={{ marginBottom: "20px" }}>
                   <label
-                    htmlFor="user-dept-input"
+                    htmlFor="user-dept-select"
                     style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
                   >
-                    Department
+                    College Department * <span style={{ color: "#64748b", fontWeight: 400 }}>(College limited)</span>
                   </label>
-                  <input
-                    id="user-dept-input"
-                    type="text"
+                  <select
+                    id="user-dept-select"
                     value={userFormData.department}
+                    required
                     onChange={(e) => setUserFormData({ ...userFormData, department: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                  />
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box", background: "#fff" }}
+                  >
+                    {COLLEGE_DEPARTMENTS.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: "#64748b", fontSize: "11px", marginTop: "3px", display: "block" }}>
+                    Restricted to authorized college departments only.
+                  </small>
                 </div>
+
 
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button

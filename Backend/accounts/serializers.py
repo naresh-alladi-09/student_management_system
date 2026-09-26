@@ -6,15 +6,18 @@ from students.serializers import StudentSerializer
 
 class UserProfileSerializer(serializers.ModelSerializer):
     student = StudentSerializer(read_only=True)
+    user_id_code = serializers.CharField(read_only=True)
 
     class Meta:
         model = UserProfile
-        fields = ['role', 'phone', 'department', 'student']
+        fields = ['role', 'phone', 'department', 'student', 'employee_id', 'user_id_code']
 
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
+    user_id_code = serializers.CharField(source='profile.user_id_code', read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile', 'user_id_code']
+

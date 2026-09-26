@@ -14,6 +14,28 @@ from .permissions import IsAdmin
 from .serializers import UserSerializer
 from students.models import Student
 
+COLLEGE_DEPARTMENTS = [
+    "Computer Science & Engineering",
+    "Artificial Intelligence & Machine Learning",
+    "Information Technology",
+    "Electronics & Communication Engineering",
+    "Electrical & Electronics Engineering",
+    "Mechanical Engineering",
+    "Civil Engineering",
+    "University Administration",
+]
+
+DEPARTMENT_MAP = {
+    'CSE': 'Computer Science & Engineering',
+    'AIML': 'Artificial Intelligence & Machine Learning',
+    'IT': 'Information Technology',
+    'ECE': 'Electronics & Communication Engineering',
+    'EEE': 'Electrical & Electronics Engineering',
+    'MECH': 'Mechanical Engineering',
+    'CIVIL': 'Civil Engineering',
+    'ADMIN': 'University Administration',
+}
+
 
 @api_view(['POST'])
 @authentication_classes([])
@@ -36,11 +58,23 @@ def login_view(request):
     # 1. Try direct username authentication
     user = authenticate(username=raw_ident, password=password)
 
-    # 2. If direct auth failed, resolve User by username, email, or Student (student_id / roll_no / email)
+    # 2. If direct auth failed, resolve User by username, email, Teacher/Admin ID (employee_id), or Student (student_id / roll_no / email)
     if user is None:
         user_obj = User.objects.filter(username__iexact=raw_ident).first()
         if not user_obj:
             user_obj = User.objects.filter(email__iexact=raw_ident).first()
+
+        # Check by Teacher ID or Admin ID (employee_id)
+        if not user_obj:
+            prof_match = UserProfile.objects.filter(employee_id__iexact=raw_ident).first()
+            if not prof_match:
+                clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+                for p in UserProfile.objects.exclude(employee_id__isnull=True).exclude(employee_id=''):
+                    if (p.employee_id or '').replace('-', '').replace('_', '').replace(' ', '').upper() == clean_ident:
+                        prof_match = p
+                        break
+            if prof_match:
+                user_obj = prof_match.user
 
         student = None
         if not user_obj:
@@ -60,6 +94,7 @@ def login_view(request):
                     if clean_ident in (s_roll_clean, s_id_clean) or s_roll_clean == clean_ident or s_id_clean == clean_ident:
                         student = s
                         break
+
 
             if student:
                 if hasattr(student, 'user_profile') and student.user_profile and student.user_profile.user:
@@ -161,6 +196,8 @@ def login_view(request):
     response_data = {
         "token": token.key,
         "user_id": user.id,
+        "user_id_code": profile.user_id_code,
+        "employee_id": profile.employee_id,
         "username": user.username,
         "email": user.email,
         "role": profile.role,
@@ -229,6 +266,8 @@ def me_view(request):
 
     data = {
         "id": user.id,
+        "user_id_code": profile.user_id_code,
+        "employee_id": profile.employee_id,
         "username": user.username,
         "email": user.email,
         "name": user.get_full_name() or user.username,
@@ -236,6 +275,7 @@ def me_view(request):
         "department": profile.department,
         "is_staff": user.is_staff or user.is_superuser,
     }
+
     if profile.role == 'student' and profile.student:
         s = profile.student
         data["student"] = {
@@ -267,16 +307,22 @@ def manage_users_view(request):
 
     elif request.method == 'POST':
         username = request.data.get('username', '').strip()
-        email = request.data.get('email', '').strip()
+        email = request.data.get('email', '').strip().lower()
         password = request.data.get('password', '').strip()
         first_name = request.data.get('first_name', '').strip()
         last_name = request.data.get('last_name', '').strip()
         role = request.data.get('role', 'teacher').strip().lower()
-        department = request.data.get('department', 'Academic Operations').strip()
+        raw_department = request.data.get('department', '').strip()
+        custom_user_id = (
+            request.data.get('employee_id') or
+            request.data.get('user_id_code') or
+            request.data.get('custom_id') or
+            ''
+        ).strip().upper()
 
-        if not username or not password or not email:
+        if not username or not password or not email or not raw_department:
             return Response(
-                {"detail": "Username, email, and password are required."},
+                {"detail": "Username, email, password, and department are required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -286,6 +332,7 @@ def manage_users_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # 1. Email format check
         try:
             validate_email(email)
         except ValidationError:
@@ -293,6 +340,24 @@ def manage_users_view(request):
                 {"detail": "Invalid email address format."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # 2. Strict Requirement: Only valid Gmail addresses ending with @gmail.com
+        if not email.endswith('@gmail.com'):
+            return Response(
+                {"detail": "Email must be a valid address ending with @gmail.com (e.g. name@gmail.com). Other email domains are not allowed."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 3. Strict Requirement: Departments must be college limited
+        norm_department = DEPARTMENT_MAP.get(raw_department.upper(), raw_department)
+        if norm_department not in COLLEGE_DEPARTMENTS:
+            return Response(
+                {
+                    "detail": f"Invalid department '{raw_department}'. Department must be one of the college-authorized options: {', '.join(COLLEGE_DEPARTMENTS)}."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        department = norm_department
 
         if User.objects.filter(username__iexact=username).exists():
             return Response(
@@ -312,6 +377,20 @@ def manage_users_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # 4. Strict Requirement: Separate User ID for teachers and admins
+        prefix = 'TCH' if role == 'teacher' else ('ADM' if role == 'admin' else 'STU')
+        if custom_user_id:
+            # Enforce proper prefix for role
+            if not custom_user_id.startswith(prefix):
+                clean_body = custom_user_id.replace('-', '').strip()
+                custom_user_id = f"{prefix}-{clean_body}"
+
+            if UserProfile.objects.filter(employee_id__iexact=custom_user_id).exists():
+                return Response(
+                    {"detail": f"User ID '{custom_user_id}' is already in use. Please choose another ID or leave blank to auto-generate."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         user = User.objects.create_user(
             username=username,
             email=email,
@@ -323,9 +402,18 @@ def manage_users_view(request):
             user.is_staff = True
             user.save()
 
-        UserProfile.objects.update_or_create(
+        # If User ID was not specified by admin, auto-generate unique ID based on role prefix
+        if not custom_user_id:
+            candidate = f"{prefix}-{user.id:03d}"
+            cnt = user.id
+            while UserProfile.objects.filter(employee_id__iexact=candidate).exists():
+                cnt += 1
+                candidate = f"{prefix}-{cnt:03d}"
+            custom_user_id = candidate
+
+        profile, _ = UserProfile.objects.update_or_create(
             user=user,
-            defaults={"role": role, "department": department}
+            defaults={"role": role, "department": department, "employee_id": custom_user_id}
         )
 
         action_choice = 'TEACHER_CREATE' if role == 'teacher' else 'USER_CREATE'
@@ -333,12 +421,18 @@ def manage_users_view(request):
             action=action_choice,
             entity='User',
             entity_id=str(user.id),
-            description=f"Admin created user '{username}' with role '{role}' in department '{department}'.",
+            description=f"Admin created {role} '{username}' with User ID '{profile.user_id_code}' in department '{department}'.",
             user=request.user,
             request=request
         )
 
         return Response(
-            {"detail": f"User '{username}' created successfully as '{role}'.", "user_id": user.id},
+            {
+                "detail": f"{role.capitalize()} '{username}' provisioned successfully with User ID '{profile.user_id_code}'.",
+                "user_id": user.id,
+                "user_id_code": profile.user_id_code,
+                "employee_id": profile.employee_id,
+            },
             status=status.HTTP_201_CREATED
         )
+
