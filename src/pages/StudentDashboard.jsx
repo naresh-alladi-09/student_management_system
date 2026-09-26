@@ -355,7 +355,19 @@ const StudentDashboard = () => {
         if (annRes.data) setAnnouncements(annRes.data);
         if (subRes.data) setCurriculumCourses(subRes.data);
         if (leaveRes.data) setLeaveRequests(leaveRes.data);
-        if (ticketRes.data) setHallTickets(ticketRes.data);
+        if (ticketRes.data) {
+          const tData = ticketRes.data;
+          if (Array.isArray(tData)) {
+            setHallTickets(tData);
+            setPendingExamSessions([]);
+          } else if (tData && typeof tData === "object") {
+            setHallTickets(tData.tickets || []);
+            setPendingExamSessions(tData.pending_sessions || []);
+          } else {
+            setHallTickets([]);
+            setPendingExamSessions([]);
+          }
+        }
       })
       .finally(() => {
         setLoading(false);
@@ -1985,7 +1997,7 @@ const StudentDashboard = () => {
                 Refresh Status
               </button>
 
-              {hallTickets.length > 0 && hallTickets[selectedTicketIndex]?.is_eligible && (
+              {Array.isArray(hallTickets) && hallTickets.length > 0 && hallTickets[selectedTicketIndex]?.is_eligible && (
                 <button
                   type="button"
                   onClick={() => window.print()}
@@ -2011,7 +2023,7 @@ const StudentDashboard = () => {
           </div>
 
           {/* Exam Selector if multiple published exams */}
-          {hallTickets.length > 1 && (
+          {Array.isArray(hallTickets) && hallTickets.length > 1 && (
             <div
               className="no-print"
               style={{
@@ -2024,7 +2036,7 @@ const StudentDashboard = () => {
             >
               {hallTickets.map((t, idx) => (
                 <button
-                  key={t.id}
+                  key={t.id || idx}
                   type="button"
                   onClick={() => setSelectedTicketIndex(idx)}
                   style={{
@@ -2038,14 +2050,14 @@ const StudentDashboard = () => {
                     color: selectedTicketIndex === idx ? "#ffffff" : "#475569",
                   }}
                 >
-                  {t.exam_session_name}
+                  {t.exam_session_name || `Exam Session ${idx + 1}`}
                 </button>
               ))}
             </div>
           )}
 
           {/* Pending Examination Sessions Scheduled by Admin (Awaiting Approval/Release) */}
-          {pendingExamSessions.length > 0 && (
+          {Array.isArray(pendingExamSessions) && pendingExamSessions.length > 0 && (
             <div className="no-print" style={{ marginBottom: "20px" }}>
               {pendingExamSessions.map((session) => (
                 <div
@@ -2119,7 +2131,7 @@ const StudentDashboard = () => {
               <div style={{ fontSize: "28px", marginBottom: "12px" }}>⏳</div>
               <div>Retrieving examination records and calculating attendance eligibility...</div>
             </div>
-          ) : hallTickets.length === 0 ? (
+          ) : (!Array.isArray(hallTickets) || hallTickets.length === 0) ? (
             <div
               style={{
                 background: "#ffffff",
@@ -2147,17 +2159,26 @@ const StudentDashboard = () => {
                 <FaIdCard />
               </div>
               <h3 style={{ margin: "0 0 8px 0", color: "#0f172a", fontSize: "18px" }}>
-                {pendingExamSessions.length > 0 ? "Hall Tickets Awaiting Admin Release" : "No Active Examination Hall Tickets"}
+                {Array.isArray(pendingExamSessions) && pendingExamSessions.length > 0 ? "Hall Tickets Awaiting Admin Release" : "No Active Examination Hall Tickets"}
               </h3>
               <p style={{ margin: "0 auto 20px auto", maxWidth: "460px", fontSize: "14px", lineHeight: "1.5" }}>
-                {pendingExamSessions.length > 0
+                {Array.isArray(pendingExamSessions) && pendingExamSessions.length > 0
                   ? "Your examination schedule has been configured above. The administration will release your downloadable hall tickets shortly."
                   : "There are no published examinations currently scheduled for your branch and semester. Once the examination department publishes timetables, your admit card and eligibility status will appear here automatically."}
               </p>
             </div>
           ) : (
             (() => {
-              const currentTicket = hallTickets[selectedTicketIndex] || hallTickets[0];
+              const ticketsList = Array.isArray(hallTickets) ? hallTickets : [];
+              const currentTicket = ticketsList[selectedTicketIndex] || ticketsList[0];
+
+              if (!currentTicket) {
+                return (
+                  <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
+                    No valid hall ticket selected. Please refresh.
+                  </div>
+                );
+              }
 
               if (!currentTicket.is_eligible) {
                 return (
@@ -2215,7 +2236,7 @@ const StudentDashboard = () => {
                           Attendance Shortage Detained
                         </div>
                         <h3 style={{ margin: 0, fontSize: "20px", color: "#0f172a", fontWeight: 700 }}>
-                          Hall Ticket Withheld — {currentTicket.exam_session_name}
+                          Hall Ticket Withheld — {currentTicket.exam_session_name || "Semester Examination"}
                         </h3>
                       </div>
                     </div>
@@ -2504,7 +2525,7 @@ const StudentDashboard = () => {
                     >
                       <div style={{ textAlign: "left" }}>
                         <div style={{ fontSize: "14px", fontWeight: 800, letterSpacing: "0.5px" }}>
-                          {currentTicket.exam_session_name.toUpperCase()}
+                          {(currentTicket.exam_session_name || "Semester Examination").toUpperCase()}
                         </div>
                         <div style={{ fontSize: "11px", color: "#bfdbfe" }}>
                           Academic Year: {currentTicket.academic_year} • {currentTicket.exam_type}
