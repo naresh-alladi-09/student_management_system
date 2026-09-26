@@ -265,44 +265,79 @@ const VerifyHallTicket = () => {
 
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                    fontSize: "13px",
+                    display: "flex",
+                    gap: "16px",
+                    alignItems: "center",
                   }}
                 >
-                  <div>
-                    <span style={{ color: "#64748b", display: "block", fontSize: "11.5px" }}>Full Name</span>
-                    <strong style={{ color: "#0f172a", fontSize: "14px" }}>{data.student?.name}</strong>
+                  <div
+                    style={{
+                      width: "84px",
+                      height: "105px",
+                      borderRadius: "6px",
+                      border: "2px solid #1e3a8a",
+                      overflow: "hidden",
+                      background: "#e2e8f0",
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+                    }}
+                  >
+                    {data.student?.profile_pic ? (
+                      <img
+                        src={data.student.profile_pic}
+                        alt={data.student?.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <FaUserGraduate style={{ fontSize: "36px", color: "#94a3b8" }} />
+                    )}
                   </div>
 
-                  <div>
-                    <span style={{ color: "#64748b", display: "block", fontSize: "11.5px" }}>University Roll No</span>
-                    <strong style={{ color: "#2563eb", fontSize: "14px" }}>{data.student?.roll_no}</strong>
-                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "12px",
+                      fontSize: "13px",
+                      flex: 1,
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: "#64748b", display: "block", fontSize: "11.5px" }}>Full Name</span>
+                      <strong style={{ color: "#0f172a", fontSize: "14px" }}>{data.student?.name}</strong>
+                    </div>
 
-                  <div>
-                    <span style={{ color: "#64748b", display: "block", fontSize: "11.5px" }}>Branch & Sem</span>
-                    <span style={{ color: "#334155" }}>
-                      {data.student?.branch} • Sem {data.student?.semester} (Sec {data.student?.section})
-                    </span>
-                  </div>
+                    <div>
+                      <span style={{ color: "#64748b", display: "block", fontSize: "11.5px" }}>University Roll No</span>
+                      <strong style={{ color: "#2563eb", fontSize: "14px" }}>{data.student?.roll_no}</strong>
+                    </div>
 
-                  <div>
-                    <span style={{ color: "#64748b", display: "block", fontSize: "11.5px" }}>Attendance</span>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        padding: "2px 8px",
-                        borderRadius: "4px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        background: data.attendance?.is_eligible ? "#dcfce7" : "#fee2e2",
-                        color: data.attendance?.is_eligible ? "#15803d" : "#b91c1c",
-                      }}
-                    >
-                      {data.attendance?.percentage}% {data.attendance?.is_condoned && "(Condoned)"}
-                    </span>
+                    <div>
+                      <span style={{ color: "#64748b", display: "block", fontSize: "11.5px" }}>Branch & Sem</span>
+                      <span style={{ color: "#334155" }}>
+                        {data.student?.branch} • Sem {data.student?.semester} (Sec {data.student?.section})
+                      </span>
+                    </div>
+
+                    <div>
+                      <span style={{ color: "#64748b", display: "block", fontSize: "11.5px" }}>Attendance</span>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          background: data.attendance?.is_eligible ? "#dcfce7" : "#fee2e2",
+                          color: data.attendance?.is_eligible ? "#15803d" : "#b91c1c",
+                        }}
+                      >
+                        {data.attendance?.percentage}% {data.attendance?.is_condoned && "(Condoned)"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

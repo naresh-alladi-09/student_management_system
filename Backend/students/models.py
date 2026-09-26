@@ -98,7 +98,7 @@ class Student(models.Model):
         related_name='students'
     )
     admission_year = models.IntegerField(default=2024)
-    profile_photo = models.CharField(max_length=255, blank=True, default='')
+    profile_photo = models.TextField(blank=True, default='')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)

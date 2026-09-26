@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import StudentNavbar from "../components/StudentNavbar";
@@ -13,6 +13,7 @@ import {
   applyLeaveRequest,
   deleteLeaveRequest,
   getMyHallTickets,
+  updateProfilePicture,
 } from "../services/studentservice";
 import "../styles/studentdashboard.css";
 import { Html5QrcodeScanner } from "html5-qrcode";
@@ -50,7 +51,7 @@ import {
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
-  const { currentUser, isStudent } = useAuth();
+  const { currentUser, isStudent, updateUserProfilePicState } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
@@ -66,6 +67,100 @@ const StudentDashboard = () => {
   const studentRoll = currentUser?.rollNo || "—";
   const studentEmail = currentUser?.email || "—";
   const studentPhone = currentUser?.phone || "—";
+
+  // Student Profile Picture Upload States
+  const studentPhotoInputRef = useRef(null);
+  const [studentPreviewPic, setStudentPreviewPic] = useState(null);
+  const [studentPicFile, setStudentPicFile] = useState(null);
+  const [isSavingPic, setIsSavingPic] = useState(false);
+  const [picStatusMsg, setPicStatusMsg] = useState(null);
+
+  const handleStudentPhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setPicStatusMsg({ type: "error", text: "Please select an image file (JPG, PNG, WEBP)." });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 400;
+        const MAX_HEIGHT = 400;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        setStudentPreviewPic(dataUrl);
+        setStudentPicFile(dataUrl);
+        setPicStatusMsg(null);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveStudentPic = async () => {
+    if (!studentPicFile) return;
+    setIsSavingPic(true);
+    setPicStatusMsg(null);
+    try {
+      const res = await updateProfilePicture(studentPicFile);
+      if (res.data?.success) {
+        updateUserProfilePicState(res.data.profile_pic);
+        setPicStatusMsg({
+          type: "success",
+          text: "Profile picture saved! Your Examination Hall Tickets and ID cards are now updated.",
+        });
+        setStudentPicFile(null);
+        fetchStudentHallTickets();
+      } else {
+        setPicStatusMsg({ type: "error", text: res.data?.error || "Failed to update profile picture." });
+      }
+    } catch (err) {
+      setPicStatusMsg({
+        type: "error",
+        text: err.response?.data?.error || "Error uploading picture. Please try again.",
+      });
+    } finally {
+      setIsSavingPic(false);
+    }
+  };
+
+  const handleRemoveStudentPic = async () => {
+    setIsSavingPic(true);
+    setPicStatusMsg(null);
+    try {
+      const res = await updateProfilePicture("");
+      if (res.data?.success) {
+        updateUserProfilePicState("");
+        setStudentPreviewPic("");
+        setStudentPicFile(null);
+        setPicStatusMsg({ type: "success", text: "Profile picture removed." });
+        fetchStudentHallTickets();
+      }
+    } catch {
+      setPicStatusMsg({ type: "error", text: "Failed to remove photo." });
+    } finally {
+      setIsSavingPic(false);
+    }
+  };
 
   // Real Database States
   const [reportData, setReportData] = useState(null);
@@ -2435,8 +2530,8 @@ const StudentDashboard = () => {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "1fr 180px",
-                        gap: "20px",
+                        gridTemplateColumns: "1fr 130px 140px",
+                        gap: "16px",
                         marginBottom: "24px",
                         border: "1px solid #cbd5e1",
                         borderRadius: "8px",
@@ -2510,7 +2605,7 @@ const StudentDashboard = () => {
                         </tbody>
                       </table>
 
-                      {/* Right: Verification QR Code & Stamp */}
+                      {/* Center: Candidate Official Passport Photograph */}
                       <div
                         style={{
                           display: "flex",
@@ -2519,7 +2614,66 @@ const StudentDashboard = () => {
                           justifyContent: "center",
                           textAlign: "center",
                           borderLeft: "1px solid #cbd5e1",
-                          paddingLeft: "16px",
+                          borderRight: "1px solid #cbd5e1",
+                          padding: "0 10px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "105px",
+                            height: "130px",
+                            border: "2px solid #1e3a8a",
+                            borderRadius: "4px",
+                            overflow: "hidden",
+                            background: "#f8fafc",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+                            position: "relative",
+                          }}
+                        >
+                          {(currentTicket.student_profile_pic || currentUser?.profilePic) ? (
+                            <img
+                              src={currentTicket.student_profile_pic || currentUser?.profilePic}
+                              alt="Candidate"
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                          ) : (
+                            <div style={{ textAlign: "center", padding: "8px", color: "#64748b" }}>
+                              <FaUserTie style={{ fontSize: "36px", color: "#94a3b8", marginBottom: "4px" }} />
+                              <div style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase" }}>
+                                Photo Attached
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "10px",
+                            color: "#1e3a8a",
+                            fontWeight: 700,
+                            marginTop: "6px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          Candidate Photo
+                        </div>
+                        <div style={{ fontSize: "9px", color: "#64748b" }}>
+                          Verified &amp; Attested
+                        </div>
+                      </div>
+
+                      {/* Right: Verification QR Code & Stamp */}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          textAlign: "center",
+                          paddingLeft: "6px",
                         }}
                       >
                         <div
@@ -2793,9 +2947,177 @@ const StudentDashboard = () => {
         <div className="student-card">
           <div className="card-title-row">
             <h3>
-              <FaUserTie /> Official Student Profile
+              <FaUserTie /> Official Student Profile &amp; ID Card
             </h3>
             <span className="stat-badge-tag tag-success">Active Enrolled Student</span>
+          </div>
+
+          {/* Profile Picture Uploader Banner */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%)",
+              border: "1px solid #bae6fd",
+              borderRadius: "16px",
+              padding: "24px",
+              marginBottom: "24px",
+              display: "flex",
+              alignItems: "center",
+              gap: "24px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ position: "relative" }}>
+              <div
+                style={{
+                  width: "120px",
+                  height: "145px",
+                  borderRadius: "8px",
+                  border: "3px solid #0284c7",
+                  overflow: "hidden",
+                  background: "#ffffff",
+                  boxShadow: "0 6px 16px rgba(0,0,0,0.1)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {studentPreviewPic || currentUser?.profilePic ? (
+                  <img
+                    src={studentPreviewPic || currentUser?.profilePic}
+                    alt={studentName}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <div style={{ textAlign: "center", color: "#94a3b8", padding: "10px" }}>
+                    <FaCamera style={{ fontSize: "36px", marginBottom: "6px" }} />
+                    <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase" }}>
+                      No Photo
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => studentPhotoInputRef.current?.click()}
+                title="Select new profile picture"
+                style={{
+                  position: "absolute",
+                  bottom: "-6px",
+                  right: "-6px",
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "50%",
+                  background: "#0284c7",
+                  color: "#ffffff",
+                  border: "2px solid #ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                }}
+              >
+                <FaCamera size={14} />
+              </button>
+            </div>
+
+            <input
+              type="file"
+              ref={studentPhotoInputRef}
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleStudentPhotoChange}
+            />
+
+            <div style={{ flex: 1, minWidth: "240px" }}>
+              <h4 style={{ margin: "0 0 6px 0", color: "#0f172a", fontSize: "18px", fontWeight: 800 }}>
+                Candidate Photograph
+              </h4>
+              <p style={{ margin: "0 0 14px 0", color: "#475569", fontSize: "13px", lineHeight: "1.5" }}>
+                Upload your formal passport photograph. This photograph will automatically be stamped on your
+                <strong> Examination Hall Ticket</strong>, digital ID badge, and invigilator QR scan reports.
+              </p>
+
+              {picStatusMsg && (
+                <div
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    marginBottom: "12px",
+                    fontSize: "12.5px",
+                    fontWeight: 600,
+                    background: picStatusMsg.type === "success" ? "#dcfce7" : "#fee2e2",
+                    color: picStatusMsg.type === "success" ? "#166534" : "#991b1b",
+                    border: `1px solid ${picStatusMsg.type === "success" ? "#bbf7d0" : "#fecaca"}`,
+                  }}
+                >
+                  {picStatusMsg.text}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => studentPhotoInputRef.current?.click()}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#0f172a",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Choose Photo File
+                </button>
+
+                {studentPicFile && (
+                  <button
+                    type="button"
+                    onClick={handleSaveStudentPic}
+                    disabled={isSavingPic}
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "#0284c7",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: isSavingPic ? "wait" : "pointer",
+                    }}
+                  >
+                    {isSavingPic ? "Saving..." : "Save to Profile & Hall Ticket"}
+                  </button>
+                )}
+
+                {(currentUser?.profilePic || studentPreviewPic) && !studentPicFile && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveStudentPic}
+                    disabled={isSavingPic}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: "8px",
+                      border: "1px solid #fecaca",
+                      background: "#fef2f2",
+                      color: "#dc2626",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: isSavingPic ? "wait" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <FaTrashAlt size={12} /> Remove Photo
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="profile-details-grid">
@@ -2816,7 +3138,7 @@ const StudentDashboard = () => {
               <span>{studentBranch}</span>
             </div>
             <div className="profile-field-box">
-              <small>Academic Year & Semester</small>
+              <small>Academic Year &amp; Semester</small>
               <span>Year {studentYear} • Semester {studentSem}</span>
             </div>
             <div className="profile-field-box">
@@ -2837,7 +3159,7 @@ const StudentDashboard = () => {
               <small>Institutional Unit</small>
               <span>
                 <FaBuilding style={{ marginRight: "6px" }} />
-                College of Engineering & Technology
+                College of Engineering &amp; Technology
               </span>
             </div>
           </div>

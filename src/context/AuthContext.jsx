@@ -58,6 +58,7 @@ export const AuthProvider = ({ children }) => {
         name: data.name || data.username,
         department: data.department || "Academic Operations",
         isStaff: Boolean(data.is_staff),
+        profilePic: data.profile_pic || (data.student?.profile_photo || ""),
       };
 
       if (role === "student" && data.student) {
@@ -71,6 +72,7 @@ export const AuthProvider = ({ children }) => {
           branch: s.branch,
           year: s.year,
           semester: s.semester,
+          profilePic: s.profile_photo || data.profile_pic || "",
         };
       }
 
@@ -137,15 +139,23 @@ export const AuthProvider = ({ children }) => {
           role: data.role,
           name: data.name,
           department: data.department,
+          profilePic: data.profile_pic || (data.student?.profile_photo || currentUser.profilePic || ""),
         };
         if (data.student) {
           Object.assign(updated, data.student);
+          if (data.student.profile_photo) {
+            updated.profilePic = data.student.profile_photo;
+          }
         }
         setCurrentUser(updated);
       }
     } catch {
       // ignore
     }
+  };
+
+  const updateUserProfilePicState = (newPic) => {
+    setCurrentUser((prev) => (prev ? { ...prev, profilePic: newPic } : prev));
   };
 
   const role = currentUser?.role || null;
@@ -167,6 +177,7 @@ export const AuthProvider = ({ children }) => {
         loginAdmin,
         logout,
         refreshUser,
+        updateUserProfilePicState,
         loading,
         apiBaseUrl: API_BASE_URL,
       }}

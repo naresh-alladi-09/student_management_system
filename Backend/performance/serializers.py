@@ -178,6 +178,7 @@ class HallTicketSerializer(serializers.ModelSerializer):
     is_approved_by_admin = serializers.BooleanField(source='exam_session.is_approved_by_admin', read_only=True)
     is_released_to_students = serializers.BooleanField(source='exam_session.is_released_to_students', read_only=True)
     condoned_by_name = serializers.SerializerMethodField()
+    student_profile_pic = serializers.SerializerMethodField()
     timetable = serializers.SerializerMethodField()
 
     class Meta:
@@ -199,6 +200,7 @@ class HallTicketSerializer(serializers.ModelSerializer):
             'semester',
             'section',
             'email',
+            'student_profile_pic',
             'hall_ticket_number',
             'verification_token',
             'calculated_attendance_pct',
@@ -221,6 +223,15 @@ class HallTicketSerializer(serializers.ModelSerializer):
             name = obj.condoned_by.get_full_name()
             return name if name.strip() else obj.condoned_by.username
         return None
+
+    def get_student_profile_pic(self, obj):
+        student = obj.student
+        if student.profile_photo:
+            return student.profile_photo
+        user_prof = getattr(student, 'user_profile', None)
+        if user_prof and user_prof.profile_pic:
+            return user_prof.profile_pic
+        return ""
 
     def get_timetable(self, obj):
         papers = obj.exam_session.timetable.all()

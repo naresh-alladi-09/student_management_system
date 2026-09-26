@@ -270,9 +270,22 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
           )}
         </div>
 
-        <div className="nav-profile-badge student-badge-theme">
-          <div className="student-avatar-circle">
-            {studentName.charAt(0).toUpperCase()}
+        <div
+          className="nav-profile-badge student-badge-theme"
+          onClick={() => setActiveTab && setActiveTab("profile")}
+          style={{ cursor: "pointer" }}
+          title="Click to view and edit profile"
+        >
+          <div className="student-avatar-circle" style={{ overflow: "hidden" }}>
+            {currentUser?.profilePic ? (
+              <img
+                src={currentUser.profilePic}
+                alt={studentName}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              studentName.charAt(0).toUpperCase()
+            )}
           </div>
           <div className="student-name-meta">
             <span className="student-nav-name">{studentName}</span>

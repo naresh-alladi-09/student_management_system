@@ -203,6 +203,7 @@ def login_view(request):
         "role": profile.role,
         "name": user.get_full_name() or user.username,
         "department": profile.department,
+        "profile_pic": profile.profile_pic or (profile.student.profile_photo if (profile.role == 'student' and profile.student) else ""),
         "is_staff": user.is_staff or user.is_superuser,
     }
 
@@ -217,6 +218,7 @@ def login_view(request):
             "branch": s.branch,
             "year": s.year,
             "semester": s.semester,
+            "profile_photo": s.profile_photo or profile.profile_pic,
         }
 
     AuditLog.log(
@@ -256,13 +258,15 @@ def logout_view(request):
 @permission_classes([IsAuthenticated])
 def me_view(request):
     """
-    Return currently authenticated user information.
+    Return currently authenticated user information with profile picture.
     """
     user = request.user
     profile, _ = UserProfile.objects.get_or_create(user=user)
     if user.is_superuser and profile.role != 'admin':
         profile.role = 'admin'
         profile.save()
+
+    active_pic = profile.profile_pic or (profile.student.profile_photo if (profile.role == 'student' and profile.student) else "")
 
     data = {
         "id": user.id,
@@ -273,6 +277,7 @@ def me_view(request):
         "name": user.get_full_name() or user.username,
         "role": profile.role,
         "department": profile.department,
+        "profile_pic": active_pic,
         "is_staff": user.is_staff or user.is_superuser,
     }
 
@@ -287,8 +292,55 @@ def me_view(request):
             "branch": s.branch,
             "year": s.year,
             "semester": s.semester,
+            "profile_photo": s.profile_photo or active_pic,
         }
     return Response(data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST', 'PUT'])
+@permission_classes([IsAuthenticated])
+def update_profile_picture(request):
+    """
+    Allow any authenticated user (Student, Faculty/Teacher, Admin) to set or update their profile picture.
+    Accepts: { "profile_pic": "data:image/... or URL" } or uploaded file.
+    """
+    user = request.user
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+
+    profile_pic = request.data.get('profile_pic', '')
+    if not profile_pic and 'file' in request.FILES:
+        import base64
+        uploaded_file = request.FILES['file']
+        content_type = uploaded_file.content_type or 'image/jpeg'
+        encoded_data = base64.b64encode(uploaded_file.read()).decode('utf-8')
+        profile_pic = f"data:{content_type};base64,{encoded_data}"
+
+    if not profile_pic:
+        return Response({"detail": "Profile picture image data is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    profile.profile_pic = profile_pic
+    profile.save(update_fields=['profile_pic'])
+
+    # If student, sync to student model as well
+    if profile.role == 'student' and profile.student:
+        profile.student.profile_photo = profile_pic
+        profile.student.save(update_fields=['profile_photo'])
+
+    AuditLog.log(
+        action='UPDATE_PROFILE_PICTURE',
+        entity='User',
+        entity_id=str(user.id),
+        description=f"User '{user.username}' ({profile.role}) updated their profile photograph.",
+        user=user,
+        request=request
+    )
+
+    return Response({
+        "detail": "Profile picture updated successfully.",
+        "profile_pic": profile.profile_pic,
+        "name": user.get_full_name() or user.username,
+        "role": profile.role
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET', 'POST'])

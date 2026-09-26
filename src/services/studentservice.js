@@ -272,6 +272,10 @@ export const getMeApi = () => {
   return apiClient.get("/api/auth/me/");
 };
 
+export const updateProfilePicture = (profilePicData) => {
+  return apiClient.post("/api/auth/profile/picture/", profilePicData);
+};
+
 // ==========================================
 // INSTITUTIONAL REPORTING & CSV EXPORT
 // ==========================================

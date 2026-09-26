@@ -1057,6 +1057,7 @@ def verify_hall_ticket(request, token):
             "semester": student.semester,
             "section": student.section,
             "department": student.department,
+            "profile_pic": student.profile_photo or (getattr(getattr(student, 'user_profile', None), 'profile_pic', '')),
         },
         "exam": {
             "name": exam.name,

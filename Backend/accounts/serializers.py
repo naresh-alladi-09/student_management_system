@@ -10,14 +10,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserProfile
-        fields = ['role', 'phone', 'department', 'student', 'employee_id', 'user_id_code']
+        fields = ['role', 'phone', 'department', 'student', 'employee_id', 'user_id_code', 'profile_pic']
 
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
     user_id_code = serializers.CharField(source='profile.user_id_code', read_only=True)
+    profile_pic = serializers.CharField(source='profile.profile_pic', read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile', 'user_id_code']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'profile', 'user_id_code', 'profile_pic']
 
