@@ -166,6 +166,11 @@ export const createSubject = (subjectData) => {
   return apiClient.post("/api/performance/subjects/", subjectData);
 };
 
+export const deleteSubject = (id) => {
+  return apiClient.delete(`/api/performance/subjects/${id}/`);
+};
+
+
 // ==========================================
 // TIMETABLE SERVICES
 // ==========================================

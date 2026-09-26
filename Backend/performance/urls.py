@@ -5,6 +5,7 @@ from .views import (
     my_report_card,
     save_student_score,
     list_create_subjects,
+    delete_subject_view,
     performance_summary,
 )
 
@@ -15,4 +16,6 @@ urlpatterns = [
     path('my/', my_report_card, name='my_report_card'),
     path('marks/save/', save_student_score, name='save_student_score'),
     path('subjects/', list_create_subjects, name='list_create_subjects'),
+    path('subjects/<int:subject_id>/', delete_subject_view, name='delete_subject_view'),
 ]
+

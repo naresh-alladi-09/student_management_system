@@ -8,6 +8,8 @@ import {
   getAuditLogs,
   getAuditStats,
   getAllSubjects,
+  createSubject,
+  deleteSubject,
   getTimetable,
   createTimetableSlot,
   deleteTimetableSlot,
@@ -43,6 +45,9 @@ import {
   FaSearch,
   FaSync,
   FaFilter,
+  FaTrashAlt,
+  FaTimesCircle,
+  FaInfoCircle,
 } from "react-icons/fa";
 
 const AdminDashboard = () => {
@@ -277,6 +282,34 @@ const AdminDashboard = () => {
   });
   const [userModalMessage, setUserModalMessage] = useState(null);
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
+
+  // College branches mapping
+  const COLLEGE_BRANCHES = [
+    { code: "CSE", name: "Computer Science & Engineering", dept: "Computer Science & Engineering" },
+    { code: "AIML", name: "Artificial Intelligence & ML", dept: "Artificial Intelligence & Machine Learning" },
+    { code: "IT", name: "Information Technology", dept: "Information Technology" },
+    { code: "ECE", name: "Electronics & Communication", dept: "Electronics & Communication Engineering" },
+    { code: "EEE", name: "Electrical & Electronics", dept: "Electrical & Electronics Engineering" },
+    { code: "MECH", name: "Mechanical Engineering", dept: "Mechanical Engineering" },
+    { code: "CIVIL", name: "Civil Engineering", dept: "Civil Engineering" },
+  ];
+
+  // Curriculum Courses Modal & Filter States
+  const [showCourseModal, setShowCourseModal] = useState(false);
+  const [courseFormData, setCourseFormData] = useState({
+    code: "",
+    name: "",
+    department: "Computer Science & Engineering",
+    branch: "CSE",
+    semester: "1",
+    credits: 3,
+  });
+  const [courseModalMessage, setCourseModalMessage] = useState(null);
+  const [isSubmittingCourse, setIsSubmittingCourse] = useState(false);
+  const [courseSearchTerm, setCourseSearchTerm] = useState("");
+  const [courseBranchFilter, setCourseBranchFilter] = useState("ALL");
+  const [courseSemFilter, setCourseSemFilter] = useState("ALL");
+
 
   const fetchAdminData = () => {
     setLoading(true);
@@ -522,8 +555,77 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleCreateCourse = async (e) => {
+    if (e) e.preventDefault();
+    setIsSubmittingCourse(true);
+    setCourseModalMessage(null);
+
+    const cleanCode = (courseFormData.code || "").trim().toUpperCase();
+    const cleanName = (courseFormData.name || "").trim();
+
+    if (!cleanCode || !cleanName) {
+      setCourseModalMessage({
+        success: false,
+        text: "Course Code and Course Title are required.",
+      });
+      setIsSubmittingCourse(false);
+      return;
+    }
+
+    try {
+      await createSubject({
+        code: cleanCode,
+        name: cleanName,
+        department: courseFormData.department,
+        branch: courseFormData.branch,
+        semester: String(courseFormData.semester),
+        credits: parseInt(courseFormData.credits, 10) || 3,
+      });
+
+      setCourseModalMessage({
+        success: true,
+        text: `Curriculum course "${cleanCode} - ${cleanName}" created successfully!`,
+      });
+
+      fetchAdminData();
+
+      setTimeout(() => {
+        setShowCourseModal(false);
+        setCourseModalMessage(null);
+        setCourseFormData({
+          code: "",
+          name: "",
+          department: "Computer Science & Engineering",
+          branch: "CSE",
+          semester: "1",
+          credits: 3,
+        });
+      }, 1500);
+    } catch (err) {
+      setCourseModalMessage({
+        success: false,
+        text: err.response?.data?.detail || "Failed to create curriculum course.",
+      });
+    } finally {
+      setIsSubmittingCourse(false);
+    }
+  };
+
+  const handleDeleteCourse = async (subjectId, subjectCode, subjectName) => {
+    if (!window.confirm(`Are you sure you want to remove ${subjectCode}: "${subjectName}" from the curriculum catalog?`)) {
+      return;
+    }
+    try {
+      await deleteSubject(subjectId);
+      fetchAdminData();
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to delete curriculum course.");
+    }
+  };
+
   const teachersList = users.filter((u) => u.profile?.role === "teacher");
   const adminsList = users.filter((u) => u.profile?.role === "admin");
+
 
   const filteredTeachers = teachersList.filter((t) => {
     const q = userSearchTerm.toLowerCase();
@@ -556,6 +658,19 @@ const AdminDashboard = () => {
     const matchesSearch = !q || idStr.includes(q) || nameStr.includes(q) || emailStr.includes(q) || deptStr.includes(q);
     const matchesDept = userDeptFilter === "ALL" || (a.profile?.department || "") === userDeptFilter;
     return matchesSearch && matchesDept;
+  });
+
+  const filteredSubjects = subjects.filter((sub) => {
+    const q = courseSearchTerm.toLowerCase();
+    const codeMatch = (sub.code || "").toLowerCase().includes(q);
+    const nameMatch = (sub.name || "").toLowerCase().includes(q);
+    const deptMatch = (sub.department || "").toLowerCase().includes(q);
+    const matchesSearch = !q || codeMatch || nameMatch || deptMatch;
+
+    const matchesBranch = courseBranchFilter === "ALL" || (sub.branch || "").toUpperCase() === courseBranchFilter.toUpperCase();
+    const matchesSem = courseSemFilter === "ALL" || String(sub.semester) === String(courseSemFilter);
+
+    return matchesSearch && matchesBranch && matchesSem;
   });
 
   return (
@@ -605,24 +720,47 @@ const AdminDashboard = () => {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowUserModal(true)}
-              style={{
-                background: "#2563eb",
-                color: "#fff",
-                border: "none",
-                padding: "12px 20px",
-                borderRadius: "10px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <FaPlusCircle /> Provision Faculty Account
-            </button>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setShowCourseModal(true)}
+                style={{
+                  background: "#059669",
+                  color: "#fff",
+                  border: "none",
+                  padding: "12px 18px",
+                  borderRadius: "10px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)",
+                }}
+              >
+                <FaBook /> Create Curriculum Course
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowUserModal(true)}
+                style={{
+                  background: "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  padding: "12px 20px",
+                  borderRadius: "10px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)",
+                }}
+              >
+                <FaPlusCircle /> Provision Faculty / Admin
+              </button>
+            </div>
           </div>
 
           {/* Metric Cards */}
@@ -703,6 +841,8 @@ const AdminDashboard = () => {
             </div>
 
             <div
+              onClick={() => setActiveTab("subjects")}
+              title="Click to view Curriculum Courses catalog"
               style={{
                 background: "#fff",
                 padding: "20px",
@@ -711,6 +851,8 @@ const AdminDashboard = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: "16px",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
               }}
             >
               <div
@@ -729,7 +871,7 @@ const AdminDashboard = () => {
                 <FaBook />
               </div>
               <div>
-                <small style={{ color: "#64748b" }}>Curriculum Subjects</small>
+                <small style={{ color: "#64748b" }}>Curriculum Courses</small>
                 <div style={{ fontSize: "24px", fontWeight: 700, color: "#0f172a" }}>
                   {loading ? "..." : stats.totalSubjects}
                 </div>
@@ -819,9 +961,12 @@ const AdminDashboard = () => {
                 color: activeTab === "subjects" ? "#fff" : "#475569",
                 fontWeight: 600,
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
               }}
             >
-              Curriculum Courses ({subjects.length})
+              <FaBook /> Curriculum Courses ({subjects.length})
             </button>
 
             <button
@@ -2002,40 +2147,419 @@ const AdminDashboard = () => {
             <div
               style={{
                 background: "#fff",
-                borderRadius: "12px",
+                borderRadius: "16px",
                 border: "1px solid #e2e8f0",
-                padding: "20px",
+                padding: "24px",
+                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
               }}
             >
-              <h3 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#0f172a" }}>
-                Curriculum Subjects Catalog
-              </h3>
-              <table className="grades-table">
-                <thead>
-                  <tr>
-                    <th>Code</th>
-                    <th>Course Title</th>
-                    <th>Credits</th>
-                    <th>Branch</th>
-                    <th>Semester</th>
-                    <th>Department</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {subjects.map((sub) => (
-                    <tr key={sub.id}>
-                      <td>
-                        <strong>{sub.code}</strong>
-                      </td>
-                      <td>{sub.name}</td>
-                      <td>{sub.credits}</td>
-                      <td>{sub.branch}</td>
-                      <td>Sem {sub.semester}</td>
-                      <td>{sub.department}</td>
+              {/* Header with Title and Create Action */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                  marginBottom: "20px",
+                }}
+              >
+                <div>
+                  <h3
+                    style={{
+                      margin: "0 0 4px 0",
+                      fontSize: "20px",
+                      color: "#0f172a",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "8px",
+                        background: "#ecfdf5",
+                        color: "#059669",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "18px",
+                      }}
+                    >
+                      <FaBook />
+                    </div>
+                    Curriculum Courses &amp; Syllabi Directory
+                  </h3>
+                  <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+                    Official institution-accredited subjects, credit weightings, semester distribution, and branch allocations.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCourseModal(true)}
+                  style={{
+                    background: "#059669",
+                    color: "#fff",
+                    border: "none",
+                    padding: "10px 18px",
+                    borderRadius: "10px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)",
+                    transition: "transform 0.15s ease",
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
+                  onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                >
+                  <FaPlusCircle /> Create Curriculum Course
+                </button>
+              </div>
+
+              {/* Summary Metrics Strip */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "14px",
+                  marginBottom: "20px",
+                  background: "#f8fafc",
+                  padding: "14px",
+                  borderRadius: "12px",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <div>
+                  <small style={{ color: "#64748b", fontSize: "12px", textTransform: "uppercase", fontWeight: 600 }}>
+                    Catalog Courses
+                  </small>
+                  <div style={{ fontSize: "20px", fontWeight: 700, color: "#0f172a" }}>
+                    {subjects.length} Subjects
+                  </div>
+                </div>
+
+                <div>
+                  <small style={{ color: "#64748b", fontSize: "12px", textTransform: "uppercase", fontWeight: 600 }}>
+                    Matching Filter
+                  </small>
+                  <div style={{ fontSize: "20px", fontWeight: 700, color: "#059669" }}>
+                    {filteredSubjects.length} Courses
+                  </div>
+                </div>
+
+                <div>
+                  <small style={{ color: "#64748b", fontSize: "12px", textTransform: "uppercase", fontWeight: 600 }}>
+                    Total Credits
+                  </small>
+                  <div style={{ fontSize: "20px", fontWeight: 700, color: "#d97706" }}>
+                    {filteredSubjects.reduce((acc, c) => acc + (Number(c.credits) || 0), 0)} Credits
+                  </div>
+                </div>
+
+                <div>
+                  <small style={{ color: "#64748b", fontSize: "12px", textTransform: "uppercase", fontWeight: 600 }}>
+                    Active Branches
+                  </small>
+                  <div style={{ fontSize: "20px", fontWeight: 700, color: "#2563eb" }}>
+                    {new Set(filteredSubjects.map((s) => s.branch)).size} Departments
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters and Search Bar */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  marginBottom: "20px",
+                }}
+              >
+                <div style={{ position: "relative", flex: 2, minWidth: "240px" }}>
+                  <FaSearch
+                    style={{
+                      position: "absolute",
+                      left: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "#94a3b8",
+                      fontSize: "14px",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search by course code (e.g. CS501), title, or department..."
+                    value={courseSearchTerm}
+                    onChange={(e) => setCourseSearchTerm(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px 10px 36px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div style={{ flex: 1, minWidth: "160px" }}>
+                  <select
+                    value={courseBranchFilter}
+                    onChange={(e) => setCourseBranchFilter(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "14px",
+                      background: "#fff",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <option value="ALL">All Branches</option>
+                    {COLLEGE_BRANCHES.map((b) => (
+                      <option key={b.code} value={b.code}>
+                        {b.code} ({b.name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ flex: 1, minWidth: "140px" }}>
+                  <select
+                    value={courseSemFilter}
+                    onChange={(e) => setCourseSemFilter(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "14px",
+                      background: "#fff",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <option value="ALL">All Semesters</option>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
+                      <option key={s} value={String(s)}>
+                        Semester {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {(courseSearchTerm || courseBranchFilter !== "ALL" || courseSemFilter !== "ALL") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCourseSearchTerm("");
+                      setCourseBranchFilter("ALL");
+                      setCourseSemFilter("ALL");
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      background: "#f1f5f9",
+                      color: "#475569",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <FaSync /> Clear Filters
+                  </button>
+                )}
+              </div>
+
+              {/* Courses Table */}
+              <div style={{ overflowX: "auto" }}>
+                <table className="grades-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left" }}>Course Code</th>
+                      <th style={{ textAlign: "left" }}>Course Title</th>
+                      <th style={{ textAlign: "left" }}>Branch</th>
+                      <th style={{ textAlign: "center" }}>Semester</th>
+                      <th style={{ textAlign: "center" }}>Credits</th>
+                      <th style={{ textAlign: "left" }}>College Department</th>
+                      <th style={{ textAlign: "center" }}>Status</th>
+                      <th style={{ textAlign: "center" }}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredSubjects.length > 0 ? (
+                      filteredSubjects.map((sub) => (
+                        <tr key={sub.id}>
+                          <td>
+                            <span
+                              style={{
+                                background: "#ecfdf5",
+                                color: "#065f46",
+                                padding: "4px 10px",
+                                borderRadius: "6px",
+                                fontFamily: "monospace",
+                                fontWeight: 700,
+                                fontSize: "13px",
+                                border: "1px solid #a7f3d0",
+                              }}
+                            >
+                              {sub.code}
+                            </span>
+                          </td>
+                          <td>
+                            <strong style={{ color: "#0f172a" }}>{sub.name}</strong>
+                          </td>
+                          <td>
+                            <span className="stat-badge-tag tag-primary">
+                              {sub.branch}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <span className="stat-badge-tag tag-neutral">
+                              Sem {sub.semester}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <span
+                              style={{
+                                background: "#fef3c7",
+                                color: "#92400e",
+                                padding: "3px 8px",
+                                borderRadius: "6px",
+                                fontWeight: 700,
+                                fontSize: "12px",
+                                border: "1px solid #fde68a",
+                              }}
+                            >
+                              {sub.credits} Credits
+                            </span>
+                          </td>
+                          <td>
+                            <span style={{ color: "#334155", fontSize: "13px" }}>
+                              {sub.department}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <span className="stat-badge-tag tag-success">
+                              ACTIVE
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCourse(sub.id, sub.code, sub.name)}
+                              title={`Remove ${sub.code} from catalog`}
+                              style={{
+                                background: "#fef2f2",
+                                color: "#dc2626",
+                                border: "1px solid #fecaca",
+                                padding: "6px 10px",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              <FaTrashAlt /> Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan="8"
+                          style={{
+                            textAlign: "center",
+                            padding: "40px 20px",
+                            color: "#64748b",
+                          }}
+                        >
+                          <div style={{ maxWidth: "400px", margin: "0 auto" }}>
+                            <div
+                              style={{
+                                width: "48px",
+                                height: "48px",
+                                borderRadius: "50%",
+                                background: "#f1f5f9",
+                                color: "#94a3b8",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                margin: "0 auto 12px auto",
+                                fontSize: "20px",
+                              }}
+                            >
+                              <FaBook />
+                            </div>
+                            <h4 style={{ margin: "0 0 6px 0", color: "#1e293b", fontSize: "16px" }}>
+                              {subjects.length === 0
+                                ? "No Curriculum Courses Created"
+                                : "No Courses Matching Filters"}
+                            </h4>
+                            <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#64748b" }}>
+                              {subjects.length === 0
+                                ? "Establish your academic syllabus by creating courses with codes, credits, and department allocations."
+                                : "Try clearing your search term or adjusting branch and semester filters."}
+                            </p>
+                            {subjects.length === 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => setShowCourseModal(true)}
+                                style={{
+                                  background: "#059669",
+                                  color: "#fff",
+                                  border: "none",
+                                  padding: "8px 16px",
+                                  borderRadius: "8px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <FaPlusCircle /> Create First Course
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCourseSearchTerm("");
+                                  setCourseBranchFilter("ALL");
+                                  setCourseSemFilter("ALL");
+                                }}
+                                style={{
+                                  background: "#f1f5f9",
+                                  color: "#334155",
+                                  border: "1px solid #cbd5e1",
+                                  padding: "8px 16px",
+                                  borderRadius: "8px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Reset Search Filters
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -3764,6 +4288,322 @@ const AdminDashboard = () => {
                     }}
                   >
                     {isSubmittingUser ? "Creating..." : "Create Account"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Create Curriculum Course Modal */}
+        {showCourseModal && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(15, 23, 42, 0.75)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+              padding: "16px",
+            }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: "16px",
+                padding: "28px",
+                maxWidth: "560px",
+                width: "100%",
+                position: "relative",
+                boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowCourseModal(false)}
+                style={{
+                  position: "absolute",
+                  top: "16px",
+                  right: "16px",
+                  background: "none",
+                  border: "none",
+                  fontSize: "18px",
+                  color: "#64748b",
+                  cursor: "pointer",
+                }}
+              >
+                <FaTimes />
+              </button>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "8px",
+                    background: "#ecfdf5",
+                    color: "#059669",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "18px",
+                  }}
+                >
+                  <FaBook />
+                </div>
+                <h3 style={{ margin: 0, fontSize: "20px", color: "#0f172a" }}>
+                  Create Curriculum Course
+                </h3>
+              </div>
+              <p style={{ margin: "0 0 16px 0", color: "#64748b", fontSize: "14px" }}>
+                Add an institution-accredited subject to the academic syllabus, timetable scheduler, and faculty grading rosters.
+              </p>
+
+              {courseModalMessage && (
+                <div
+                  style={{
+                    padding: "12px",
+                    borderRadius: "8px",
+                    marginBottom: "16px",
+                    background: courseModalMessage.success ? "#ecfdf5" : "#fef2f2",
+                    color: courseModalMessage.success ? "#047857" : "#b91c1c",
+                    fontSize: "14px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  {courseModalMessage.success ? <FaCheckCircle /> : <FaTimesCircle />}
+                  {courseModalMessage.text}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateCourse}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "12px", marginBottom: "12px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                      Course Code *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. CS501"
+                      value={courseFormData.code}
+                      onChange={(e) =>
+                        setCourseFormData({ ...courseFormData, code: e.target.value.toUpperCase() })
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        boxSizing: "border-box",
+                        fontFamily: "monospace",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                      }}
+                    />
+                    <small style={{ color: "#64748b", fontSize: "11px" }}>Unique academic code</small>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                      Course Title *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Database Management Systems"
+                      value={courseFormData.name}
+                      onChange={(e) =>
+                        setCourseFormData({ ...courseFormData, name: e.target.value })
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <small style={{ color: "#64748b", fontSize: "11px" }}>Official subject name</small>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                    College Department *
+                  </label>
+                  <select
+                    value={courseFormData.department}
+                    required
+                    onChange={(e) => {
+                      const selectedDept = e.target.value;
+                      const matchedBranch = COLLEGE_BRANCHES.find((b) => b.dept === selectedDept);
+                      setCourseFormData({
+                        ...courseFormData,
+                        department: selectedDept,
+                        branch: matchedBranch ? matchedBranch.code : courseFormData.branch,
+                      });
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {COLLEGE_DEPARTMENTS.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                      Branch *
+                    </label>
+                    <select
+                      value={courseFormData.branch}
+                      required
+                      onChange={(e) =>
+                        setCourseFormData({ ...courseFormData, branch: e.target.value })
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {COLLEGE_BRANCHES.map((b) => (
+                        <option key={b.code} value={b.code}>
+                          {b.code} ({b.name})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                      Semester *
+                    </label>
+                    <select
+                      value={courseFormData.semester}
+                      required
+                      onChange={(e) =>
+                        setCourseFormData({ ...courseFormData, semester: e.target.value })
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                        <option key={sem} value={String(sem)}>
+                          Semester {sem}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                      Credits (1 - 6) *
+                    </label>
+                    <select
+                      value={courseFormData.credits}
+                      required
+                      onChange={(e) =>
+                        setCourseFormData({ ...courseFormData, credits: parseInt(e.target.value, 10) })
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {[1, 2, 3, 4, 5, 6].map((cr) => (
+                        <option key={cr} value={cr}>
+                          {cr} Credit{cr > 1 ? "s" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    marginBottom: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "12px",
+                    color: "#166534",
+                  }}
+                >
+                  <FaInfoCircle />
+                  <span>
+                    Once created, this course will immediately appear in the admin catalog, timetable lecture slot builder, faculty grading rosters, and student curriculum overviews.
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowCourseModal(false)}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      background: "#f8fafc",
+                      color: "#475569",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmittingCourse}
+                    style={{
+                      flex: 2,
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "#059669",
+                      color: "#fff",
+                      fontWeight: 600,
+                      cursor: isSubmittingCourse ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    {isSubmittingCourse ? "Creating Course..." : "Create Course"}
                   </button>
                 </div>
               </form>

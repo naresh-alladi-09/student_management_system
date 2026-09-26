@@ -327,9 +327,58 @@ def list_create_subjects(request):
     elif request.method == 'POST':
         serializer = SubjectSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            subject = serializer.save()
+            AuditLog.log(
+                action="ACADEMIC_SETUP",
+                entity="Subject",
+                entity_id=str(subject.id),
+                description=f"Admin created curriculum course '{subject.code}: {subject.name}' ({subject.credits} Credits, {subject.branch}, Sem {subject.semester}, {subject.department}).",
+                user=request.user,
+                request=request
+            )
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        error_msg = "Failed to create curriculum course."
+        if serializer.errors:
+            first_field = next(iter(serializer.errors))
+            first_err = serializer.errors[first_field]
+            if isinstance(first_err, list) and first_err:
+                error_msg = f"{first_field.capitalize()}: {first_err[0]}"
+            else:
+                error_msg = f"{first_field.capitalize()}: {first_err}"
+
+        return Response({"detail": error_msg, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'DELETE'])
+@permission_classes([IsTeacherOrAdmin])
+def delete_subject_view(request, subject_id):
+    """
+    Retrieve or delete a curriculum subject (Admin/Teacher).
+    """
+    try:
+        subject = Subject.objects.get(id=subject_id)
+    except Subject.DoesNotExist:
+        return Response({"detail": "Curriculum course not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        serializer = SubjectSerializer(subject)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    elif request.method == 'DELETE':
+        code = subject.code
+        name = subject.name
+        subject.delete()
+        AuditLog.log(
+            action="ACADEMIC_SETUP",
+            entity="Subject",
+            entity_id=str(subject_id),
+            description=f"Admin deleted curriculum course '{code}: {name}'.",
+            user=request.user,
+            request=request
+        )
+        return Response({"detail": f"Course '{code} - {name}' deleted successfully."}, status=status.HTTP_200_OK)
+
 
 
 @api_view(['GET'])

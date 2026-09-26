@@ -9,6 +9,7 @@ import {
   FaClock,
   FaBell,
   FaCheckDouble,
+  FaBook,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -106,6 +107,14 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
         >
           <FaClock />
           <span>Timetable</span>
+        </button>
+        <button
+          type="button"
+          className={`student-tab-pill ${activeTab === "courses" ? "active" : ""}`}
+          onClick={() => setActiveTab("courses")}
+        >
+          <FaBook />
+          <span>Curriculum</span>
         </button>
         <button
           type="button"

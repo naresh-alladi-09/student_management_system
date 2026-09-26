@@ -8,6 +8,7 @@ import {
   getTimetable,
   getAnnouncements,
   markQrAttendance,
+  getAllSubjects,
 } from "../services/studentservice";
 import "../styles/studentdashboard.css";
 import { Html5QrcodeScanner } from "html5-qrcode";
@@ -56,6 +57,8 @@ const StudentDashboard = () => {
   const [attendanceData, setAttendanceData] = useState(null);
   const [timetableSlots, setTimetableSlots] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [curriculumCourses, setCurriculumCourses] = useState([]);
+  const [studentCourseSemFilter, setStudentCourseSemFilter] = useState("CURRENT");
   const [loading, setLoading] = useState(true);
 
   // QR Modal States
@@ -191,12 +194,14 @@ const StudentDashboard = () => {
       getMyAttendance().catch(() => ({ data: null })),
       getTimetable().catch(() => ({ data: [] })),
       getAnnouncements().catch(() => ({ data: [] })),
+      getAllSubjects().catch(() => ({ data: [] })),
     ])
-      .then(([repRes, attRes, timeRes, annRes]) => {
+      .then(([repRes, attRes, timeRes, annRes, subRes]) => {
         if (repRes.data) setReportData(repRes.data);
         if (attRes.data) setAttendanceData(attRes.data);
         if (timeRes.data) setTimetableSlots(timeRes.data);
         if (annRes.data) setAnnouncements(annRes.data);
+        if (subRes.data) setCurriculumCourses(subRes.data);
       })
       .finally(() => {
         setLoading(false);
@@ -366,15 +371,32 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div className="student-stat-card">
+        <div
+          className="student-stat-card"
+          onClick={() => setActiveTab("courses")}
+          style={{ cursor: "pointer" }}
+          title="Click to view Curriculum Courses & Syllabus"
+        >
           <div className="stat-icon-wrap purple">
             <FaBook />
           </div>
           <div className="stat-info">
             <small>Curriculum Courses</small>
-            <div className="stat-number">{subjects.length} Subjects</div>
+            <div className="stat-number">
+              {curriculumCourses.length > 0
+                ? `${curriculumCourses.filter((c) => String(c.semester) === String(studentSem) && (c.branch || "").toUpperCase() === String(studentBranch).toUpperCase()).length || curriculumCourses.length} Subjects`
+                : `${subjects.length} Subjects`}
+            </div>
             <span className="stat-badge-tag tag-info">
-              {totalCredits > 0 ? `${totalCredits} Total Credits` : "Registered"}
+              {curriculumCourses.length > 0
+                ? `${curriculumCourses
+                    .filter(
+                      (c) =>
+                        String(c.semester) === String(studentSem) &&
+                        (c.branch || "").toUpperCase() === String(studentBranch).toUpperCase()
+                    )
+                    .reduce((acc, c) => acc + (Number(c.credits) || 0), 0) || totalCredits} Sem Credits`
+                : `${totalCredits > 0 ? `${totalCredits} Total Credits` : "Registered"}`}
             </span>
           </div>
         </div>
@@ -1108,6 +1130,261 @@ const StudentDashboard = () => {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Tab: Curriculum Courses & Academic Syllabus */}
+      {activeTab === "courses" && (
+        <div className="student-card">
+          <div
+            className="card-title-row"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div>
+              <h3 style={{ margin: "0 0 4px 0", display: "flex", alignItems: "center", gap: "8px" }}>
+                <FaBook style={{ color: "#059669" }} /> Enrolled Curriculum Courses &amp; Academic Syllabus
+              </h3>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+                Official institution syllabus accredited for {studentBranch} Department, Semester {studentSem}.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={() => setStudentCourseSemFilter("CURRENT")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  border: "none",
+                  background: studentCourseSemFilter === "CURRENT" ? "#059669" : "#f1f5f9",
+                  color: studentCourseSemFilter === "CURRENT" ? "#fff" : "#475569",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Semester {studentSem} (Current)
+              </button>
+              <button
+                type="button"
+                onClick={() => setStudentCourseSemFilter("ALL")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  border: "none",
+                  background: studentCourseSemFilter === "ALL" ? "#0f172a" : "#f1f5f9",
+                  color: studentCourseSemFilter === "ALL" ? "#fff" : "#475569",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                All {studentBranch} Courses
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics Strip */}
+          {(() => {
+            const displayedCourses = curriculumCourses.filter((course) => {
+              const matchBranch =
+                !studentBranch ||
+                studentBranch === "—" ||
+                (course.branch || "").toUpperCase() === String(studentBranch).toUpperCase();
+              if (studentCourseSemFilter === "CURRENT") {
+                return matchBranch && String(course.semester) === String(studentSem);
+              }
+              return matchBranch;
+            });
+
+            const totalSemCredits = displayedCourses.reduce(
+              (acc, c) => acc + (Number(c.credits) || 0),
+              0
+            );
+
+            const gradedCount = displayedCourses.filter((course) =>
+              subjects.some(
+                (s) => (s.code || "").toUpperCase() === (course.code || "").toUpperCase()
+              )
+            ).length;
+
+            return (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                    gap: "12px",
+                    marginTop: "16px",
+                    marginBottom: "20px",
+                    background: "#f8fafc",
+                    padding: "14px",
+                    borderRadius: "10px",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <div>
+                    <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                      {studentCourseSemFilter === "CURRENT" ? "Semester Courses" : "Total Program Courses"}
+                    </small>
+                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>
+                      {displayedCourses.length} Subjects
+                    </div>
+                  </div>
+
+                  <div>
+                    <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                      Credit Weightage
+                    </small>
+                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#d97706" }}>
+                      {totalSemCredits} Total Credits
+                    </div>
+                  </div>
+
+                  <div>
+                    <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                      Evaluated / Graded
+                    </small>
+                    <div style={{ fontSize: "18px", fontWeight: 700, color: "#059669" }}>
+                      {gradedCount} / {displayedCourses.length} Subjects
+                    </div>
+                  </div>
+
+                  <div>
+                    <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                      Academic Department
+                    </small>
+                    <div style={{ fontSize: "14px", fontWeight: 600, color: "#2563eb", marginTop: "2px" }}>
+                      {studentBranch} Engineering
+                    </div>
+                  </div>
+                </div>
+
+                <div className="table-responsive">
+                  <table className="grades-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left" }}>Course Code</th>
+                        <th style={{ textAlign: "left" }}>Course Title</th>
+                        <th style={{ textAlign: "center" }}>Semester</th>
+                        <th style={{ textAlign: "center" }}>Credits</th>
+                        <th style={{ textAlign: "left" }}>Department</th>
+                        <th style={{ textAlign: "center" }}>Academic Standing</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedCourses.length > 0 ? (
+                        displayedCourses.map((course) => {
+                          const gradedScore = subjects.find(
+                            (s) =>
+                              (s.code || "").toUpperCase() === (course.code || "").toUpperCase()
+                          );
+                          const isCurrentSem = String(course.semester) === String(studentSem);
+
+                          return (
+                            <tr
+                              key={course.id}
+                              style={{
+                                backgroundColor: isCurrentSem ? "rgba(240, 253, 244, 0.4)" : "transparent",
+                              }}
+                            >
+                              <td>
+                                <span
+                                  style={{
+                                    background: "#ecfdf5",
+                                    color: "#065f46",
+                                    padding: "4px 8px",
+                                    borderRadius: "6px",
+                                    fontFamily: "monospace",
+                                    fontWeight: 700,
+                                    fontSize: "13px",
+                                    border: "1px solid #a7f3d0",
+                                  }}
+                                >
+                                  {course.code}
+                                </span>
+                              </td>
+                              <td>
+                                <strong style={{ color: "#0f172a" }}>{course.name}</strong>
+                                {isCurrentSem && (
+                                  <span
+                                    style={{
+                                      marginLeft: "8px",
+                                      fontSize: "11px",
+                                      background: "#eff6ff",
+                                      color: "#2563eb",
+                                      padding: "2px 8px",
+                                      borderRadius: "12px",
+                                      fontWeight: 600,
+                                      border: "1px solid #bfdbfe",
+                                    }}
+                                  >
+                                    Active Term
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: "center" }}>
+                                <span className="stat-badge-tag tag-neutral">
+                                  Sem {course.semester}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: "center" }}>
+                                <span
+                                  style={{
+                                    background: "#fef3c7",
+                                    color: "#92400e",
+                                    padding: "3px 8px",
+                                    borderRadius: "6px",
+                                    fontWeight: 700,
+                                    fontSize: "12px",
+                                    border: "1px solid #fde68a",
+                                  }}
+                                >
+                                  {course.credits} Credits
+                                </span>
+                              </td>
+                              <td>
+                                <span style={{ color: "#475569", fontSize: "13px" }}>
+                                  {course.department}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: "center" }}>
+                                {gradedScore ? (
+                                  <span className={`grade-badge ${gradedScore.gradeClass}`}>
+                                    Grade {gradedScore.grade} ({gradedScore.total}/100)
+                                  </span>
+                                ) : (
+                                  <span className="stat-badge-tag tag-info">
+                                    Enrolled / Ongoing
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan="6"
+                            style={{ textAlign: "center", padding: "32px", color: "#64748b" }}
+                          >
+                            No curriculum courses configured for {studentBranch} Department.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
