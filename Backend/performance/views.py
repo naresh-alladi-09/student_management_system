@@ -1077,6 +1077,83 @@ def verify_hall_ticket(request, token):
             "condonation_reason": ticket.condonation_reason if ticket.is_condoned else None,
         },
         "timetable": ExamTimetableSerializer(relevant_papers, many=True).data,
+        "is_verified_in_hall": ticket.is_verified_in_hall,
+        "verified_in_hall_at": ticket.verified_in_hall_at.isoformat() if ticket.verified_in_hall_at else None,
+        "verified_by_name": ticket.verified_by.get_full_name() or ticket.verified_by.username if ticket.verified_by else None,
         "verified_at": timezone.now().isoformat(),
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def check_in_exam_candidate(request, token):
+    """
+    Invigilator officially admits a candidate to the examination hall upon scanning their QR code.
+    """
+    try:
+        ticket = HallTicket.objects.select_related('student', 'exam_session').get(verification_token=token)
+    except (HallTicket.DoesNotExist, ValueError):
+        return Response({"error": "Invalid hall ticket QR token."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not ticket.is_eligible and not ticket.is_condoned:
+        return Response({
+            "error": "Candidate is detained due to attendance shortage and cannot be admitted to the examination hall.",
+            "status": "INELIGIBLE_DETAINED",
+            "student_name": ticket.student.name,
+            "roll_no": ticket.student.roll_no,
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    ticket.is_verified_in_hall = True
+    ticket.verified_in_hall_at = timezone.now()
+    ticket.verified_by = request.user
+    ticket.save(update_fields=['is_verified_in_hall', 'verified_in_hall_at', 'verified_by'])
+
+    AuditLog.log(
+        action='EXAM_HALL_CHECKIN',
+        entity='HallTicket',
+        entity_id=str(ticket.id),
+        description=f"Candidate {ticket.student.name} ({ticket.student.roll_no}) admitted to Exam Hall for '{ticket.exam_session.name}'.",
+        user=request.user,
+        request=request
+    )
+
+    return Response({
+        "success": True,
+        "message": f"Candidate {ticket.student.name} ({ticket.student.roll_no}) admitted to Exam Hall successfully!",
+        "hall_ticket_number": ticket.hall_ticket_number,
+        "verified_in_hall_at": ticket.verified_in_hall_at.isoformat(),
+        "verified_by_name": request.user.get_full_name() or request.user.username,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_exam_hall_checkins(request):
+    """
+    Returns list of recently scanned and admitted candidates for the invigilator live gate console.
+    """
+    exam_id = request.query_params.get('exam_id')
+    qs = HallTicket.objects.filter(is_verified_in_hall=True).select_related('student', 'exam_session', 'verified_by').order_by('-verified_in_hall_at')
+    if exam_id:
+        qs = qs.filter(exam_session_id=exam_id)
+
+    recent = qs[:100]
+    records = []
+    for t in recent:
+        records.append({
+            "id": t.id,
+            "hall_ticket_number": t.hall_ticket_number,
+            "student_name": t.student.name,
+            "roll_no": t.student.roll_no,
+            "branch": t.student.branch,
+            "semester": t.student.semester,
+            "section": t.student.section,
+            "profile_pic": t.student.profile_photo or (getattr(getattr(t.student, 'user_profile', None), 'profile_pic', '')),
+            "exam_name": t.exam_session.name,
+            "verified_in_hall_at": t.verified_in_hall_at.isoformat() if t.verified_in_hall_at else None,
+            "verified_by_name": t.verified_by.get_full_name() or t.verified_by.username if t.verified_by else "Invigilator",
+            "attendance_pct": t.calculated_attendance_pct,
+            "is_condoned": t.is_condoned,
+        })
+    return Response(records, status=status.HTTP_200_OK)
 

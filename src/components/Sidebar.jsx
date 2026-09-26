@@ -13,6 +13,7 @@ const Sidebar = () => {
 
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: "fa-solid fa-gauge-high" },
+    { path: "/exam-scanner", label: "Exam Scanner", icon: "fa-solid fa-qrcode" },
     { path: "/students", label: "Students", icon: "fa-solid fa-user-graduate" },
     { path: "/addstudents", label: "Add Student", icon: "fa-solid fa-user-plus" },
     { path: "/attendance", label: "Attendance", icon: "fa-regular fa-calendar-check" },

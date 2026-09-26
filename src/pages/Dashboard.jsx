@@ -16,6 +16,7 @@ import {
   FaExternalLinkAlt,
   FaCalendarAlt,
   FaUsers,
+  FaIdCard,
 } from "react-icons/fa";
 
 const Dashboard = () => {
@@ -188,6 +189,69 @@ const Dashboard = () => {
 
         <div className="dashboard-body">
           <Dashboardcard studentCount={totalCount} />
+
+          {/* Invigilator Examination Gate Scanner Banner */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)",
+              borderRadius: "16px",
+              padding: "20px 24px",
+              marginBottom: "24px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "16px",
+              color: "#ffffff",
+              boxShadow: "0 4px 15px rgba(15, 23, 42, 0.12)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "12px",
+                  background: "rgba(255, 255, 255, 0.15)",
+                  color: "#38bdf8",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "24px",
+                  flexShrink: 0,
+                }}
+              >
+                <FaQrcode />
+              </div>
+              <div>
+                <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 700, color: "#ffffff" }}>
+                  Examination Hall Invigilator QR Scanner
+                </h3>
+                <p style={{ margin: 0, fontSize: "13px", color: "#bfdbfe" }}>
+                  Scan candidates' official Hall Ticket QR codes at exam doors, verify candidate photographs, and record entry.
+                </p>
+              </div>
+            </div>
+
+            <Link
+              to="/exam-scanner"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 20px",
+                borderRadius: "10px",
+                background: "#0284c7",
+                color: "#ffffff",
+                textDecoration: "none",
+                fontSize: "13.5px",
+                fontWeight: 700,
+                boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
+              }}
+            >
+              <FaCamera /> Launch Gate Scanner
+            </Link>
+          </div>
 
           {/* Today's Academic Timetable & 1-Click QR Launch */}
           <div

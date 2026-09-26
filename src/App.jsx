@@ -14,6 +14,7 @@ import Performance from './pages/Performance';
 import StudentDashboard from './pages/StudentDashboard';
 import MarkAttendancePage from './pages/MarkAttendancePage';
 import VerifyHallTicket from './pages/VerifyHallTicket';
+import ExamHallScanner from './pages/ExamHallScanner';
 
 function App() {
   return (
@@ -92,6 +93,16 @@ function App() {
               <ProtectedRoute>
                 <RoleRoute allowedRoles={['teacher', 'admin']}>
                   <Performance />
+                </RoleRoute>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/exam-scanner"
+            element={
+              <ProtectedRoute>
+                <RoleRoute allowedRoles={['teacher', 'admin']}>
+                  <ExamHallScanner />
                 </RoleRoute>
               </ProtectedRoute>
             }

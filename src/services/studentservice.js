@@ -378,3 +378,11 @@ export const getMyHallTickets = () => {
 export const verifyHallTicketQR = (token) => {
   return apiClient.get(`/api/performance/hallticket/verify/${token}/`);
 };
+
+export const checkInExamCandidate = (token) => {
+  return apiClient.post(`/api/performance/hallticket/check-in/${token}/`);
+};
+
+export const getExamHallCheckins = (params = {}) => {
+  return apiClient.get("/api/performance/hallticket/check-ins/", { params });
+};

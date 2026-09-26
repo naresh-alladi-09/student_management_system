@@ -15,6 +15,8 @@ from .views import (
     condone_hall_ticket,
     my_hall_tickets,
     verify_hall_ticket,
+    check_in_exam_candidate,
+    list_exam_hall_checkins,
 )
 
 urlpatterns = [
@@ -35,5 +37,7 @@ urlpatterns = [
     path('tickets/<int:ticket_id>/condone/', condone_hall_ticket, name='condone_hall_ticket'),
     path('my-halltickets/', my_hall_tickets, name='my_hall_tickets'),
     path('hallticket/verify/<str:token>/', verify_hall_ticket, name='verify_hall_ticket'),
+    path('hallticket/check-in/<str:token>/', check_in_exam_candidate, name='check_in_exam_candidate'),
+    path('hallticket/check-ins/', list_exam_hall_checkins, name='list_exam_hall_checkins'),
 ]
 

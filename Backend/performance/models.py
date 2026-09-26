@@ -207,6 +207,9 @@ class HallTicket(models.Model):
     condonation_reason = models.TextField(blank=True, default='')
     condoned_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='condoned_hall_tickets')
     condoned_at = models.DateTimeField(null=True, blank=True)
+    is_verified_in_hall = models.BooleanField(default=False)
+    verified_in_hall_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='verified_hall_tickets')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
