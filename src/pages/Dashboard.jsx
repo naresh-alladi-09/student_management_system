@@ -4,6 +4,7 @@ import Dashboardcard from "../components/Dashboardcard";
 import Navbar from "../components/Navbar";
 import "../styles/dashboard.css";
 import { Link } from "react-router-dom";
+import ExamScannerModal from "../components/ExamScannerModal";
 import { getStudents, getTodayTimetable, startAttendanceFromSlot, getSessionAttendees } from "../services/studentservice";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -17,12 +18,14 @@ import {
   FaCalendarAlt,
   FaUsers,
   FaIdCard,
+  FaCamera,
 } from "react-icons/fa";
 
 const Dashboard = () => {
   const [students, setStudents] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [showScannerModal, setShowScannerModal] = useState(false);
 
   // Today's Timetable States
   const [todaySchedule, setTodaySchedule] = useState({ day: "", count: 0, slots: [] });
@@ -233,8 +236,8 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <Link
-              to="/exam-scanner"
+            <button
+              onClick={() => setShowScannerModal(true)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -243,14 +246,15 @@ const Dashboard = () => {
                 borderRadius: "10px",
                 background: "#0284c7",
                 color: "#ffffff",
-                textDecoration: "none",
+                border: "none",
+                cursor: "pointer",
                 fontSize: "13.5px",
                 fontWeight: 700,
                 boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
               }}
             >
               <FaCamera /> Launch Gate Scanner
-            </Link>
+            </button>
           </div>
 
           {/* Today's Academic Timetable & 1-Click QR Launch */}
@@ -1173,6 +1177,7 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+      {showScannerModal && <ExamScannerModal onClose={() => setShowScannerModal(false)} />}
     </div>
   );
 };
