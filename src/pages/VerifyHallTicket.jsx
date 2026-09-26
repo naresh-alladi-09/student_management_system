@@ -104,10 +104,10 @@ const VerifyHallTicket = () => {
               textTransform: "uppercase",
             }}
           >
-            National Institute of Science & Technology
+            {data?.exam?.college_name || "ST. PETER'S ENGINEERING COLLEGE"}
           </h2>
           <div style={{ fontSize: "12px", color: "#bfdbfe", letterSpacing: "0.5px" }}>
-            Office of the Controller of Examinations • Official Verification
+            Office of the Controller of Examinations • Candidate Verification
           </div>
         </div>
 

@@ -497,6 +497,7 @@ def list_create_exam_sessions(request):
         with transaction.atomic():
             exam = ExamSession.objects.create(
                 name=name,
+                college_name=data.get('college_name') or "ST. PETER'S ENGINEERING COLLEGE",
                 academic_year=data.get('academic_year', '2025-2026'),
                 exam_type=data.get('exam_type', 'REGULAR'),
                 branch=data.get('branch', 'ALL'),
@@ -505,6 +506,8 @@ def list_create_exam_sessions(request):
                 end_date=data.get('end_date'),
                 min_attendance_percentage=float(data.get('min_attendance_percentage', 75.0)),
                 is_published=bool(data.get('is_published', True)),
+                is_approved_by_admin=bool(data.get('is_approved_by_admin', False)),
+                is_released_to_students=bool(data.get('is_released_to_students', False)),
                 instructions=data.get('instructions') or (
                     "1. Candidates must arrive at the examination hall at least 15 minutes before commencement.\n"
                     "2. Possession of mobile phones, smartwatches, or unauthorized study material is strictly prohibited.\n"
@@ -562,6 +565,8 @@ def exam_session_detail(request, exam_id):
         data = request.data
         if 'name' in data:
             exam.name = data['name']
+        if 'college_name' in data:
+            exam.college_name = data['college_name']
         if 'academic_year' in data:
             exam.academic_year = data['academic_year']
         if 'exam_type' in data:
@@ -578,6 +583,15 @@ def exam_session_detail(request, exam_id):
             exam.min_attendance_percentage = float(data['min_attendance_percentage'])
         if 'is_published' in data:
             exam.is_published = bool(data['is_published'])
+        if 'is_approved_by_admin' in data:
+            exam.is_approved_by_admin = bool(data['is_approved_by_admin'])
+            if exam.is_approved_by_admin and not exam.approved_by:
+                exam.approved_by = request.user
+                exam.approved_at = timezone.now()
+        if 'is_released_to_students' in data:
+            exam.is_released_to_students = bool(data['is_released_to_students'])
+            if exam.is_released_to_students and not exam.released_at:
+                exam.released_at = timezone.now()
         if 'instructions' in data:
             exam.instructions = data['instructions']
         exam.save()
@@ -703,6 +717,108 @@ def generate_hall_tickets(request, exam_id):
     }, status=status.HTTP_200_OK)
 
 
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def approve_and_release_hall_tickets(request, exam_id):
+    """
+    Admin or Authorized Authority explicitly approves and releases hall tickets to students.
+    Payload: { "action": "release" | "revoke" }
+    - 'release':
+        Marks is_approved_by_admin = True, is_released_to_students = True,
+        records approved_by and approved_at timestamp.
+        Automatically generates / updates hall tickets for all target students in this session.
+        Sends notification to all students.
+    - 'revoke':
+        Marks is_released_to_students = False, withholding tickets from student views.
+    """
+    try:
+        exam = ExamSession.objects.get(id=exam_id)
+    except ExamSession.DoesNotExist:
+        return Response({"detail": "Exam session not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    action = request.data.get('action', 'release').lower()
+
+    if action == 'release':
+        exam.is_approved_by_admin = True
+        exam.approved_by = request.user
+        exam.approved_at = timezone.now()
+        exam.is_released_to_students = True
+        exam.released_at = timezone.now()
+        exam.save()
+
+        # Batch generate / sync tickets for all cohort students
+        students_qs = Student.objects.filter(is_active=True)
+        if exam.branch and exam.branch.upper() != 'ALL':
+            students_qs = students_qs.filter(branch__iexact=exam.branch)
+        if exam.semester and str(exam.semester).upper() != 'ALL':
+            students_qs = students_qs.filter(semester=str(exam.semester))
+
+        count_generated = 0
+        with transaction.atomic():
+            for student in students_qs:
+                recs = AttendanceRecord.objects.filter(student=student)
+                total = recs.count()
+                attended = recs.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).count()
+                att_pct = round((attended / total * 100.0), 1) if total > 0 else 85.0
+
+                existing_ticket = HallTicket.objects.filter(exam_session=exam, student=student).first()
+                is_condoned = existing_ticket.is_condoned if existing_ticket else False
+                is_eligible = (att_pct >= exam.min_attendance_percentage) or is_condoned
+
+                HallTicket.objects.update_or_create(
+                    exam_session=exam,
+                    student=student,
+                    defaults={
+                        'calculated_attendance_pct': att_pct,
+                        'is_eligible': is_eligible,
+                        'is_condoned': is_condoned,
+                    }
+                )
+                count_generated += 1
+
+                user_profile = getattr(student, 'user_profile', None)
+                profile_user = getattr(user_profile, 'user', None) if user_profile else None
+                if profile_user:
+                    Notification.objects.create(
+                        user=profile_user,
+                        title=f"Hall Tickets Released: {exam.name} 🎓",
+                        message=f"Admin has approved and officially released the Examination Hall Tickets for '{exam.name}' ({exam.college_name}). You can now view and download your Admit Card from your portal.",
+                        notification_type='academic'
+                    )
+
+        AuditLog.log(
+            action='APPROVE_RELEASE_HALL_TICKETS',
+            entity='ExamSession',
+            entity_id=str(exam.id),
+            description=f"Admin {request.user.username} approved and released hall tickets for '{exam.name}' ({exam.college_name}) to {count_generated} students.",
+            user=request.user,
+            request=request
+        )
+
+        return Response({
+            "detail": f"Hall tickets successfully approved and released to {count_generated} students.",
+            "exam": ExamSessionSerializer(exam).data
+        }, status=status.HTTP_200_OK)
+
+    else:
+        exam.is_released_to_students = False
+        exam.save()
+
+        AuditLog.log(
+            action='REVOKE_RELEASE_HALL_TICKETS',
+            entity='ExamSession',
+            entity_id=str(exam.id),
+            description=f"Admin {request.user.username} withheld / revoked student release of hall tickets for '{exam.name}'.",
+            user=request.user,
+            request=request
+        )
+
+        return Response({
+            "detail": f"Hall tickets withheld from students for '{exam.name}'.",
+            "exam": ExamSessionSerializer(exam).data
+        }, status=status.HTTP_200_OK)
+
+
 @api_view(['GET'])
 @permission_classes([IsTeacherOrAdmin])
 def list_exam_hall_tickets(request, exam_id):
@@ -820,12 +936,45 @@ def my_hall_tickets(request):
     student_branch = (student.branch or '').strip().upper()
     student_sem = str(student.semester or '').strip()
 
+    pending_sessions = []
     for exam in published_exams:
         if exam.branch and exam.branch.upper() not in ['ALL', student_branch]:
             continue
         if exam.semester and str(exam.semester) not in ['ALL', student_sem]:
             continue
 
+        if not exam.is_released_to_students:
+            timetable_papers = []
+            for tt in exam.timetable.all():
+                s = tt.subject
+                if student_branch and s.branch and s.branch.upper() not in ['ALL', student_branch]:
+                    continue
+                timetable_papers.append({
+                    "subject_code": s.code,
+                    "subject_name": s.name,
+                    "exam_date": str(tt.exam_date),
+                    "start_time": tt.start_time.strftime("%I:%M %p") if hasattr(tt.start_time, 'strftime') else str(tt.start_time),
+                    "end_time": tt.end_time.strftime("%I:%M %p") if hasattr(tt.end_time, 'strftime') else str(tt.end_time),
+                    "hall_number": tt.hall_number
+                })
+
+            pending_sessions.append({
+                "id": exam.id,
+                "name": exam.name,
+                "college_name": exam.college_name,
+                "academic_year": exam.academic_year,
+                "exam_type": exam.get_exam_type_display(),
+                "start_date": exam.start_date,
+                "end_date": exam.end_date,
+                "min_attendance_percentage": exam.min_attendance_percentage,
+                "timetable": timetable_papers,
+                "is_approved_by_admin": exam.is_approved_by_admin,
+                "is_released_to_students": False,
+                "message": "Examination dates and subjects have been scheduled by the administration. Hall tickets will appear once officially approved and released by the Admin."
+            })
+            continue
+
+        # Exam IS released to students - ensure ticket is created/synced
         if not HallTicket.objects.filter(exam_session=exam, student=student).exists():
             recs = AttendanceRecord.objects.filter(student=student)
             total = recs.count()
@@ -841,13 +990,17 @@ def my_hall_tickets(request):
                 is_condoned=False
             )
 
-    tickets = HallTicket.objects.filter(
+    released_tickets = HallTicket.objects.filter(
         student=student,
-        exam_session__is_published=True
+        exam_session__is_published=True,
+        exam_session__is_released_to_students=True
     ).select_related('exam_session', 'condoned_by').order_by('-exam_session__start_date')
 
-    serializer = HallTicketSerializer(tickets, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    serializer = HallTicketSerializer(released_tickets, many=True)
+    return Response({
+        "tickets": serializer.data,
+        "pending_sessions": pending_sessions
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])
@@ -867,6 +1020,15 @@ def verify_hall_ticket(request, token):
 
     student = ticket.student
     exam = ticket.exam_session
+
+    if not exam.is_released_to_students:
+        return Response({
+            "valid": False,
+            "error": "This examination hall ticket has not yet been approved and officially released by the Admin / Examination Controller.",
+            "status": "UNRELEASED_EXAM",
+            "college_name": exam.college_name,
+            "exam_name": exam.name,
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     papers = ticket.exam_session.timetable.all()
     student_branch = (student.branch or '').strip().upper()
@@ -898,10 +1060,13 @@ def verify_hall_ticket(request, token):
         },
         "exam": {
             "name": exam.name,
+            "college_name": exam.college_name,
             "academic_year": exam.academic_year,
             "exam_type": exam.get_exam_type_display(),
             "start_date": exam.start_date,
             "end_date": exam.end_date,
+            "is_approved_by_admin": exam.is_approved_by_admin,
+            "is_released_to_students": exam.is_released_to_students,
         },
         "attendance": {
             "percentage": ticket.calculated_attendance_pct,

@@ -114,12 +114,14 @@ class ExamSessionSerializer(serializers.ModelSerializer):
     timetable = ExamTimetableSerializer(many=True, read_only=True)
     papers_count = serializers.SerializerMethodField()
     hall_tickets_count = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ExamSession
         fields = [
             'id',
             'name',
+            'college_name',
             'academic_year',
             'exam_type',
             'exam_type_display',
@@ -129,6 +131,12 @@ class ExamSessionSerializer(serializers.ModelSerializer):
             'end_date',
             'min_attendance_percentage',
             'is_published',
+            'is_approved_by_admin',
+            'approved_by',
+            'approved_by_name',
+            'approved_at',
+            'is_released_to_students',
+            'released_at',
             'instructions',
             'papers_count',
             'hall_tickets_count',
@@ -143,6 +151,12 @@ class ExamSessionSerializer(serializers.ModelSerializer):
     def get_hall_tickets_count(self, obj):
         return obj.hall_tickets.count()
 
+    def get_approved_by_name(self, obj):
+        if obj.approved_by:
+            name = obj.approved_by.get_full_name()
+            return name if name.strip() else obj.approved_by.username
+        return None
+
 
 class HallTicketSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.name', read_only=True)
@@ -153,11 +167,16 @@ class HallTicketSerializer(serializers.ModelSerializer):
     section = serializers.CharField(source='student.section', read_only=True)
     email = serializers.CharField(source='student.email', read_only=True)
     exam_session_name = serializers.CharField(source='exam_session.name', read_only=True)
+    college_name = serializers.CharField(source='exam_session.college_name', read_only=True)
     academic_year = serializers.CharField(source='exam_session.academic_year', read_only=True)
     exam_type = serializers.CharField(source='exam_session.get_exam_type_display', read_only=True)
+    start_date = serializers.DateField(source='exam_session.start_date', read_only=True)
+    end_date = serializers.DateField(source='exam_session.end_date', read_only=True)
     instructions = serializers.CharField(source='exam_session.instructions', read_only=True)
     min_attendance = serializers.FloatField(source='exam_session.min_attendance_percentage', read_only=True)
     is_published = serializers.BooleanField(source='exam_session.is_published', read_only=True)
+    is_approved_by_admin = serializers.BooleanField(source='exam_session.is_approved_by_admin', read_only=True)
+    is_released_to_students = serializers.BooleanField(source='exam_session.is_released_to_students', read_only=True)
     condoned_by_name = serializers.SerializerMethodField()
     timetable = serializers.SerializerMethodField()
 
@@ -167,8 +186,11 @@ class HallTicketSerializer(serializers.ModelSerializer):
             'id',
             'exam_session',
             'exam_session_name',
+            'college_name',
             'academic_year',
             'exam_type',
+            'start_date',
+            'end_date',
             'student',
             'student_name',
             'roll_no',
@@ -188,6 +210,8 @@ class HallTicketSerializer(serializers.ModelSerializer):
             'condoned_at',
             'instructions',
             'is_published',
+            'is_approved_by_admin',
+            'is_released_to_students',
             'timetable',
             'created_at',
         ]

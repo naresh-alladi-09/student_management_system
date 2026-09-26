@@ -148,6 +148,7 @@ class ExamSession(models.Model):
     )
 
     name = models.CharField(max_length=200)
+    college_name = models.CharField(max_length=250, default="ST. PETER'S ENGINEERING COLLEGE")
     academic_year = models.CharField(max_length=50, default="2025-2026")
     exam_type = models.CharField(max_length=50, choices=EXAM_TYPE_CHOICES, default='REGULAR')
     branch = models.CharField(max_length=50, default='ALL')
@@ -156,6 +157,11 @@ class ExamSession(models.Model):
     end_date = models.DateField()
     min_attendance_percentage = models.FloatField(default=75.0)
     is_published = models.BooleanField(default=True)
+    is_approved_by_admin = models.BooleanField(default=False)
+    approved_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='approved_exam_sessions')
+    approved_at = models.DateTimeField(null=True, blank=True)
+    is_released_to_students = models.BooleanField(default=False)
+    released_at = models.DateTimeField(null=True, blank=True)
     instructions = models.TextField(
         default="1. Candidates must arrive at the examination hall at least 15 minutes before commencement.\n"
                 "2. Possession of mobile phones, smartwatches, or unauthorized study material is strictly prohibited.\n"
@@ -212,7 +218,9 @@ class HallTicket(models.Model):
         if not self.hall_ticket_number:
             year_part = self.exam_session.academic_year.replace('-', '')[-4:]
             branch_part = (self.student.branch or 'ENG')[:3].upper()
-            self.hall_ticket_number = f"HT-{year_part}-{branch_part}-{self.student.id:04d}"
+            sess_id = self.exam_session_id or (self.exam_session.id if self.exam_session else 1)
+            stu_id = self.student_id or (self.student.id if self.student else 1)
+            self.hall_ticket_number = f"HT-{year_part}-{sess_id:02d}-{branch_part}-{stu_id:04d}"
         super().save(*args, **kwargs)
 
     def __str__(self):

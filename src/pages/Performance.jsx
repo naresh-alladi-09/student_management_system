@@ -11,6 +11,7 @@ import {
   createExamSession,
   deleteExamSession,
   generateExamHallTickets,
+  approveAndReleaseExamHallTickets,
   getExamHallTickets,
   condoneHallTicket,
 } from "../services/studentservice";
@@ -65,6 +66,7 @@ function Performance() {
   const [showExamModal, setShowExamModal] = useState(false);
   const [newExamData, setNewExamData] = useState({
     name: "",
+    college_name: "ST. PETER'S ENGINEERING COLLEGE",
     academic_year: "2026-2027",
     exam_type: "REGULAR",
     branch: "ALL",
@@ -73,8 +75,43 @@ function Performance() {
     end_date: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     min_attendance_percentage: 75.0,
     is_published: true,
+    is_approved_by_admin: false,
+    is_released_to_students: false,
+    timetable: [],
   });
   const [isCreatingExam, setIsCreatingExam] = useState(false);
+  const [isReleasingExamId, setIsReleasingExamId] = useState(null);
+
+  const addTimetableRow = () => {
+    setNewExamData((prev) => ({
+      ...prev,
+      timetable: [
+        ...prev.timetable,
+        {
+          subject_id: subjects[0]?.id || "",
+          exam_date: prev.start_date,
+          start_time: "10:00:00",
+          end_time: "13:00:00",
+          hall_number: "Main Examination Block",
+        },
+      ],
+    }));
+  };
+
+  const removeTimetableRow = (index) => {
+    setNewExamData((prev) => ({
+      ...prev,
+      timetable: prev.timetable.filter((_, idx) => idx !== index),
+    }));
+  };
+
+  const updateTimetableRow = (index, field, value) => {
+    setNewExamData((prev) => {
+      const updated = [...prev.timetable];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, timetable: updated };
+    });
+  };
 
   // Roster States
   const [selectedExamForRoster, setSelectedExamForRoster] = useState(null);
@@ -136,6 +173,29 @@ function Performance() {
     }
   };
 
+  const handleToggleRelease = async (examId, currentStatus) => {
+    const action = currentStatus ? "revoke" : "release";
+    const promptMsg = currentStatus
+      ? "Are you sure you want to withhold / revoke release of hall tickets for this examination? Students will no longer see their admit card."
+      : "Are you sure you want to approve and release hall tickets to students? Eligible students will immediately be able to view, download, and print their official admit card.";
+    if (!window.confirm(promptMsg)) return;
+
+    setIsReleasingExamId(examId);
+    try {
+      const res = await approveAndReleaseExamHallTickets(examId, action);
+      alert(res.data?.detail || "Status updated successfully!");
+      fetchExamSessions();
+      if (selectedExamForRoster && selectedExamForRoster.id === examId) {
+        setSelectedExamForRoster(res.data?.exam || selectedExamForRoster);
+        loadExamTickets(examId);
+      }
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to update release status.");
+    } finally {
+      setIsReleasingExamId(null);
+    }
+  };
+
   const handleCreateExam = async (e) => {
     if (e) e.preventDefault();
     if (!newExamData.name.trim()) {
@@ -149,6 +209,7 @@ function Performance() {
       fetchExamSessions();
       setNewExamData({
         name: "",
+        college_name: "ST. PETER'S ENGINEERING COLLEGE",
         academic_year: "2026-2027",
         exam_type: "REGULAR",
         branch: "ALL",
@@ -157,6 +218,9 @@ function Performance() {
         end_date: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
         min_attendance_percentage: 75.0,
         is_published: true,
+        is_approved_by_admin: false,
+        is_released_to_students: false,
+        timetable: [],
       });
     } catch (err) {
       alert(err.response?.data?.detail || "Failed to create exam session.");
@@ -1175,7 +1239,11 @@ function Performance() {
                               <tr key={exam.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                                 <td style={{ padding: "14px 12px" }}>
                                   <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "14px" }}>{exam.name}</div>
-                                  <div style={{ fontSize: "11.5px", color: "#64748b" }}>
+                                  <div style={{ fontSize: "12px", color: "#1e40af", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>
+                                    <FaUniversity style={{ fontSize: "11px" }} />
+                                    {exam.college_name || "ST. PETER'S ENGINEERING COLLEGE"}
+                                  </div>
+                                  <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "2px" }}>
                                     {exam.papers_count} scheduled timetable papers
                                   </div>
                                 </td>
@@ -1200,22 +1268,79 @@ function Performance() {
                                 </td>
 
                                 <td style={{ padding: "14px 12px" }}>
-                                  <span
-                                    style={{
-                                      padding: "3px 8px",
-                                      borderRadius: "12px",
-                                      fontSize: "11px",
-                                      fontWeight: 700,
-                                      background: exam.is_published ? "#dcfce7" : "#f1f5f9",
-                                      color: exam.is_published ? "#15803d" : "#64748b",
-                                    }}
-                                  >
-                                    {exam.is_published ? "PUBLISHED" : "DRAFT"}
-                                  </span>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    {exam.is_released_to_students ? (
+                                      <span
+                                        style={{
+                                          padding: "4px 8px",
+                                          borderRadius: "12px",
+                                          fontSize: "11px",
+                                          fontWeight: 700,
+                                          background: "#dcfce7",
+                                          color: "#15803d",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                      >
+                                        <FaCheckCircle /> RELEASED TO STUDENTS
+                                      </span>
+                                    ) : (
+                                      <span
+                                        style={{
+                                          padding: "4px 8px",
+                                          borderRadius: "12px",
+                                          fontSize: "11px",
+                                          fontWeight: 700,
+                                          background: "#fef3c7",
+                                          color: "#b45309",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                      >
+                                        <FaExclamationTriangle /> PENDING APPROVAL
+                                      </span>
+                                    )}
+                                    <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                                      {exam.is_published ? "Portal: Active" : "Portal: Hidden"}
+                                    </span>
+                                  </div>
                                 </td>
 
                                 <td style={{ padding: "14px 12px", textAlign: "center" }}>
-                                  <div style={{ display: "inline-flex", gap: "6px" }}>
+                                  <div style={{ display: "inline-flex", gap: "6px", flexWrap: "wrap", justifyContent: "center" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleRelease(exam.id, exam.is_released_to_students)}
+                                      disabled={isReleasingExamId === exam.id}
+                                      style={{
+                                        padding: "6px 12px",
+                                        background: exam.is_released_to_students ? "#f59e0b" : "#16a34a",
+                                        color: "#ffffff",
+                                        border: "none",
+                                        borderRadius: "6px",
+                                        fontSize: "12px",
+                                        fontWeight: 700,
+                                        cursor: isReleasingExamId === exam.id ? "not-allowed" : "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "5px",
+                                        boxShadow: exam.is_released_to_students ? "none" : "0 2px 6px rgba(22, 163, 74, 0.25)",
+                                      }}
+                                      title={exam.is_released_to_students ? "Withhold hall tickets from students" : "Approve and release hall tickets to students"}
+                                    >
+                                      {isReleasingExamId === exam.id ? (
+                                        "Updating..."
+                                      ) : exam.is_released_to_students ? (
+                                        "Hold Tickets"
+                                      ) : (
+                                        <>
+                                          <FaCheckCircle /> Give Hall Tickets
+                                        </>
+                                      )}
+                                    </button>
+
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -1223,7 +1348,7 @@ function Performance() {
                                         loadExamTickets(exam.id);
                                       }}
                                       style={{
-                                        padding: "6px 12px",
+                                        padding: "6px 10px",
                                         background: "#2563eb",
                                         color: "#ffffff",
                                         border: "none",
@@ -1233,14 +1358,14 @@ function Performance() {
                                         cursor: "pointer",
                                       }}
                                     >
-                                      View Roster &amp; Hall Tickets
+                                      Roster &amp; Tickets
                                     </button>
 
                                     <button
                                       type="button"
                                       onClick={() => handleGenerateTickets(exam.id)}
                                       style={{
-                                        padding: "6px 10px",
+                                        padding: "6px 8px",
                                         background: "#f1f5f9",
                                         color: "#334155",
                                         border: "1px solid #cbd5e1",
@@ -1251,7 +1376,7 @@ function Performance() {
                                       }}
                                       title="Recalculate eligibility & issue tickets"
                                     >
-                                      Generate
+                                      Recalculate
                                     </button>
 
                                     <button
@@ -1291,19 +1416,37 @@ function Performance() {
           {/* Modal 1: Create Exam Session */}
           {showExamModal && (
             <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15, 23, 42, 0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: "16px" }}>
-              <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", maxWidth: "540px", width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+              <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", maxWidth: "720px", width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                  <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>Schedule Examination Session</h3>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>Schedule Examination Session &amp; Timetable</h3>
+                    <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#64748b" }}>Configure exam dates, subjects timetable, college name, and student hall ticket release settings.</p>
+                  </div>
                   <button type="button" onClick={() => setShowExamModal(false)} style={{ background: "none", border: "none", fontSize: "18px", color: "#94a3b8", cursor: "pointer" }}>×</button>
                 </div>
 
                 <form onSubmit={handleCreateExam}>
+                  {/* College Name & Exam Title */}
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                      College / Institution Name (Printed on Hall Tickets) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. ST. PETER'S ENGINEERING COLLEGE"
+                      value={newExamData.college_name}
+                      onChange={(e) => setNewExamData({ ...newExamData, college_name: e.target.value })}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontWeight: 600, color: "#1e3a8a" }}
+                    />
+                  </div>
+
                   <div style={{ marginBottom: "12px" }}>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>Examination Title *</label>
                     <input
                       type="text"
                       required
-                      placeholder="e.g. End Semester Regular Examinations"
+                      placeholder="e.g. B.Tech III Year I Semester Regular Examinations"
                       value={newExamData.name}
                       onChange={(e) => setNewExamData({ ...newExamData, name: e.target.value })}
                       style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
@@ -1400,7 +1543,7 @@ function Performance() {
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
                     <div>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>Min Attendance %</label>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>Min Attendance % Cutoff</label>
                       <input
                         type="number"
                         min="0"
@@ -1419,8 +1562,133 @@ function Performance() {
                           checked={newExamData.is_published}
                           onChange={(e) => setNewExamData({ ...newExamData, is_published: e.target.checked })}
                         />
-                        Publish to Student Portal
+                        Publish exam schedule in Student Portal
                       </label>
+                    </div>
+                  </div>
+
+                  {/* Dynamic Subjects & Timetable Papers Section */}
+                  <div style={{ marginBottom: "16px", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px", background: "#f8fafc" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>Exam Subjects &amp; Timetable Papers</div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>Admin can set the specific subjects, paper dates, exam timings, and hall/room.</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addTimetableRow}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: "6px",
+                          background: "#0284c7",
+                          color: "#ffffff",
+                          border: "none",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        <FaPlusCircle /> + Add Subject Paper
+                      </button>
+                    </div>
+
+                    {newExamData.timetable.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "16px", fontSize: "12.5px", color: "#64748b", background: "#ffffff", borderRadius: "8px", border: "1px dashed #cbd5e1" }}>
+                        No subject papers added yet. Click <strong>"+ Add Subject Paper"</strong> above to schedule specific subjects.
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "220px", overflowY: "auto", paddingRight: "4px" }}>
+                        {newExamData.timetable.map((row, idx) => (
+                          <div key={idx} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1.1fr 1fr auto", gap: "8px", alignItems: "center", background: "#ffffff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                            <div>
+                              <label style={{ fontSize: "10px", color: "#64748b", display: "block", fontWeight: 600 }}>Subject</label>
+                              <select
+                                value={row.subject_id}
+                                onChange={(e) => updateTimetableRow(idx, "subject_id", e.target.value)}
+                                style={{ width: "100%", padding: "5px 6px", fontSize: "11.5px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                              >
+                                {subjects.length === 0 ? (
+                                  <option value="">No subjects found</option>
+                                ) : (
+                                  subjects.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.code} - {s.name} ({s.branch || "CSE"})
+                                    </option>
+                                  ))
+                                )}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label style={{ fontSize: "10px", color: "#64748b", display: "block", fontWeight: 600 }}>Exam Date</label>
+                              <input
+                                type="date"
+                                value={row.exam_date}
+                                onChange={(e) => updateTimetableRow(idx, "exam_date", e.target.value)}
+                                style={{ width: "100%", padding: "5px 6px", fontSize: "11px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                              />
+                            </div>
+
+                            <div>
+                              <label style={{ fontSize: "10px", color: "#64748b", display: "block", fontWeight: 600 }}>Timings (Start - End)</label>
+                              <div style={{ display: "flex", gap: "4px" }}>
+                                <input
+                                  type="time"
+                                  value={row.start_time}
+                                  onChange={(e) => updateTimetableRow(idx, "start_time", e.target.value)}
+                                  style={{ width: "50%", padding: "4px 3px", fontSize: "10px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                                />
+                                <input
+                                  type="time"
+                                  value={row.end_time}
+                                  onChange={(e) => updateTimetableRow(idx, "end_time", e.target.value)}
+                                  style={{ width: "50%", padding: "4px 3px", fontSize: "10px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label style={{ fontSize: "10px", color: "#64748b", display: "block", fontWeight: 600 }}>Hall / Venue</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Hall 201"
+                                value={row.hall_number}
+                                onChange={(e) => updateTimetableRow(idx, "hall_number", e.target.value)}
+                                style={{ width: "100%", padding: "5px 6px", fontSize: "11px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                              />
+                            </div>
+
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => removeTimetableRow(idx)}
+                                style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: "6px", padding: "6px 8px", cursor: "pointer", fontSize: "11px", marginTop: "14px" }}
+                                title="Remove Paper"
+                              >
+                                <FaTimes />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Admin Release to Students Checkbox */}
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", fontWeight: 700, color: "#166534", cursor: "pointer", background: "#f0fdf4", padding: "12px 16px", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                      <input
+                        type="checkbox"
+                        checked={newExamData.is_released_to_students}
+                        onChange={(e) => setNewExamData({ ...newExamData, is_released_to_students: e.target.checked, is_approved_by_admin: e.target.checked })}
+                      />
+                      <span>Approve &amp; Release Hall Tickets to Students immediately upon creation</span>
+                    </label>
+                    <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px", paddingLeft: "26px" }}>
+                      If unchecked, the exam remains scheduled as a draft. You can click "Give Hall Tickets" anytime later to release them to students.
                     </div>
                   </div>
 
@@ -1435,9 +1703,9 @@ function Performance() {
                     <button
                       type="submit"
                       disabled={isCreatingExam}
-                      style={{ padding: "8px 18px", borderRadius: "8px", border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: isCreatingExam ? "not-allowed" : "pointer" }}
+                      style={{ padding: "8px 20px", borderRadius: "8px", border: "none", background: "#2563eb", color: "#fff", fontWeight: 700, cursor: isCreatingExam ? "not-allowed" : "pointer" }}
                     >
-                      {isCreatingExam ? "Creating..." : "Save Examination"}
+                      {isCreatingExam ? "Scheduling..." : "Save & Schedule Examination"}
                     </button>
                   </div>
                 </form>

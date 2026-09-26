@@ -91,6 +91,7 @@ const StudentDashboard = () => {
 
   // Hall Ticket States
   const [hallTickets, setHallTickets] = useState([]);
+  const [pendingExamSessions, setPendingExamSessions] = useState([]);
   const [selectedTicketIndex, setSelectedTicketIndex] = useState(0);
   const [hallTicketsLoading, setHallTicketsLoading] = useState(false);
 
@@ -98,7 +99,14 @@ const StudentDashboard = () => {
     setHallTicketsLoading(true);
     getMyHallTickets()
       .then((res) => {
-        setHallTickets(res.data || []);
+        const data = res.data;
+        if (Array.isArray(data)) {
+          setHallTickets(data);
+          setPendingExamSessions([]);
+        } else if (data && typeof data === "object") {
+          setHallTickets(data.tickets || []);
+          setPendingExamSessions(data.pending_sessions || []);
+        }
       })
       .catch((err) => {
         console.error("Failed to load hall tickets:", err);
@@ -1941,6 +1949,76 @@ const StudentDashboard = () => {
             </div>
           )}
 
+          {/* Pending Examination Sessions Scheduled by Admin (Awaiting Approval/Release) */}
+          {pendingExamSessions.length > 0 && (
+            <div className="no-print" style={{ marginBottom: "20px" }}>
+              {pendingExamSessions.map((session) => (
+                <div
+                  key={session.id}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #bfdbfe",
+                    borderRadius: "16px",
+                    padding: "20px 24px",
+                    boxShadow: "0 4px 16px rgba(37, 99, 235, 0.08)",
+                    borderLeft: "6px solid #2563eb",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px", marginBottom: "8px" }}>
+                    <div>
+                      <span
+                        style={{
+                          background: "#fef3c7",
+                          color: "#92400e",
+                          padding: "3px 10px",
+                          borderRadius: "12px",
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          letterSpacing: "0.5px",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        ⏳ Examination Scheduled • Awaiting Admin Release
+                      </span>
+                      <h3 style={{ margin: "6px 0 2px 0", color: "#0f172a", fontSize: "18px", fontWeight: 700 }}>
+                        {session.name} ({session.academic_year})
+                      </h3>
+                      <div style={{ fontSize: "13px", color: "#1e40af", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                        <FaUniversity /> {session.college_name || "ST. PETER'S ENGINEERING COLLEGE"} • Exam Dates: {session.start_date} to {session.end_date}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "12px", background: "#f1f5f9", padding: "6px 12px", borderRadius: "8px", color: "#334155", fontWeight: 600 }}>
+                      Attendance Cutoff: <strong>≥ {session.min_attendance_percentage}%</strong>
+                    </div>
+                  </div>
+
+                  <p style={{ margin: "0 0 12px 0", fontSize: "13.5px", color: "#475569", lineHeight: "1.5" }}>
+                    The college administration has scheduled the examination dates and subjects. As soon as the Admin clicks the button to approve and release hall tickets, your official Admit Card with scannable QR verification will appear right here.
+                  </p>
+
+                  {session.timetable && session.timetable.length > 0 && (
+                    <div style={{ background: "#f8fafc", borderRadius: "10px", padding: "12px 16px", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b", marginBottom: "8px" }}>
+                        Scheduled Subject Papers ({session.timetable.length}):
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "8px" }}>
+                        {session.timetable.map((paper, pIdx) => (
+                          <div key={pIdx} style={{ background: "#ffffff", padding: "8px 12px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}>
+                            <div style={{ fontWeight: 700, color: "#0f172a" }}>{paper.subject_code}: {paper.subject_name}</div>
+                            <div style={{ color: "#64748b", fontSize: "11px", marginTop: "2px" }}>
+                              📅 {paper.exam_date} • ⏰ {paper.start_time} - {paper.end_time} • 🏛️ {paper.hall_number}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {hallTicketsLoading ? (
             <div style={{ textAlign: "center", padding: "60px", color: "#64748b" }}>
               <div style={{ fontSize: "28px", marginBottom: "12px" }}>⏳</div>
@@ -1974,10 +2052,12 @@ const StudentDashboard = () => {
                 <FaIdCard />
               </div>
               <h3 style={{ margin: "0 0 8px 0", color: "#0f172a", fontSize: "18px" }}>
-                No Active Examination Hall Tickets
+                {pendingExamSessions.length > 0 ? "Hall Tickets Awaiting Admin Release" : "No Active Examination Hall Tickets"}
               </h3>
               <p style={{ margin: "0 auto 20px auto", maxWidth: "460px", fontSize: "14px", lineHeight: "1.5" }}>
-                There are no published examinations currently scheduled for your branch and semester. Once the examination department publishes timetables, your admit card and eligibility status will appear here automatically.
+                {pendingExamSessions.length > 0
+                  ? "Your examination schedule has been configured above. The administration will release your downloadable hall tickets shortly."
+                  : "There are no published examinations currently scheduled for your branch and semester. Once the examination department publishes timetables, your admit card and eligibility status will appear here automatically."}
               </p>
             </div>
           ) : (
@@ -2289,10 +2369,10 @@ const StudentDashboard = () => {
                               textTransform: "uppercase",
                             }}
                           >
-                            National Institute of Science &amp; Technology
+                            {currentTicket.college_name || "ST. PETER'S ENGINEERING COLLEGE"}
                           </h1>
                           <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, letterSpacing: "0.5px" }}>
-                            Autonomous Institution • Approved by AICTE • NAAC Grade "A++"
+                            Autonomous Institution • Approved by AICTE &amp; UGC • Accredited by NAAC
                           </div>
                         </div>
                       </div>
@@ -2333,6 +2413,7 @@ const StudentDashboard = () => {
                         </div>
                         <div style={{ fontSize: "11px", color: "#bfdbfe" }}>
                           Academic Year: {currentTicket.academic_year} • {currentTicket.exam_type}
+                          {currentTicket.start_date && ` • Dates: ${currentTicket.start_date} to ${currentTicket.end_date}`}
                         </div>
                       </div>
 

@@ -355,6 +355,10 @@ export const generateExamHallTickets = (examId) => {
   return apiClient.post(`/api/performance/exams/${examId}/generate-tickets/`);
 };
 
+export const approveAndReleaseExamHallTickets = (examId, action = "release") => {
+  return apiClient.post(`/api/performance/exams/${examId}/release/`, { action });
+};
+
 export const getExamHallTickets = (examId, params = {}) => {
   return apiClient.get(`/api/performance/exams/${examId}/tickets/`, { params });
 };
