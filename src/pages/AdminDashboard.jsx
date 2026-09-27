@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import {
@@ -48,9 +49,12 @@ import {
   FaTrashAlt,
   FaTimesCircle,
   FaInfoCircle,
+  FaCreditCard,
+  FaQrcode,
 } from "react-icons/fa";
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalStudents: 0,
     totalTeachers: 0,
@@ -911,10 +915,69 @@ const AdminDashboard = () => {
                 </div>
               </div>
             </div>
+
+            <div
+              style={{
+                background: "linear-gradient(135deg, #ffffff 0%, #faf5ff 100%)",
+                padding: "20px",
+                borderRadius: "12px",
+                border: "1px solid #d8b4fe",
+                display: "flex",
+                alignItems: "center",
+                gap: "16px",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(95, 37, 159, 0.08)",
+                transition: "transform 0.2s, box-shadow 0.2s",
+              }}
+              onClick={() => navigate("/fees?configure=qr")}
+              title="Click to manage Fees and change PhonePe QR Code"
+            >
+              <div
+                style={{
+                  width: "50px",
+                  height: "50px",
+                  background: "linear-gradient(135deg, #5f259f 0%, #3f156d 100%)",
+                  color: "#ffffff",
+                  borderRadius: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "22px",
+                }}
+              >
+                <FaQrcode />
+              </div>
+              <div>
+                <small style={{ color: "#6b21a8", fontWeight: 700 }}>Fee QR &amp; Dues</small>
+                <div style={{ fontSize: "16px", fontWeight: 800, color: "#5f259f" }}>
+                  PhonePe QR ⚙️
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Navigation Tabs */}
-          <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px" }}>
+          <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={() => navigate("/fees?configure=qr")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: "8px",
+                border: "none",
+                background: "linear-gradient(135deg, #5f259f 0%, #3f156d 100%)",
+                color: "#ffffff",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                boxShadow: "0 2px 8px rgba(95, 37, 159, 0.25)",
+              }}
+              title="Open Fees Ledger & Configure PhonePe QR"
+            >
+              <FaQrcode /> Fees &amp; PhonePe QR Settings ↗
+            </button>
             <button
               type="button"
               onClick={() => setActiveTab("overview")}

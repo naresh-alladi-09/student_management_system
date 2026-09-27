@@ -16,12 +16,14 @@ import MarkAttendancePage from './pages/MarkAttendancePage';
 import VerifyHallTicket from './pages/VerifyHallTicket';
 import ExamHallScanner from './pages/ExamHallScanner';
 import Fees from './pages/Fees';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
           {/* Public Authentication & Scan Routes */}
           <Route path="/" element={<Login />} />
           <Route path="/login" element={<Login />} />
@@ -141,6 +143,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

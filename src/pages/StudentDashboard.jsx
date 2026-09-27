@@ -5344,11 +5344,20 @@ const StudentDashboard = () => {
                 (() => {
                   const activeConfig = phonePeUpiConfig || feesData?.upi_config;
                   const payeeVpa = activeConfig?.upi_id || "6301609560@ybl";
+                  const payeVpa = payeeVpa; // alias to prevent any ReferenceError
                   const payeeName = activeConfig?.payee_name || "Naresh Alladi";
                   const customQrImage = activeConfig?.custom_qr_image;
                   const instructions = activeConfig?.instructions;
-                  const note = `FEES-${currentUser?.rollNo || "STU"}-${phonePeRecord?.category_code || "ACAD"}`;
-                  const upiUri = `upi://pay?pa=${encodeURIComponent(payeVpa)}&pn=${encodeURIComponent(payeeName)}&am=${phonePeAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
+                  const safeRec = phonePeRecord || {
+                    id: null,
+                    category_name: "Academic Fee Dues",
+                    category_code: "FEES",
+                    balance_due: feesData?.summary?.total_due || 0,
+                    semester: currentUser?.semester || 1,
+                    academic_year: "2025-2026",
+                  };
+                  const note = `FEES-${currentUser?.rollNo || "STU"}-${safeRec.category_code || "ACAD"}`;
+                  const upiUri = `upi://pay?pa=${encodeURIComponent(payeeVpa)}&pn=${encodeURIComponent(payeeName)}&am=${encodeURIComponent(String(phonePeAmount || 0))}&cu=INR&tn=${encodeURIComponent(note)}`;
 
                   return (
                     <form onSubmit={handlePhonePeSubmit}>
@@ -5385,10 +5394,10 @@ const StudentDashboard = () => {
                       >
                         <div>
                           <div style={{ fontSize: "11px", fontWeight: 700, color: "#6b21a8", textTransform: "uppercase" }}>
-                            {phonePeRecord?.category_name || "College Fees"}
+                            {safeRec.category_name || "College Fees"}
                           </div>
                           <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                            Semester {phonePeRecord?.semester} • {phonePeRecord?.academic_year}
+                            Semester {safeRec.semester || 1} • {safeRec.academic_year || "2025-2026"}
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>
@@ -5486,11 +5495,11 @@ const StudentDashboard = () => {
                             marginTop: "8px",
                           }}
                         >
-                          <span>Payee UPI ID: <strong>{payeVpa}</strong></span>
+                          <span>Payee UPI ID: <strong>{payeeVpa}</strong></span>
                           <button
                             type="button"
                             onClick={() => {
-                              navigator.clipboard.writeText(payeVpa);
+                              navigator.clipboard.writeText(payeeVpa);
                               setCopiedUpi(true);
                               setTimeout(() => setCopiedUpi(false), 2000);
                             }}
@@ -5515,7 +5524,17 @@ const StudentDashboard = () => {
                             onClick={() => {
                               const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
                               if (isMobile) {
-                                window.location.href = upiUri;
+                                try {
+                                  const a = document.createElement("a");
+                                  a.href = upiUri;
+                                  a.target = "_blank";
+                                  a.rel = "noopener noreferrer";
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                } catch {
+                                  window.location.assign(upiUri);
+                                }
                               } else {
                                 alert("You are on a desktop/laptop computer. Desktop browsers cannot open mobile apps directly.\n\n👉 Please open PhonePe, Google Pay, or Paytm on your mobile phone and scan the QR code displayed on screen!");
                               }

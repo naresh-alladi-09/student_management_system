@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -79,6 +80,15 @@ function Fees() {
   const [upiInstructions, setUpiInstructions] = useState("");
   const [customQrImage, setCustomQrImage] = useState("");
   const [isSavingUpi, setIsSavingUpi] = useState(false);
+
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("configure") === "qr" || params.get("tab") === "upi" || params.get("qr") === "1") {
+      setUpiModalOpen(true);
+    }
+  }, [location.search]);
 
   const [statusMessage, setStatusMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -407,6 +417,147 @@ function Fees() {
               </div>
             </div>
           )}
+
+          {/* Admin Dedicated PhonePe UPI & QR Management Card */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, #1e0b36 0%, #3b115a 50%, #5f259f 100%)",
+              borderRadius: "16px",
+              padding: "20px 24px",
+              marginBottom: "22px",
+              color: "#ffffff",
+              boxShadow: "0 8px 24px rgba(95, 37, 159, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "20px",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+            }}
+          >
+            <div style={{ flex: "1 1 340px", maxWidth: "620px" }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "rgba(255, 255, 255, 0.15)",
+                  padding: "4px 12px",
+                  borderRadius: "20px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                  marginBottom: "8px",
+                  color: "#f3e8ff",
+                }}
+              >
+                <FaQrcode /> Administrator Fee QR Settings
+              </div>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: "18px", fontWeight: 800 }}>
+                Active PhonePe UPI &amp; Student QR Code
+              </h3>
+              <p style={{ margin: "0 0 14px 0", color: "#e9d5ff", fontSize: "13px", lineHeight: "1.5" }}>
+                Students scan this QR to pay tuition and exam dues with instant clearance. As administrator, you have full permissions to change the UPI ID or upload your PhonePe QR poster.
+              </p>
+
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "16px",
+                  background: "rgba(255, 255, 255, 0.1)",
+                  padding: "8px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "10.5px", color: "#d8b4fe", textTransform: "uppercase", fontWeight: 700 }}>
+                    Active UPI VPA
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 800, marginTop: "2px" }}>
+                    {upiId}
+                  </div>
+                </div>
+                <div style={{ borderLeft: "1px solid rgba(255, 255, 255, 0.2)", paddingLeft: "16px" }}>
+                  <div style={{ fontSize: "10.5px", color: "#d8b4fe", textTransform: "uppercase", fontWeight: 700 }}>
+                    Payee Name
+                  </div>
+                  <div style={{ fontSize: "13px", fontWeight: 600, marginTop: "2px" }}>
+                    {payeeName}
+                  </div>
+                </div>
+                <div style={{ borderLeft: "1px solid rgba(255, 255, 255, 0.2)", paddingLeft: "16px" }}>
+                  <div style={{ fontSize: "10.5px", color: "#d8b4fe", textTransform: "uppercase", fontWeight: 700 }}>
+                    QR Poster Type
+                  </div>
+                  <div style={{ fontSize: "12px", fontWeight: 700, marginTop: "2px", color: customQrImage ? "#a7f3d0" : "#fde68a" }}>
+                    {customQrImage ? "📸 Custom Uploaded Poster" : "⚡ Dynamic Generated QR"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div
+                style={{
+                  background: "#ffffff",
+                  padding: "8px",
+                  borderRadius: "12px",
+                  textAlign: "center",
+                  boxShadow: "0 4px 15px rgba(0, 0, 0, 0.2)",
+                  cursor: "pointer",
+                }}
+                onClick={() => setUpiModalOpen(true)}
+                title="Click to change PhonePe QR code"
+              >
+                {customQrImage ? (
+                  <img
+                    src={customQrImage}
+                    alt="Current PhonePe QR"
+                    style={{ width: "90px", height: "90px", objectFit: "contain", display: "block", borderRadius: "6px" }}
+                  />
+                ) : (
+                  <QRCodeSVG
+                    value={`upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payeeName)}&cu=INR`}
+                    size={90}
+                    level="M"
+                  />
+                )}
+                <div style={{ fontSize: "9.5px", fontWeight: 700, color: "#5f259f", marginTop: "4px" }}>
+                  Active Student QR
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setUpiModalOpen(true)}
+                  style={{
+                    background: "#22c55e",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 18px",
+                    fontWeight: 800,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    boxShadow: "0 2px 8px rgba(34, 197, 94, 0.35)",
+                  }}
+                >
+                  <FaQrcode /> Change / Upload QR Poster
+                </button>
+                <div style={{ fontSize: "11px", color: "#e9d5ff", textAlign: "center" }}>
+                  Instant update for all students
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Control & Filter Bar */}
           <div className="fees-control-bar">
