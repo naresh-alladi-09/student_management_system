@@ -14,7 +14,7 @@ from students.models import Student, AcademicClass, FacultyAssignment
 from performance.models import Subject
 from notifications.models import Notification
 from audit.models import AuditLog
-from .models import AttendanceSession, AttendanceRecord, LeaveRequest
+from .models import AttendanceSession, AttendanceRecord, LeaveRequest, AttendanceAlertLog
 from .serializers import (
     AttendanceSessionSerializer,
     AttendanceRecordSerializer,
@@ -1246,6 +1246,8 @@ def dispatch_low_attendance_alerts(request):
     year = request.data.get('year')
     section = request.data.get('section')
     custom_note = (request.data.get('custom_note') or '').strip()
+    test_email = (request.data.get('test_email') or '').strip() or None
+    force_send = bool(request.data.get('force_send', False))
 
     students = Student.objects.filter(is_active=True)
     if student_id:
@@ -1266,29 +1268,56 @@ def dispatch_low_attendance_alerts(request):
         if total > 0:
             present = recs.filter(status__in=['Present', 'On-Duty', 'Medical', 'Excused']).count()
             rate = round((present / total * 100), 1)
-            if rate < threshold:
-                needed = calculate_classes_needed(total, present, target_ratio=threshold / 100.0)
-                res = send_low_attendance_alert(
-                    student=s,
-                    percentage=rate,
-                    total_classes=total,
-                    attended_classes=present,
-                    classes_needed=needed,
-                    threshold=threshold,
-                    trigger_source='MANUAL',
-                    user=request.user,
-                    custom_note=custom_note
-                )
-                dispatched_results.append(res)
+        else:
+            present = 0
+            rate = 0.0
+
+        is_defaulter = (total > 0 and rate < threshold)
+
+        # Send alert if student is below threshold, or if admin explicitly targeted/forced this student for testing
+        if is_defaulter or (student_id and force_send):
+            if total == 0:
+                demo_rate = 60.0
+                demo_total = 5
+                demo_present = 3
+                needed = calculate_classes_needed(demo_total, demo_present, target_ratio=threshold / 100.0)
+                used_rate = demo_rate
+                used_total = demo_total
+                used_present = demo_present
+            elif force_send and rate >= threshold:
+                used_rate = rate
+                used_total = total
+                used_present = present
+                needed = 2
             else:
-                skipped_count += 1
+                needed = calculate_classes_needed(total, present, target_ratio=threshold / 100.0)
+                used_rate = rate
+                used_total = total
+                used_present = present
+
+            res = send_low_attendance_alert(
+                student=s,
+                percentage=used_rate,
+                total_classes=used_total,
+                attended_classes=used_present,
+                classes_needed=needed,
+                threshold=threshold,
+                trigger_source='MANUAL_TEST' if force_send else 'MANUAL',
+                user=request.user,
+                custom_note=custom_note,
+                test_email=test_email
+            )
+            dispatched_results.append(res)
+        else:
+            skipped_count += 1
 
     return Response({
         "success": True,
-        "message": f"Successfully dispatched alerts for {len(dispatched_results)} students below {threshold}% threshold.",
+        "message": f"Successfully activated alerts. Dispatched {len(dispatched_results)} warning email notice(s) (<{threshold}%).",
         "threshold": threshold,
         "total_dispatched": len(dispatched_results),
         "total_eligible_checked": students.count(),
+        "skipped_count": skipped_count,
         "alerts": dispatched_results,
     }, status=status.HTTP_200_OK)
 

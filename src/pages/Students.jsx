@@ -243,9 +243,22 @@ const Students = () => {
               <h2>Student Directory Management</h2>
               <p>Search, filter, edit, and manage enrolled university students</p>
             </div>
-            <Link to="/addstudents" className="add-student-btn">
-              <i className="fa-solid fa-user-plus"></i> Enroll Student
-            </Link>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <Link
+                to="/attendance?openAlerts=true"
+                className="add-student-btn"
+                style={{
+                  background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
+                  boxShadow: "0 4px 12px rgba(220, 38, 38, 0.3)",
+                }}
+                title="Send warning emails to students below 75% attendance or test alerts"
+              >
+                <i className="fa-solid fa-triangle-exclamation"></i> 75% Attendance Alerts
+              </Link>
+              <Link to="/addstudents" className="add-student-btn">
+                <i className="fa-solid fa-user-plus"></i> Enroll Student
+              </Link>
+            </div>
           </div>
 
           {/* Flash Feedback Messages */}

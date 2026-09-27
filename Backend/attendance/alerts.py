@@ -38,7 +38,8 @@ def send_low_attendance_alert(
     threshold=75.0,
     trigger_source='MANUAL',
     user=None,
-    custom_note=''
+    custom_note='',
+    test_email=None
 ):
     """
     Sends official Low Attendance Warning (<75%) to both the student and their parent/guardian
@@ -56,10 +57,13 @@ def send_low_attendance_alert(
     parent_phone = (getattr(student, 'parent_phone', '') or '').strip()
 
     email_recipients = []
-    if student_email:
-        email_recipients.append(student_email)
-    if parent_email and parent_email != student_email:
-        email_recipients.append(parent_email)
+    if test_email and test_email.strip():
+        email_recipients.append(test_email.strip())
+    else:
+        if student_email:
+            email_recipients.append(student_email)
+        if parent_email and parent_email != student_email:
+            email_recipients.append(parent_email)
 
     # 1. Compose Email
     email_subject = f"⚠️ OFFICIAL NOTICE: Attendance Shortage Alert (<{threshold}%) - {student_name} ({roll_no})"
@@ -186,6 +190,7 @@ def send_low_attendance_alert(
     """
 
     email_sent = False
+    email_error = None
     if email_recipients:
         try:
             from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'EduPortal Academic Office <noreply@eduportal.edu>')
@@ -195,12 +200,15 @@ def send_low_attendance_alert(
                 from_email=from_email,
                 recipient_list=email_recipients,
                 html_message=html_message,
-                fail_silently=True
+                fail_silently=False
             )
             email_sent = True
             logger.info(f"Low attendance email sent to {email_recipients} for student {roll_no}")
         except Exception as e:
+            email_error = str(e)
             logger.warning(f"Could not send email for student {roll_no}: {e}")
+    else:
+        email_error = "No recipient email found for student or guardian."
 
     # 2. Compose and Send SMS
     sms_text = (
@@ -248,7 +256,7 @@ def send_low_attendance_alert(
         classes_needed=classes_needed,
         threshold=threshold,
         channel='BOTH',
-        student_email=student_email,
+        student_email=student_email or (test_email or ''),
         parent_email=parent_email,
         student_phone=student_phone,
         parent_phone=parent_phone,
@@ -267,7 +275,7 @@ def send_low_attendance_alert(
         description=(
             f"Dispatched low attendance warning (<{threshold}%) via Email & SMS for {student_name} ({roll_no}). "
             f"Rate: {percentage:.1f}%, Needed: {classes_needed} classes. "
-            f"Email: {student_email or 'N/A'}, Parent Email: {parent_email or 'N/A'}"
+            f"Recipients: {', '.join(email_recipients) if email_recipients else 'None'}."
         ),
         user=user
     )
@@ -277,13 +285,19 @@ def send_low_attendance_alert(
         "student_id": student.id,
         "name": student_name,
         "roll_no": roll_no,
+        "cohort": cohort,
         "percentage": percentage,
         "classes_needed": classes_needed,
         "student_email": student_email,
         "parent_email": parent_email,
+        "recipients": email_recipients,
         "student_phone": student_phone,
         "parent_phone": parent_phone,
         "email_sent": email_sent,
+        "email_error": email_error,
+        "email_subject": email_subject,
+        "email_preview": plain_message[:350] + "...",
+        "html_content": html_message,
         "sms_sent": sms_sent,
         "alert_id": alert_log.id,
     }

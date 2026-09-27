@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import "../styles/attendence.css";
 import Sidebar from "../components/Sidebar";
@@ -16,6 +17,7 @@ import {
   dispatchLowAttendanceAlerts,
   getLeaveRequests,
   reviewLeaveRequest,
+  getAllStudentsList,
 } from "../services/studentservice";
 import {
   FaQrcode,
@@ -41,7 +43,8 @@ import {
 } from "react-icons/fa";
 
 function Attendance() {
-  const [activeTab, setActiveTab] = useState("manual"); // 'manual' | 'qr'
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState("manual"); // 'manual' | 'qr' | 'analytics' | 'leaves'
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -85,29 +88,106 @@ function Attendance() {
       });
   };
 
-  // Alert dispatch states
+  // 75% Attendance Shortage Alert States
+  const [showAlertModal, setShowAlertModal] = useState(false);
+  const [allStudents, setAllStudents] = useState([]);
+  const [testStudentId, setTestStudentId] = useState("");
+  const [testEmailInput, setTestEmailInput] = useState("");
+  const [testForceSend, setTestForceSend] = useState(true);
+  const [customAlertNote, setCustomAlertNote] = useState("");
+  const [previewEmailData, setPreviewEmailData] = useState(null);
+  const [recentDispatchedAlerts, setRecentDispatchedAlerts] = useState([]);
   const [alertSending, setAlertSending] = useState(false);
   const [alertingStudentId, setAlertingStudentId] = useState(null);
   const [alertSuccessModal, setAlertSuccessModal] = useState(null);
   const [alertError, setAlertError] = useState(null);
 
-  const handleDispatchAlerts = async (targetStudentId = null) => {
+  // Load summary and all students on mount
+  useEffect(() => {
+    fetchSummary(threshold);
+    getAllStudentsList()
+      .then((res) => {
+        const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+        setAllStudents(list);
+        if (list.length > 0) {
+          setTestStudentId(String(list[0].id));
+          if (list[0].email) {
+            setTestEmailInput(list[0].email);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Could not fetch students roster for alert testing:", err);
+      });
+  }, []);
+
+  // Listen to URL search param "?openAlerts=true"
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("openAlerts") === "true" || params.get("alerts") === "true") {
+      setShowAlertModal(true);
+    }
+  }, [location.search]);
+
+  const handleTestStudentChange = (id) => {
+    setTestStudentId(id);
+    const chosen = allStudents.find((s) => String(s.id) === String(id));
+    if (chosen && chosen.email) {
+      setTestEmailInput(chosen.email);
+    } else {
+      setTestEmailInput("");
+    }
+  };
+
+  const handleDispatchAlerts = async (opts = {}) => {
     setAlertSending(true);
-    setAlertingStudentId(targetStudentId);
     setAlertError(null);
+
+    // Support flexible invocation: handleDispatchAlerts() or handleDispatchAlerts(targetStudentId) or handleDispatchAlerts({...})
+    let targetStudentId = null;
+    let customNote = "";
+    let testEmail = null;
+    let forceSend = false;
+
+    if (typeof opts === "number") {
+      targetStudentId = opts;
+    } else if (opts && typeof opts === "object") {
+      targetStudentId = opts.targetStudentId || null;
+      customNote = opts.note || "";
+      testEmail = opts.testEmail || null;
+      forceSend = Boolean(opts.forceSend);
+    }
+
+    setAlertingStudentId(targetStudentId);
+
     try {
       const payload = {
         threshold: threshold,
+        custom_note: customNote,
       };
       if (targetStudentId) {
         payload.student_id = targetStudentId;
       }
+      if (testEmail) {
+        payload.test_email = testEmail;
+      }
+      if (forceSend) {
+        payload.force_send = true;
+      }
+
       const res = await dispatchLowAttendanceAlerts(payload);
       setAlertSuccessModal(res.data);
+      if (res.data.alerts && res.data.alerts.length > 0) {
+        setRecentDispatchedAlerts(res.data.alerts);
+      }
       fetchSummary(threshold);
     } catch (err) {
       console.error("Failed to dispatch attendance alerts:", err);
-      setAlertError(err.response?.data?.detail || "Failed to dispatch alerts. Please check connectivity.");
+      setAlertError(
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to dispatch alerts. Please check connectivity."
+      );
     } finally {
       setAlertSending(false);
       setAlertingStudentId(null);
@@ -427,7 +507,22 @@ function Attendance() {
               </p>
             </div>
 
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="alert-trigger-header-btn"
+                onClick={() => setShowAlertModal(true)}
+                title="Send warning emails to students below 75% attendance or test alerts"
+              >
+                <FaExclamationTriangle className="alert-btn-icon" />
+                <span>Set 75% Attendance Alerts</span>
+                {summaryData?.overall?.low_attendance_count > 0 && (
+                  <span className="alert-count-badge">
+                    {summaryData.overall.low_attendance_count} At-Risk
+                  </span>
+                )}
+              </button>
+
               <button
                 type="button"
                 className={`action-btn ${activeTab === "manual" ? "btn-primary" : ""}`}
@@ -1050,6 +1145,36 @@ function Attendance() {
           {/* ============================================================== */}
           {activeTab === "manual" && (
             <>
+              {/* 75% Attendance Shortage Alert Quick Action Banner */}
+              <div className="attendance-warning-banner">
+                <div className="warning-banner-left">
+                  <span className="warning-icon-circle">
+                    <FaExclamationTriangle />
+                  </span>
+                  <div>
+                    <h4 className="warning-banner-title">
+                      75% Minimum Attendance Shortage Alert System
+                    </h4>
+                    <p className="warning-banner-subtitle">
+                      {summaryData?.overall?.low_attendance_count > 0 ? (
+                        <>
+                          Found <strong>{summaryData.overall.low_attendance_count} student(s)</strong> whose cumulative attendance is currently below the mandatory 75% threshold.
+                        </>
+                      ) : (
+                        "Institutional regulation: Students below 75% are debarred from examinations. Activate warning emails or test alerts on individual students."
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="warning-banner-btn"
+                  onClick={() => setShowAlertModal(true)}
+                >
+                  <FaPaperPlane /> Set &amp; Activate 75% Alerts
+                </button>
+              </div>
+
               <div
                 style={{
                   display: "flex",
@@ -2352,6 +2477,342 @@ function Attendance() {
               </div>
             </div>
           )}
+          {/* ========================================================= */}
+          {/* 75% ATTENDANCE SHORTAGE ALERT CENTER MODAL               */}
+          {/* ========================================================= */}
+          {showAlertModal && (
+            <div className="att-modal-overlay" onClick={() => setShowAlertModal(false)}>
+              <div className="att-alert-modal-card" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="att-alert-modal-header">
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                      <span style={{ background: "#dc2626", color: "#ffffff", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 800 }}>
+                        ACADEMIC GOVERNANCE
+                      </span>
+                      <span style={{ color: "#94a3b8", fontSize: "12px" }}>Semester Exam Debarment Notice System</span>
+                    </div>
+                    <h3 style={{ margin: 0, fontSize: "19px", color: "#ffffff", display: "flex", alignItems: "center", gap: "9px" }}>
+                      <FaExclamationTriangle style={{ color: "#f87171" }} />
+                      75% Attendance Shortage Alert Center
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    className="att-modal-close-btn"
+                    onClick={() => setShowAlertModal(false)}
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="att-alert-modal-body">
+                  {/* Status Strip & Threshold selector */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8fafc", padding: "12px 16px", borderRadius: "10px", border: "1px solid #e2e8f0", flexWrap: "wrap", gap: "10px" }}>
+                    <div>
+                      <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>Active Threshold:</span>
+                      <strong style={{ marginLeft: "6px", color: "#dc2626", fontSize: "14px" }}>&lt; {threshold}%</strong>
+                    </div>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      {[70, 75, 80].map((tVal) => (
+                        <button
+                          key={tVal}
+                          type="button"
+                          onClick={() => {
+                            setThreshold(tVal);
+                            fetchSummary(tVal);
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: "14px",
+                            border: "1px solid",
+                            borderColor: threshold === tVal ? "#dc2626" : "#cbd5e1",
+                            background: threshold === tVal ? "#fee2e2" : "#ffffff",
+                            color: threshold === tVal ? "#dc2626" : "#475569",
+                            fontSize: "11px",
+                            fontWeight: threshold === tVal ? 700 : 500,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {tVal}%
+                        </button>
+                      ))}
+                    </div>
+                    <div>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>Delivery:</span>
+                      <strong style={{ marginLeft: "5px", color: "#059669", fontSize: "12px" }}>Email + SMS + Portal</strong>
+                    </div>
+                  </div>
+
+                  {alertError && (
+                    <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#b91c1c", padding: "10px 14px", borderRadius: "8px", fontSize: "13px" }}>
+                      {alertError}
+                    </div>
+                  )}
+
+                  {/* Section 1: All Defaulters Warning Activation */}
+                  <div className="att-defaulters-card">
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                      <div>
+                        <h4 style={{ margin: "0 0 2px 0", fontSize: "15px", color: "#991b1b" }}>
+                          🚨 Activate Warning Emails for All Defaulters (&lt;{threshold}%)
+                        </h4>
+                        <p style={{ margin: 0, fontSize: "12.5px", color: "#7f1d1d" }}>
+                          Immediately sends official examination debarment warnings to students and registered parents.
+                        </p>
+                      </div>
+                      <span style={{ background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca", padding: "4px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 700 }}>
+                        {summaryData?.low_attendance_students?.length || 0} Defaulter(s) Detected
+                      </span>
+                    </div>
+
+                    {summaryData?.low_attendance_students && summaryData.low_attendance_students.length > 0 ? (
+                      <div style={{ background: "#ffffff", borderRadius: "8px", border: "1px solid #fed7d7", padding: "10px 14px", marginBottom: "14px", maxHeight: "130px", overflowY: "auto" }}>
+                        {summaryData.low_attendance_students.map((stu) => (
+                          <div key={stu.student_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #fef2f2", fontSize: "12px" }}>
+                            <div>
+                              <strong>{stu.name}</strong> ({stu.roll_no})
+                              <span style={{ color: "#64748b", marginLeft: "6px" }}>
+                                ✉️ {stu.student_email || stu.parent_email || "No email"}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                              <span style={{ color: "#dc2626", fontWeight: 700 }}>{stu.attendance_rate}%</span>
+                              <span style={{ color: "#b91c1c", background: "#fef2f2", padding: "1px 6px", borderRadius: "4px", fontSize: "10.5px" }}>
+                                Needs next {stu.classes_needed} classes
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: "10px", background: "#ecfdf5", borderRadius: "8px", color: "#065f46", fontSize: "12.5px", marginBottom: "12px" }}>
+                        ✓ All students currently have cumulative attendance ≥ {threshold}%.
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      className="att-btn-primary-alert"
+                      onClick={() => handleDispatchAlerts()}
+                      disabled={alertSending || !summaryData?.low_attendance_students?.length}
+                    >
+                      <FaPaperPlane />
+                      {alertSending && !alertingStudentId
+                        ? "Dispatching Official Warning Emails..."
+                        : `Activate & Send Warning Emails to All (${summaryData?.low_attendance_students?.length || 0}) Defaulters`}
+                    </button>
+                  </div>
+
+                  {/* Section 2: Testing Sandbox (For Testing on Students) */}
+                  <div className="att-test-sandbox-card">
+                    <div style={{ marginBottom: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ background: "#e0e7ff", color: "#4338ca", padding: "2px 7px", borderRadius: "4px", fontSize: "11px", fontWeight: 800 }}>
+                          TESTING SANDBOX
+                        </span>
+                        <h4 style={{ margin: 0, fontSize: "14.5px", color: "#0f172a" }}>
+                          Test Warning Alert on Any Student
+                        </h4>
+                      </div>
+                      <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#64748b" }}>
+                        Select any student to test email dispatch. Enter your own email below to receive and inspect the live test email in your personal inbox!
+                      </p>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                          Select Student to Test:
+                        </label>
+                        <select
+                          value={testStudentId}
+                          onChange={(e) => handleTestStudentChange(e.target.value)}
+                          style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                        >
+                          {allStudents.map((s) => {
+                            const isDefaulter = summaryData?.low_attendance_students?.some((d) => d.student_id === s.id);
+                            return (
+                              <option key={s.id} value={s.id}>
+                                {isDefaulter ? "⚠️ [Below 75%] " : ""}{s.name} ({s.roll_no || `STU-${s.id}`}) - {s.branch}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                          Test Recipient Email (Optional):
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="e.g., your-email@gmail.com"
+                          value={testEmailInput}
+                          onChange={(e) => setTestEmailInput(e.target.value)}
+                          style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: "12px" }}>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                        Custom Academic Note (Optional):
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Report to HOD office tomorrow at 10:00 AM."
+                        value={customAlertNote}
+                        onChange={(e) => setCustomAlertNote(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12.5px", color: "#334155", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={testForceSend}
+                          onChange={(e) => setTestForceSend(e.target.checked)}
+                        />
+                        <span>Force Send (Simulate low attendance &lt;75% notice)</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        className="att-btn-test-alert"
+                        onClick={() =>
+                          handleDispatchAlerts({
+                            targetStudentId: parseInt(testStudentId, 10),
+                            testEmail: testEmailInput.trim(),
+                            forceSend: testForceSend,
+                            note: customAlertNote.trim(),
+                          })
+                        }
+                        disabled={alertSending || !testStudentId}
+                      >
+                        <FaPaperPlane />
+                        {alertSending && alertingStudentId === parseInt(testStudentId, 10)
+                          ? "Dispatching Test Email..."
+                          : "Send Test Warning Email"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Recent Dispatched Alerts Log */}
+                  {recentDispatchedAlerts.length > 0 && (
+                    <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                        <h4 style={{ margin: 0, fontSize: "14px", color: "#0f172a" }}>
+                          Dispatched Warning Notices ({recentDispatchedAlerts.length})
+                        </h4>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "160px", overflowY: "auto" }}>
+                        {recentDispatchedAlerts.map((a, idx) => (
+                          <div
+                            key={a.alert_id || idx}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              background: "#f8fafc",
+                              padding: "8px 12px",
+                              borderRadius: "8px",
+                              fontSize: "12.5px",
+                              border: "1px solid #e2e8f0",
+                            }}
+                          >
+                            <div>
+                              <strong>{a.name}</strong> ({a.roll_no}) • Attendance: <span style={{ color: "#dc2626", fontWeight: 700 }}>{a.percentage}%</span>
+                              <div style={{ fontSize: "11px", color: "#64748b" }}>
+                                To: {a.recipients?.join(", ") || a.student_email || "N/A"}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                              {a.email_sent ? (
+                                <span style={{ color: "#059669", fontWeight: 600, fontSize: "11.5px" }}>Email Sent ✅</span>
+                              ) : (
+                                <span style={{ color: "#b45309", fontSize: "11.5px" }}>Logged ℹ️</span>
+                              )}
+                              {a.html_content && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewEmailData(a)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    background: "#ffffff",
+                                    fontSize: "11px",
+                                    cursor: "pointer",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Preview Email
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Section 4: Email Delivery Configuration Notice */}
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px 14px", borderRadius: "10px", fontSize: "12px", color: "#166534", lineHeight: 1.5 }}>
+                    <strong>💡 Live Email Delivery:</strong> Warning emails are dispatched via Django's configured Email Backend. To deliver live emails to student &amp; parent Gmail inboxes, ensure <code style={{ background: "#dcfce7", padding: "2px 4px", borderRadius: "4px" }}>EMAIL_HOST_USER</code> and <code style={{ background: "#dcfce7", padding: "2px 4px", borderRadius: "4px" }}>EMAIL_HOST_PASSWORD</code> are populated in <code style={{ background: "#dcfce7", padding: "2px 4px", borderRadius: "4px" }}>Backend/.env</code>.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* EMAIL HTML PREVIEW MODAL                                  */}
+          {/* ========================================================= */}
+          {previewEmailData && (
+            <div className="att-modal-overlay" onClick={() => setPreviewEmailData(null)}>
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: "16px",
+                  maxWidth: "680px",
+                  width: "100%",
+                  maxHeight: "85vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ background: "#0f172a", color: "#ffffff", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: "14px", fontWeight: 700 }}>
+                    Official Warning Notice Email: {previewEmailData.name} ({previewEmailData.roll_no})
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewEmailData(null)}
+                    style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "16px" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div style={{ padding: "16px", overflowY: "auto", background: "#f1f5f9" }}>
+                  <div style={{ marginBottom: "12px", fontSize: "12.5px", color: "#334155", background: "#ffffff", padding: "10px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <div><strong>Subject:</strong> {previewEmailData.email_subject}</div>
+                    <div><strong>To:</strong> {previewEmailData.recipients?.join(", ")}</div>
+                  </div>
+                  <div
+                    style={{ background: "#ffffff", borderRadius: "10px", padding: "16px", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}
+                    dangerouslySetInnerHTML={{ __html: previewEmailData.html_content }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Alert Success Confirmation Modal */}
           {alertSuccessModal && (
             <div
