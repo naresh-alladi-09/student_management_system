@@ -394,3 +394,43 @@ export const checkInExamCandidate = (token) => {
 export const getExamHallCheckins = (params = {}) => {
   return apiClient.get("/api/performance/hallticket/check-ins/", { params });
 };
+
+// ==========================================
+// FEE MANAGEMENT & DUES CLEARANCE SERVICES
+// ==========================================
+
+export const getFeeStats = () => {
+  return apiClient.get("/api/fees/stats/");
+};
+
+export const getStudentFeeRecords = (params = {}) => {
+  return apiClient.get("/api/fees/records/", { params });
+};
+
+export const recordFeePayment = (paymentData) => {
+  return apiClient.post("/api/fees/pay/", paymentData);
+};
+
+export const getFeeReceipt = (receiptNumber) => {
+  return apiClient.get(`/api/fees/receipt/${encodeURIComponent(receiptNumber)}/`);
+};
+
+export const clearExamFeeDues = (recordId, data = {}) => {
+  return apiClient.post(`/api/fees/records/${recordId}/clear-dues/`, data);
+};
+
+export const bulkGenerateCohortFees = (data) => {
+  return apiClient.post("/api/fees/generate/", data);
+};
+
+export const sendFeeReminder = (data) => {
+  return apiClient.post("/api/fees/remind/", data);
+};
+
+export const getMyFees = () => {
+  return apiClient.get("/api/fees/my/");
+};
+
+export const getFeeCategories = () => {
+  return apiClient.get("/api/fees/categories/");
+};

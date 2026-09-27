@@ -14,8 +14,11 @@ import {
   deleteLeaveRequest,
   getMyHallTickets,
   updateProfilePicture,
+  getMyFees,
+  getFeeReceipt,
 } from "../services/studentservice";
 import "../styles/studentdashboard.css";
+import "../styles/fees.css";
 import { Html5QrcodeScanner } from "html5-qrcode";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -47,6 +50,9 @@ import {
   FaUniversity,
   FaExclamationCircle,
   FaCheck,
+  FaCreditCard,
+  FaReceipt,
+  FaMoneyBillWave,
 } from "react-icons/fa";
 
 const StudentDashboard = () => {
@@ -211,6 +217,53 @@ const StudentDashboard = () => {
       });
   };
 
+  // Fees & Dues States
+  const [feesData, setFeesData] = useState({
+    summary: {
+      total_invoiced: 0,
+      total_paid: 0,
+      total_due: 0,
+      has_mandatory_dues: false,
+      exam_clearance_status: "CLEARED",
+      records_count: 0,
+    },
+    records: [],
+    payments: [],
+  });
+  const [feesLoading, setFeesLoading] = useState(false);
+  const [activeReceiptModal, setActiveReceiptModal] = useState(null);
+  const [loadingReceipt, setLoadingReceipt] = useState(false);
+
+  const fetchStudentFees = () => {
+    setFeesLoading(true);
+    getMyFees()
+      .then((res) => {
+        if (res.data) {
+          setFeesData(res.data);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load fees data:", err);
+      })
+      .finally(() => {
+        setFeesLoading(false);
+      });
+  };
+
+  const handleOpenReceipt = (receiptNum) => {
+    setLoadingReceipt(true);
+    getFeeReceipt(receiptNum)
+      .then((res) => {
+        setActiveReceiptModal(res.data);
+      })
+      .catch((err) => {
+        alert("Unable to fetch receipt details: " + (err.response?.data?.detail || err.message));
+      })
+      .finally(() => {
+        setLoadingReceipt(false);
+      });
+  };
+
   // QR Modal States
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrMode, setQrMode] = useState("camera"); // "camera" | "manual"
@@ -347,8 +400,9 @@ const StudentDashboard = () => {
       getAllSubjects().catch(() => ({ data: [] })),
       getLeaveRequests().catch(() => ({ data: [] })),
       getMyHallTickets().catch(() => ({ data: [] })),
+      getMyFees().catch(() => ({ data: null })),
     ])
-      .then(([repRes, attRes, timeRes, annRes, subRes, leaveRes, ticketRes]) => {
+      .then(([repRes, attRes, timeRes, annRes, subRes, leaveRes, ticketRes, feeRes]) => {
         if (repRes.data) setReportData(repRes.data);
         if (attRes.data) setAttendanceData(attRes.data);
         if (timeRes.data) setTimetableSlots(timeRes.data);
@@ -368,6 +422,9 @@ const StudentDashboard = () => {
             setPendingExamSessions([]);
           }
         }
+        if (feeRes?.data) {
+          setFeesData(feeRes.data);
+        }
       })
       .finally(() => {
         setLoading(false);
@@ -382,6 +439,8 @@ const StudentDashboard = () => {
   useEffect(() => {
     if (activeTab === "hallticket") {
       fetchStudentHallTickets();
+    } else if (activeTab === "fees") {
+      fetchStudentFees();
     }
   }, [activeTab]);
 
@@ -2358,6 +2417,187 @@ const StudentDashboard = () => {
                 );
               }
 
+              if (currentTicket.is_fee_locked || (currentTicket.fee_clearance && !currentTicket.fee_clearance.is_cleared)) {
+                const pendingDues = currentTicket.fee_clearance?.pending_dues || 0;
+                const unclearedCats = currentTicket.fee_clearance?.uncleared_categories || [];
+
+                return (
+                  /* ================================================== */
+                  /* MANDATORY FEE DUES CLEARANCE HOLD                 */
+                  /* ================================================== */
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      borderRadius: "16px",
+                      padding: "36px",
+                      boxShadow: "0 10px 30px rgba(245, 158, 11, 0.08)",
+                      border: "2px solid #fde68a",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "14px",
+                        marginBottom: "20px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "56px",
+                          height: "56px",
+                          borderRadius: "16px",
+                          background: "#fef3c7",
+                          color: "#d97706",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "26px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <FaCreditCard />
+                      </div>
+                      <div>
+                        <div
+                          style={{
+                            display: "inline-block",
+                            padding: "3px 10px",
+                            borderRadius: "12px",
+                            fontSize: "11px",
+                            fontWeight: 800,
+                            letterSpacing: "0.5px",
+                            background: "#fef3c7",
+                            color: "#b45309",
+                            textTransform: "uppercase",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          Accounts Clearance Hold
+                        </div>
+                        <h3 style={{ margin: 0, fontSize: "20px", color: "#0f172a", fontWeight: 700 }}>
+                          Hall Ticket Withheld — Outstanding Tuition / Exam Fee Dues
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: "16px 20px",
+                        background: "#fffbeb",
+                        border: "1px solid #fef3c7",
+                        borderRadius: "12px",
+                        marginBottom: "24px",
+                        color: "#92400e",
+                        fontSize: "14px",
+                        lineHeight: "1.6",
+                      }}
+                    >
+                      Your attendance criteria is fulfilled ({currentTicket.calculated_attendance_pct}%), but your examination hall ticket has been
+                      temporarily held by the Bursar &amp; Accounts division due to pending mandatory fee dues (₹{pendingDues.toLocaleString()}).
+                      Once dues are cleared or an institutional No-Dues clearance is granted, your official admit card will unlock immediately.
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                        gap: "14px",
+                        marginBottom: "28px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "16px",
+                          background: "#f8fafc",
+                          borderRadius: "10px",
+                          border: "1px solid #e2e8f0",
+                        }}
+                      >
+                        <div style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
+                          Pending Balance Due
+                        </div>
+                        <div style={{ fontSize: "22px", fontWeight: 800, color: "#dc2626", marginTop: "4px" }}>
+                          ₹{pendingDues.toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: "16px",
+                          background: "#f8fafc",
+                          borderRadius: "10px",
+                          border: "1px solid #e2e8f0",
+                        }}
+                      >
+                        <div style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
+                          Uncleared Fee Heads
+                        </div>
+                        <div style={{ fontSize: "15px", fontWeight: 700, color: "#1e293b", marginTop: "6px" }}>
+                          {unclearedCats.map((c) => c.category).join(", ") || "Mandatory Academic Fees"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: "16px",
+                          background: "#f8fafc",
+                          borderRadius: "10px",
+                          border: "1px solid #e2e8f0",
+                        }}
+                      >
+                        <div style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
+                          Attendance Status
+                        </div>
+                        <div style={{ fontSize: "15px", fontWeight: 700, color: "#059669", marginTop: "6px" }}>
+                          Eligible ({currentTicket.calculated_attendance_pct}%)
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("fees")}
+                        style={{
+                          padding: "12px 24px",
+                          borderRadius: "10px",
+                          background: "#2563eb",
+                          color: "#ffffff",
+                          border: "none",
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          boxShadow: "0 4px 12px rgba(37, 99, 235, 0.2)",
+                        }}
+                      >
+                        <FaCreditCard /> View Fee Ledger &amp; Clear Dues
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={fetchStudentHallTickets}
+                        style={{
+                          padding: "12px 20px",
+                          borderRadius: "10px",
+                          background: "#f1f5f9",
+                          color: "#334155",
+                          border: "1px solid #cbd5e1",
+                          fontWeight: 600,
+                          fontSize: "14px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Refresh Clearance Status
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
               /* ================================================== */
               /* OFFICIAL PRINTABLE ADMIT CARD CANVAS               */
               /* ================================================== */
@@ -2902,6 +3142,582 @@ const StudentDashboard = () => {
               );
             })()
           )}
+        </div>
+      )}
+
+      {/* Tab: Fees & Dues Ledger */}
+      {activeTab === "fees" && (
+        <div>
+          {/* Header Card */}
+          <div
+            className="no-print"
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              padding: "20px 24px",
+              marginBottom: "20px",
+              boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "16px",
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin: "0 0 6px 0",
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  color: "#0f172a",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <FaCreditCard style={{ color: "#2563eb" }} />
+                Student Fee Ledger &amp; Dues Clearance
+              </h2>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+                Review institutional fee balances, transaction records, exam hall ticket clearance status, and download authenticated receipts.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={fetchStudentFees}
+                disabled={feesLoading}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 16px",
+                  background: "#f1f5f9",
+                  color: "#334155",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {feesLoading ? "Refreshing..." : "Refresh Ledger"}
+              </button>
+            </div>
+          </div>
+
+          {/* Summary Metric Cards */}
+          <div
+            className="no-print"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: "14px",
+                padding: "18px 20px",
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+                Total Invoiced
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: "#0f172a", margin: "6px 0 4px 0" }}>
+                ₹{(feesData?.summary?.total_invoiced || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: "12px", color: "#64748b" }}>Academic Year 2025-2026</div>
+            </div>
+
+            <div
+              style={{
+                background: "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)",
+                borderRadius: "14px",
+                padding: "18px 20px",
+                border: "1px solid #bbf7d0",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>
+                Total Paid to Date
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: "#15803d", margin: "6px 0 4px 0" }}>
+                ₹{(feesData?.summary?.total_paid || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: "12px", color: "#166534" }}>Verified by Bursar Counter</div>
+            </div>
+
+            <div
+              style={{
+                background: feesData?.summary?.total_due > 0
+                  ? "linear-gradient(135deg, #ffffff 0%, #fef2f2 100%)"
+                  : "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)",
+                borderRadius: "14px",
+                padding: "18px 20px",
+                border: `1px solid ${feesData?.summary?.total_due > 0 ? "#fecaca" : "#bbf7d0"}`,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: feesData?.summary?.total_due > 0 ? "#991b1b" : "#166534",
+                  textTransform: "uppercase",
+                }}
+              >
+                Outstanding Balance Due
+              </div>
+              <div
+                style={{
+                  fontSize: "24px",
+                  fontWeight: 800,
+                  color: feesData?.summary?.total_due > 0 ? "#dc2626" : "#15803d",
+                  margin: "6px 0 4px 0",
+                }}
+              >
+                ₹{(feesData?.summary?.total_due || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: "12px", color: feesData?.summary?.total_due > 0 ? "#b91c1c" : "#166534" }}>
+                {feesData?.summary?.total_due > 0 ? "Pending clearance" : "All accounts cleared"}
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: feesData?.summary?.has_mandatory_dues
+                  ? "linear-gradient(135deg, #ffffff 0%, #fffbeb 100%)"
+                  : "linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)",
+                borderRadius: "14px",
+                padding: "18px 20px",
+                border: `1px solid ${feesData?.summary?.has_mandatory_dues ? "#fde68a" : "#bfdbfe"}`,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: feesData?.summary?.has_mandatory_dues ? "#92400e" : "#1e40af",
+                  textTransform: "uppercase",
+                }}
+              >
+                Exam Clearance Status
+              </div>
+              <div
+                style={{
+                  fontSize: "16px",
+                  fontWeight: 800,
+                  color: feesData?.summary?.has_mandatory_dues ? "#b45309" : "#1d4ed8",
+                  margin: "10px 0 4px 0",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                {feesData?.summary?.has_mandatory_dues ? (
+                  <>
+                    <FaExclamationTriangle style={{ color: "#d97706" }} /> Mandatory Dues Hold
+                  </>
+                ) : (
+                  <>
+                    <FaCheckCircle style={{ color: "#16a34a" }} /> No-Dues Clearance Active
+                  </>
+                )}
+              </div>
+              <div style={{ fontSize: "12px", color: "#64748b" }}>
+                {feesData?.summary?.has_mandatory_dues
+                  ? "Exam Hall Ticket is locked until cleared"
+                  : "Admit Card Unlocked for Exams"}
+              </div>
+            </div>
+          </div>
+
+          {/* Fee Ledger Items Table */}
+          <div
+            className="no-print"
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              padding: "24px",
+              marginBottom: "24px",
+              boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "16px",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+                Fee Heads &amp; Installments Breakdown
+              </h3>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>
+                Showing {feesData?.records?.length || 0} enrolled fee categories
+              </span>
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "13px",
+                  textAlign: "left",
+                }}
+              >
+                <thead>
+                  <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Fee Category</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Academic Term</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Invoiced</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Scholarship</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Net Payable</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Paid</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Balance Due</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Due Date</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Status</th>
+                    <th style={{ padding: "12px 14px", color: "#475569", fontWeight: 700 }}>Exam Clearance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feesData?.records && feesData.records.length > 0 ? (
+                    feesData.records.map((rec) => {
+                      const isPaid = rec.status === "PAID";
+                      const isPartial = rec.status === "PARTIAL";
+                      const isOverdue = rec.status === "OVERDUE";
+
+                      return (
+                        <tr key={rec.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "14px", fontWeight: 600, color: "#1e293b" }}>
+                            <div>{rec.category_name}</div>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "#64748b",
+                                background: "#f1f5f9",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                              }}
+                            >
+                              {rec.category_code}
+                            </span>
+                            {rec.is_mandatory_for_exam && (
+                              <span
+                                style={{
+                                  marginLeft: "6px",
+                                  fontSize: "10px",
+                                  fontWeight: 700,
+                                  color: "#b45309",
+                                  background: "#fef3c7",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                Mandatory
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: "14px", color: "#475569" }}>
+                            {rec.academic_year} • Sem {rec.semester}
+                          </td>
+                          <td style={{ padding: "14px", color: "#475569" }}>
+                            ₹{parseFloat(rec.total_amount).toLocaleString()}
+                          </td>
+                          <td style={{ padding: "14px", color: "#059669" }}>
+                            {parseFloat(rec.discount_amount) > 0 ? `₹${parseFloat(rec.discount_amount).toLocaleString()}` : "—"}
+                          </td>
+                          <td style={{ padding: "14px", fontWeight: 700, color: "#0f172a" }}>
+                            ₹{parseFloat(rec.net_amount).toLocaleString()}
+                          </td>
+                          <td style={{ padding: "14px", fontWeight: 700, color: "#16a34a" }}>
+                            ₹{parseFloat(rec.paid_amount).toLocaleString()}
+                          </td>
+                          <td
+                            style={{
+                              padding: "14px",
+                              fontWeight: 700,
+                              color: parseFloat(rec.balance_due) > 0 ? "#dc2626" : "#059669",
+                            }}
+                          >
+                            ₹{parseFloat(rec.balance_due).toLocaleString()}
+                          </td>
+                          <td style={{ padding: "14px", color: "#475569" }}>
+                            {rec.due_date || "—"}
+                          </td>
+                          <td style={{ padding: "14px" }}>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                padding: "4px 10px",
+                                borderRadius: "12px",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                background: isPaid
+                                  ? "#dcfce7"
+                                  : isPartial
+                                  ? "#fef3c7"
+                                  : isOverdue
+                                  ? "#fee2e2"
+                                  : "#f1f5f9",
+                                color: isPaid
+                                  ? "#15803d"
+                                  : isPartial
+                                  ? "#b45309"
+                                  : isOverdue
+                                  ? "#b91c1c"
+                                  : "#475569",
+                              }}
+                            >
+                              {rec.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px" }}>
+                            {rec.is_cleared_for_exam ? (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  color: "#16a34a",
+                                }}
+                              >
+                                <FaCheckCircle /> Cleared
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  color: "#d97706",
+                                }}
+                              >
+                                <FaExclamationTriangle /> Dues Hold
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan="10" style={{ textAlign: "center", padding: "32px", color: "#64748b" }}>
+                        No fee records assigned to your current semester yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Paid Transactions & Digital Receipts */}
+          <div
+            className="no-print"
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              padding: "24px",
+              marginBottom: "24px",
+              boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "16px",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+                  Official Payment Receipts
+                </h3>
+                <p style={{ margin: "4px 0 0 0", fontSize: "12.5px", color: "#64748b" }}>
+                  Download and print authenticated receipts with institution stamp for college records or reimbursement.
+                </p>
+              </div>
+            </div>
+
+            {feesData?.payments && feesData.payments.length > 0 ? (
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: "13px",
+                    textAlign: "left",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                      <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Receipt #</th>
+                      <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Date &amp; Time</th>
+                      <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Category</th>
+                      <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Amount Paid</th>
+                      <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Payment Mode</th>
+                      <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Transaction Ref / UTR</th>
+                      <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700, textAlign: "right" }}>
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feesData.payments.map((p) => (
+                      <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "12px 14px", fontWeight: 700, color: "#2563eb" }}>
+                          {p.receipt_number}
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#475569" }}>
+                          {new Date(p.payment_date).toLocaleDateString([], {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#1e293b", fontWeight: 600 }}>
+                          {p.category_name}
+                        </td>
+                        <td style={{ padding: "12px 14px", fontWeight: 800, color: "#16a34a" }}>
+                          ₹{parseFloat(p.amount_paid).toLocaleString()}
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#475569" }}>
+                          <span
+                            style={{
+                              background: "#f1f5f9",
+                              padding: "2px 8px",
+                              borderRadius: "4px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {p.payment_method}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#64748b", fontFamily: "monospace" }}>
+                          {p.transaction_reference || "—"}
+                        </td>
+                        <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenReceipt(p.receipt_number)}
+                            disabled={loadingReceipt}
+                            style={{
+                              padding: "6px 14px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              background: "#f8fafc",
+                              color: "#1e293b",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <FaPrint /> Print Official Receipt
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "28px", color: "#64748b" }}>
+                No completed payments recorded yet. Receipts will appear here once payment transactions are cleared.
+              </div>
+            )}
+          </div>
+
+          {/* Institutional Payment Guidance & Bursar Counter Card */}
+          <div
+            className="no-print"
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              padding: "24px",
+              marginBottom: "24px",
+              boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <h3 style={{ margin: "0 0 12px 0", fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+              Campus Bursar Counter &amp; Online Payment Instructions
+            </h3>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gap: "20px",
+              }}
+            >
+              <div
+                style={{
+                  background: "#f8fafc",
+                  borderRadius: "12px",
+                  padding: "18px",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <div style={{ fontWeight: 700, color: "#1e3a8a", marginBottom: "8px", fontSize: "14px" }}>
+                  🏦 Bank Transfer (NEFT / RTGS / IMPS)
+                </div>
+                <div style={{ fontSize: "12.5px", color: "#334155", lineHeight: "1.7" }}>
+                  <div><strong>Account Name:</strong> St. Peter's Engineering College</div>
+                  <div><strong>Bank Name:</strong> State Bank of India (SBI)</div>
+                  <div><strong>Account No:</strong> 382901928471</div>
+                  <div><strong>IFSC Code:</strong> SBIN0004921 (Maisammaguda Branch)</div>
+                  <div><strong>Account Type:</strong> Current Account</div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "#f8fafc",
+                  borderRadius: "12px",
+                  padding: "18px",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <div style={{ fontWeight: 700, color: "#166534", marginBottom: "8px", fontSize: "14px" }}>
+                  💳 Campus Bursar Desk (Room 104)
+                </div>
+                <div style={{ fontSize: "12.5px", color: "#334155", lineHeight: "1.7" }}>
+                  <div><strong>Location:</strong> Ground Floor, Administrative Block</div>
+                  <div><strong>Timings:</strong> Mon – Sat: 9:30 AM to 4:30 PM</div>
+                  <div><strong>Accepted Modes:</strong> Cash, Demand Draft, UPI QR, Debit/Credit Card</div>
+                  <div><strong>Helpdesk:</strong> accounts@stpetersec.edu.in | +91 40 2379 2100</div>
+                  <div style={{ color: "#b45309", fontSize: "11.5px", marginTop: "4px" }}>
+                    *Submit your UTR reference at the counter for same-day No-Dues clearance.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3782,6 +4598,208 @@ const StudentDashboard = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Official Printable Digital Fee Receipt Modal */}
+      {activeReceiptModal && (
+        <div
+          className="fees-modal-overlay"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "20px",
+          }}
+        >
+          <div style={{ maxHeight: "95vh", overflowY: "auto", width: "100%", display: "flex", justifyContent: "center" }}>
+            <div className="printable-receipt-wrap" style={{ position: "relative" }}>
+              {/* Action Buttons */}
+              <div
+                className="no-print"
+                style={{
+                  position: "absolute",
+                  top: "16px",
+                  right: "16px",
+                  display: "flex",
+                  gap: "8px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "7px 14px",
+                    borderRadius: "6px",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <FaPrint /> Print Receipt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveReceiptModal(null)}
+                  style={{
+                    background: "#e2e8f0",
+                    color: "#0f172a",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Header */}
+              <div className="receipt-header">
+                <h1 className="receipt-inst-name">{activeReceiptModal.institution_name}</h1>
+                <p className="receipt-inst-sub">{activeReceiptModal.institution_sub}</p>
+                <p className="receipt-inst-sub">{activeReceiptModal.institution_address}</p>
+                <div className="receipt-badge-title">Official Fee Payment Receipt</div>
+              </div>
+
+              {/* Details Grid */}
+              <div className="receipt-grid-info">
+                <div>
+                  <div>
+                    <strong>Receipt Number:</strong>{" "}
+                    <span style={{ color: "#2563eb", fontWeight: 700 }}>
+                      {activeReceiptModal.receipt_number}
+                    </span>
+                  </div>
+                  <div>
+                    <strong>Payment Date:</strong> {activeReceiptModal.payment_date}
+                  </div>
+                  <div>
+                    <strong>Payment Mode:</strong> {activeReceiptModal.payment_method}
+                  </div>
+                  <div>
+                    <strong>Reference:</strong> {activeReceiptModal.transaction_reference}
+                  </div>
+                </div>
+                <div>
+                  <div>
+                    <strong>Student Name:</strong> {activeReceiptModal.student.name}
+                  </div>
+                  <div>
+                    <strong>Roll Number:</strong> {activeReceiptModal.student.roll_no}
+                  </div>
+                  <div>
+                    <strong>Department:</strong> {activeReceiptModal.student.cohort}
+                  </div>
+                  <div>
+                    <strong>Email:</strong> {activeReceiptModal.student.email || "N/A"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Itemized Table */}
+              <table className="receipt-items-table">
+                <thead>
+                  <tr>
+                    <th>Particulars / Category</th>
+                    <th>Academic Term</th>
+                    <th style={{ textAlign: "right" }}>Total Fee</th>
+                    <th style={{ textAlign: "right" }}>Amount Paid</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <strong>{activeReceiptModal.fee_details.category}</strong>
+                      {activeReceiptModal.fee_details.discount_waiver > 0 && (
+                        <div style={{ fontSize: "11px", color: "#059669" }}>
+                          Includes ₹{activeReceiptModal.fee_details.discount_waiver.toLocaleString()} Scholarship Waiver
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {activeReceiptModal.fee_details.academic_year} • {activeReceiptModal.fee_details.semester}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      ₹{activeReceiptModal.fee_details.net_payable.toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 800 }}>
+                      ₹{activeReceiptModal.fee_details.amount_paid_this_transaction.toLocaleString()}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Settlement Summary */}
+              <div
+                style={{
+                  background: "#f8fafc",
+                  padding: "12px 16px",
+                  borderRadius: "8px",
+                  border: "1px solid #e2e8f0",
+                  fontSize: "13px",
+                  marginBottom: "20px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                  <span>Cumulative Amount Paid to Date:</span>
+                  <strong>₹{activeReceiptModal.fee_details.cumulative_paid_amount.toLocaleString()}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                  <span>Remaining Balance Due:</span>
+                  <strong
+                    style={{
+                      color:
+                        activeReceiptModal.fee_details.remaining_balance_due > 0 ? "#dc2626" : "#059669",
+                    }}
+                  >
+                    ₹{activeReceiptModal.fee_details.remaining_balance_due.toLocaleString()}
+                  </strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Examination Clearance Status:</span>
+                  <strong
+                    style={{
+                      color: activeReceiptModal.fee_details.is_cleared_for_exam ? "#059669" : "#dc2626",
+                    }}
+                  >
+                    {activeReceiptModal.fee_details.is_cleared_for_exam
+                      ? "Cleared for Semester Examinations ✅"
+                      : "Pending Balance ⚠️"}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Footer Stamp & Signatures */}
+              <div className="receipt-footer-stamp">
+                <div className="receipt-seal-box">
+                  College Accounts Seal
+                </div>
+                <div className="receipt-signature-line">
+                  <div style={{ borderBottom: "1px solid #94a3b8", width: "160px", marginBottom: "4px" }}></div>
+                  <div>Authorized Accounts Signatory</div>
+                  <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                    {activeReceiptModal.collected_by}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

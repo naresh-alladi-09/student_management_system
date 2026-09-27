@@ -1044,10 +1044,48 @@ def verify_hall_ticket(request, token):
     if not relevant_papers:
         relevant_papers = list(papers)
 
+    # Check mandatory fee clearance
+    try:
+        from fees.models import StudentFeeRecord
+        records = StudentFeeRecord.objects.filter(
+            student=student,
+            fee_category__is_mandatory_for_exam=True
+        ).select_related('fee_category')
+        uncleared = [r for r in records if not r.is_cleared_for_exam and r.balance_due > 0]
+        has_fee_dues = len(uncleared) > 0
+        pending_dues = sum(r.balance_due for r in uncleared)
+        fee_clearance_data = {
+            "is_cleared": not has_fee_dues,
+            "pending_dues": float(pending_dues),
+            "uncleared_categories": [r.fee_category.name for r in uncleared]
+        }
+    except Exception:
+        has_fee_dues = False
+        fee_clearance_data = {
+            "is_cleared": True,
+            "pending_dues": 0.0,
+            "uncleared_categories": []
+        }
+
+    is_attendance_ok = ticket.is_eligible or ticket.is_condoned
+    is_fully_admissible = is_attendance_ok and not has_fee_dues
+
+    if is_fully_admissible:
+        verification_status = "VERIFIED_AUTHENTIC"
+        verification_display = "Authentic & Verified for Examination"
+    elif has_fee_dues:
+        verification_status = "FEE_HOLD_DETAINED"
+        verification_display = f"Fee Clearance Hold (Pending: ₹{fee_clearance_data['pending_dues']:,.2f})"
+    else:
+        verification_status = "INELIGIBLE_DETAINED"
+        verification_display = "Attendance Shortage (Not Permitted)"
+
     return Response({
         "valid": True,
-        "status": "VERIFIED_AUTHENTIC" if ticket.is_eligible else "INELIGIBLE_DETAINED",
-        "status_display": "Authentic & Verified for Examination" if ticket.is_eligible else "Attendance Shortage (Not Permitted)",
+        "status": verification_status,
+        "status_display": verification_display,
+        "is_fee_locked": has_fee_dues,
+        "fee_clearance": fee_clearance_data,
         "hall_ticket_number": ticket.hall_ticket_number,
         "student": {
             "name": student.name,
@@ -1089,6 +1127,7 @@ def verify_hall_ticket(request, token):
 def check_in_exam_candidate(request, token):
     """
     Invigilator officially admits a candidate to the examination hall upon scanning their QR code.
+    Checks both attendance eligibility and mandatory fee dues clearance.
     """
     try:
         ticket = HallTicket.objects.select_related('student', 'exam_session').get(verification_token=token)
@@ -1102,6 +1141,28 @@ def check_in_exam_candidate(request, token):
             "student_name": ticket.student.name,
             "roll_no": ticket.student.roll_no,
         }, status=status.HTTP_403_FORBIDDEN)
+
+    # Check fee dues lock
+    try:
+        from fees.models import StudentFeeRecord
+        uncleared = StudentFeeRecord.objects.filter(
+            student=ticket.student,
+            fee_category__is_mandatory_for_exam=True,
+            is_cleared_for_exam=False
+        ).select_related('fee_category')
+        unpaid = [r for r in uncleared if r.balance_due > 0]
+        if unpaid:
+            due_amount = sum(r.balance_due for r in unpaid)
+            cats = ", ".join(r.fee_category.name for r in unpaid)
+            return Response({
+                "error": f"Candidate has pending mandatory fee dues (₹{due_amount:,.2f} in {cats}). Fee clearance or Bursar No-Dues clearance is required before hall entry.",
+                "status": "FEE_DUES_LOCKED",
+                "student_name": ticket.student.name,
+                "roll_no": ticket.student.roll_no,
+                "pending_dues": float(due_amount),
+            }, status=status.HTTP_403_FORBIDDEN)
+    except Exception:
+        pass
 
     ticket.is_verified_in_hall = True
     ticket.verified_in_hall_at = timezone.now()
