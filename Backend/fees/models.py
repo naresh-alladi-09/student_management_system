@@ -88,16 +88,25 @@ class StudentFeeRecord(models.Model):
         return max(Decimal('0.00'), self.net_amount - self.paid_amount)
 
     def update_status(self):
+        if self.pk:
+            verified_sum = sum([p.amount_paid for p in self.payments.filter(verification_status='VERIFIED')]) or Decimal('0.00')
+            self.paid_amount = verified_sum
         net = self.net_amount
         if self.paid_amount >= net and net > 0:
             self.status = 'PAID'
             self.is_cleared_for_exam = True
         elif self.paid_amount > 0:
             self.status = 'PARTIAL'
+            if self.fee_category.is_mandatory_for_exam:
+                self.is_cleared_for_exam = False
         elif self.due_date and self.due_date < timezone.now().date():
             self.status = 'OVERDUE'
+            if self.fee_category.is_mandatory_for_exam:
+                self.is_cleared_for_exam = False
         else:
             self.status = 'PENDING'
+            if self.fee_category.is_mandatory_for_exam:
+                self.is_cleared_for_exam = False
 
     def save(self, *args, **kwargs):
         self.update_status()
@@ -116,6 +125,12 @@ class FeePayment(models.Model):
         ('CHEQUE', 'Cheque / Demand Draft'),
     )
 
+    VERIFICATION_STATUS_CHOICES = (
+        ('PENDING', 'Pending Verification'),
+        ('VERIFIED', 'Verified & Confirmed'),
+        ('REJECTED', 'Rejected'),
+    )
+
     receipt_number = models.CharField(max_length=64, unique=True, blank=True)
     fee_record = models.ForeignKey(StudentFeeRecord, on_delete=models.CASCADE, related_name='payments')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='fee_payments')
@@ -127,6 +142,21 @@ class FeePayment(models.Model):
         default='',
         help_text="UPI UTR number, bank transaction ID, or cheque number"
     )
+    verification_status = models.CharField(
+        max_length=20,
+        choices=VERIFICATION_STATUS_CHOICES,
+        default='VERIFIED',
+        help_text="Verification status: PENDING, VERIFIED, or REJECTED"
+    )
+    verified_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='verified_fee_payments'
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, default='')
     payment_date = models.DateTimeField(default=timezone.now)
     collected_by = models.ForeignKey(
         User,
@@ -142,7 +172,6 @@ class FeePayment(models.Model):
         ordering = ['-payment_date']
 
     def save(self, *args, **kwargs):
-        is_new = self.pk is None
         if not self.receipt_number:
             year_str = timezone.now().strftime('%Y')
             branch_str = (self.student.branch or 'GEN')[:3].upper()
@@ -151,13 +180,12 @@ class FeePayment(models.Model):
 
         super().save(*args, **kwargs)
 
-        if is_new:
-            # Update parent StudentFeeRecord paid amount
-            self.fee_record.paid_amount = (self.fee_record.paid_amount or Decimal('0.00')) + self.amount_paid
+        if hasattr(self, 'fee_record') and self.fee_record:
+            self.fee_record.update_status()
             self.fee_record.save()
 
     def __str__(self):
-        return f"Receipt {self.receipt_number}: ₹{self.amount_paid} by {self.student.name}"
+        return f"Receipt {self.receipt_number}: ₹{self.amount_paid} by {self.student.name} [{self.verification_status}]"
 
 
 class FeePaymentSetting(models.Model):
@@ -167,9 +195,16 @@ class FeePaymentSetting(models.Model):
     custom_qr_image = models.TextField(blank=True, default='', help_text="Optional base64 or URL for static PhonePe QR")
     instructions = models.TextField(
         blank=True,
-        default="Scan with PhonePe, Google Pay, or Paytm. Enter the 12-digit UTR/UPI Transaction ID to clear dues immediately."
+        default="Scan with PhonePe, Google Pay, or Paytm. Enter the 12-digit UTR/UPI Transaction ID to submit for Bursar verification."
     )
-    auto_clear_on_utr = models.BooleanField(default=True, help_text="Automatically clear fee balance when student submits UTR")
+    require_verification = models.BooleanField(
+        default=True,
+        help_text="Require bursar verification before clearing dues (Default True: only cleared after accepting)"
+    )
+    auto_clear_on_utr = models.BooleanField(
+        default=False,
+        help_text="Automatically clear fee balance when student submits UTR without bursar review"
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     @classmethod

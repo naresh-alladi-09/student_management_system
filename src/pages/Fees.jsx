@@ -15,6 +15,9 @@ import {
   getFeeCategories,
   getFeeUpiConfig,
   updateFeeUpiConfig,
+  getPendingFeeVerifications,
+  confirmFeePaymentVerification,
+  rejectFeePaymentVerification,
 } from "../services/studentservice";
 import {
   FaMoneyBillWave,
@@ -36,6 +39,9 @@ import {
   FaUserGraduate,
   FaQrcode,
   FaMobileAlt,
+  FaCopy,
+  FaClock,
+  FaBan,
 } from "react-icons/fa";
 
 function Fees() {
@@ -78,8 +84,28 @@ function Fees() {
   const [upiId, setUpiId] = useState("bursar.spec@ybl");
   const [payeeName, setPayeeName] = useState("St. Peter's Engineering College Accounts");
   const [upiInstructions, setUpiInstructions] = useState("");
-  const [customQrImage, setCustomQrImage] = useState("");
   const [isSavingUpi, setIsSavingUpi] = useState(false);
+
+  // Tabs: 'records' (Student Fee Ledger) vs 'verifications' (UTR Payment Verification Queue)
+  const [activeTab, setActiveTab] = useState("records");
+  const [verifications, setVerifications] = useState([]);
+  const [verificationsCounts, setVerificationsCounts] = useState({
+    pending: 0,
+    pending_amount: 0,
+    verified: 0,
+    rejected: 0,
+    total: 0,
+  });
+  const [verificationsLoading, setVerificationsLoading] = useState(false);
+  const [verificationsStatusFilter, setVerificationsStatusFilter] = useState("PENDING");
+  const [verificationsSearch, setVerificationsSearch] = useState("");
+  const [copiedUtrId, setCopiedUtrId] = useState(null);
+
+  // Rejection Modal States
+  const [rejectModalPayment, setRejectModalPayment] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+  const [confirmingPaymentId, setConfirmingPaymentId] = useState(null);
 
   const location = useLocation();
 
@@ -87,6 +113,9 @@ function Fees() {
     const params = new URLSearchParams(location.search);
     if (params.get("configure") === "qr" || params.get("tab") === "upi" || params.get("qr") === "1") {
       setUpiModalOpen(true);
+    }
+    if (params.get("tab") === "verifications" || params.get("tab") === "utr" || params.get("queue") === "1") {
+      setActiveTab("verifications");
     }
   }, [location.search]);
 
@@ -105,6 +134,74 @@ function Fees() {
         }
       })
       .catch(() => {});
+  };
+
+  const loadVerifications = (statusFilter = verificationsStatusFilter, search = verificationsSearch) => {
+    setVerificationsLoading(true);
+    getPendingFeeVerifications({
+      status: statusFilter,
+      q: search ? search.trim() : undefined,
+    })
+      .then((res) => {
+        if (res.data) {
+          setVerifications(res.data.results || []);
+          if (res.data.counts) {
+            setVerificationsCounts(res.data.counts);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load UTR verifications:", err);
+      })
+      .finally(() => {
+        setVerificationsLoading(false);
+      });
+  };
+
+  const handleConfirmPayment = async (payment) => {
+    if (!payment) return;
+    const confirmMsg = `Are you sure you want to verify & confirm UTR "${payment.transaction_reference}" of ₹${parseFloat(payment.amount_paid).toLocaleString()} for ${payment.student_name}?\n\nThis will immediately CLEAR the fee dues from the student's dashboard and issue an official receipt.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setConfirmingPaymentId(payment.id);
+    try {
+      await confirmFeePaymentVerification(payment.id);
+      setStatusMessage(`Payment of ₹${parseFloat(payment.amount_paid).toLocaleString()} (UTR: ${payment.transaction_reference}) verified! Fee dues cleared on student dashboard.`);
+      loadVerifications();
+      loadData();
+    } catch (err) {
+      alert("Failed to confirm payment: " + (err.response?.data?.detail || err.message));
+    } finally {
+      setConfirmingPaymentId(null);
+    }
+  };
+
+  const handleOpenRejectModal = (payment) => {
+    setRejectModalPayment(payment);
+    setRejectionReason("Transaction reference / UTR not found in institution bank account.");
+  };
+
+  const handleConfirmReject = async (e) => {
+    if (e) e.preventDefault();
+    if (!rejectModalPayment) return;
+    setIsSubmittingReject(true);
+    try {
+      await rejectFeePaymentVerification(rejectModalPayment.id, rejectionReason.trim());
+      setStatusMessage(`Payment (UTR: ${rejectModalPayment.transaction_reference}) marked as rejected. Student dues remain uncleared.`);
+      setRejectModalPayment(null);
+      loadVerifications();
+      loadData();
+    } catch (err) {
+      alert("Failed to reject payment: " + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsSubmittingReject(false);
+    }
+  };
+
+  const handleCopyUtr = (utr, paymentId) => {
+    navigator.clipboard.writeText(utr);
+    setCopiedUtrId(paymentId);
+    setTimeout(() => setCopiedUtrId(null), 2000);
   };
 
   const handleSaveUpiConfig = async (e) => {
@@ -129,6 +226,7 @@ function Fees() {
   const loadData = () => {
     setLoading(true);
     loadUpiConfig();
+    loadVerifications();
     Promise.all([
       getFeeStats(),
       getFeeCategories(),
@@ -552,15 +650,141 @@ function Fees() {
                 >
                   <FaQrcode /> Change / Upload QR Poster
                 </button>
-                <div style={{ fontSize: "11px", color: "#e9d5ff", textAlign: "center" }}>
-                  Instant update for all students
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("verifications");
+                    loadVerifications();
+                  }}
+                  style={{
+                    background: verificationsCounts.pending > 0 ? "#f59e0b" : "rgba(255, 255, 255, 0.18)",
+                    color: verificationsCounts.pending > 0 ? "#0f172a" : "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "8px 14px",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <FaClock />
+                  {verificationsCounts.pending > 0
+                    ? `${verificationsCounts.pending} Pending UTRs`
+                    : "UTR Verification Queue"}
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Control & Filter Bar */}
-          <div className="fees-control-bar">
+          {/* Master View Tabs: Fee Ledger vs UTR Verification Queue */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              borderBottom: "2px solid #e2e8f0",
+              marginBottom: "20px",
+              background: "#ffffff",
+              borderRadius: "12px 12px 0 0",
+              padding: "6px 12px 0 12px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setActiveTab("records")}
+              style={{
+                padding: "12px 20px",
+                background: "transparent",
+                border: "none",
+                borderBottom: activeTab === "records" ? "3px solid #2563eb" : "3px solid transparent",
+                color: activeTab === "records" ? "#2563eb" : "#64748b",
+                fontWeight: 700,
+                fontSize: "14px",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                transition: "all 0.2s",
+              }}
+            >
+              <FaHistory /> Student Fee Records Ledger
+              <span
+                style={{
+                  background: activeTab === "records" ? "#dbeafe" : "#f1f5f9",
+                  color: activeTab === "records" ? "#1e40af" : "#64748b",
+                  padding: "2px 8px",
+                  borderRadius: "12px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                }}
+              >
+                {records.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("verifications");
+                loadVerifications();
+              }}
+              style={{
+                padding: "12px 20px",
+                background: "transparent",
+                border: "none",
+                borderBottom: activeTab === "verifications" ? "3px solid #f59e0b" : "3px solid transparent",
+                color: activeTab === "verifications" ? "#b45309" : "#64748b",
+                fontWeight: 700,
+                fontSize: "14px",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                transition: "all 0.2s",
+              }}
+            >
+              <FaMobileAlt /> PhonePe UTR Verification Queue
+              {verificationsCounts.pending > 0 ? (
+                <span
+                  style={{
+                    background: "#ef4444",
+                    color: "#ffffff",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                  }}
+                >
+                  {verificationsCounts.pending} Pending
+                </span>
+              ) : (
+                <span
+                  style={{
+                    background: "#f1f5f9",
+                    color: "#64748b",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {verificationsCounts.total}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* ========================================================= */}
+          {/* TAB 1: STUDENT FEE RECORDS LEDGER                         */}
+          {/* ========================================================= */}
+          {activeTab === "records" && (
+            <>
+              {/* Control & Filter Bar */}
+              <div className="fees-control-bar">
             <form onSubmit={handleSearchSubmit} className="fee-search-box">
               <FaSearch className="fee-search-icon" />
               <input
@@ -784,6 +1008,468 @@ function Fees() {
               </div>
             )}
           </div>
+        </>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 2: UTR PAYMENT VERIFICATION QUEUE                     */}
+      {/* ========================================================= */}
+      {activeTab === "verifications" && (
+        <div>
+          {/* Verification Stat Counters */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: "16px",
+              marginBottom: "20px",
+            }}
+          >
+            <div
+              style={{
+                background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                borderRadius: "14px",
+                padding: "16px 20px",
+                border: "1px solid #fde68a",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>
+                ⏳ Awaiting Verification
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: "#b45309", marginTop: "4px" }}>
+                {verificationsCounts.pending}
+              </div>
+              <div style={{ fontSize: "12px", color: "#a16207", marginTop: "2px" }}>
+                Total ₹{verificationsCounts.pending_amount?.toLocaleString()} pending confirmation
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+                borderRadius: "14px",
+                padding: "16px 20px",
+                border: "1px solid #bbf7d0",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>
+                ✅ Verified &amp; Cleared
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: "#15803d", marginTop: "4px" }}>
+                {verificationsCounts.verified}
+              </div>
+              <div style={{ fontSize: "12px", color: "#16a34a", marginTop: "2px" }}>
+                Cleared on dashboard &amp; hall tickets
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
+                borderRadius: "14px",
+                padding: "16px 20px",
+                border: "1px solid #fecaca",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#991b1b", textTransform: "uppercase" }}>
+                ❌ Rejected Submissions
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: "#dc2626", marginTop: "4px" }}>
+                {verificationsCounts.rejected}
+              </div>
+              <div style={{ fontSize: "12px", color: "#b91c1c", marginTop: "2px" }}>
+                Dues preserved on dashboard
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+                borderRadius: "14px",
+                padding: "16px 20px",
+                border: "1px solid #bfdbfe",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ fontSize: "11.5px", fontWeight: 700, color: "#1e40af", textTransform: "uppercase" }}>
+                📄 Total Transactions
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: "#2563eb", marginTop: "4px" }}>
+                {verificationsCounts.total}
+              </div>
+              <div style={{ fontSize: "12px", color: "#3b82f6", marginTop: "2px" }}>
+                PhonePe / UPI transaction log
+              </div>
+            </div>
+          </div>
+
+          {/* Verification Queue Filters */}
+          <div
+            style={{
+              background: "#ffffff",
+              padding: "14px 20px",
+              borderRadius: "12px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              marginBottom: "16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            {/* Status Toggle Pills */}
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {[
+                { key: "PENDING", label: "⏳ Pending Approvals", count: verificationsCounts.pending },
+                { key: "VERIFIED", label: "✅ Verified", count: verificationsCounts.verified },
+                { key: "REJECTED", label: "❌ Rejected", count: verificationsCounts.rejected },
+                { key: "ALL", label: "All Transactions", count: verificationsCounts.total },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    setVerificationsStatusFilter(tab.key);
+                    loadVerifications(tab.key, verificationsSearch);
+                  }}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: "20px",
+                    border: verificationsStatusFilter === tab.key ? "none" : "1px solid #cbd5e1",
+                    background: verificationsStatusFilter === tab.key ? "#0f172a" : "#f8fafc",
+                    color: verificationsStatusFilter === tab.key ? "#ffffff" : "#475569",
+                    fontWeight: 700,
+                    fontSize: "12.5px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    style={{
+                      background: verificationsStatusFilter === tab.key ? "rgba(255,255,255,0.25)" : "#e2e8f0",
+                      padding: "1px 6px",
+                      borderRadius: "10px",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Search in verification queue */}
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div style={{ position: "relative" }}>
+                <FaSearch style={{ position: "absolute", left: "10px", top: "11px", color: "#94a3b8", fontSize: "12px" }} />
+                <input
+                  type="text"
+                  placeholder="Search roll no, name, or UTR..."
+                  value={verificationsSearch}
+                  onChange={(e) => {
+                    setVerificationsSearch(e.target.value);
+                    loadVerifications(verificationsStatusFilter, e.target.value);
+                  }}
+                  style={{
+                    padding: "8px 12px 8px 30px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "13px",
+                    width: "240px",
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => loadVerifications()}
+                style={{
+                  background: "#f1f5f9",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  padding: "8px 12px",
+                  color: "#334155",
+                  cursor: "pointer",
+                }}
+                title="Refresh queue"
+              >
+                <FaSync />
+              </button>
+            </div>
+          </div>
+
+          {/* Verification Queue Table */}
+          <div className="fees-table-card">
+            {verificationsLoading ? (
+              <div style={{ padding: "50px", textAlign: "center", color: "#64748b" }}>
+                <i className="fa-solid fa-spinner fa-spin"></i> Fetching verification queue...
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="modern-fee-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "18%" }}>Student Details</th>
+                      <th style={{ width: "14%" }}>Fee Category</th>
+                      <th style={{ width: "12%" }}>Amount Paid</th>
+                      <th style={{ width: "18%" }}>12-Digit PhonePe UTR</th>
+                      <th style={{ width: "14%" }}>Date &amp; Time</th>
+                      <th style={{ width: "12%" }}>Status</th>
+                      <th style={{ width: "12%", textAlign: "center" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {verifications.length > 0 ? (
+                      verifications.map((item) => {
+                        const isPending = item.verification_status === "PENDING";
+                        const isVerified = item.verification_status === "VERIFIED";
+                        const isRejected = item.verification_status === "REJECTED";
+
+                        return (
+                          <tr key={item.id}>
+                            <td>
+                              <strong>{item.student_name}</strong>
+                              <div style={{ fontSize: "11.5px", color: "#64748b" }}>
+                                {item.student_roll_no} • {item.student_branch || "SPEC"}
+                              </div>
+                            </td>
+                            <td>
+                              <div><strong>{item.category_name}</strong></div>
+                              <span style={{ fontSize: "11px", color: "#64748b" }}>
+                                Receipt: {item.receipt_number}
+                              </span>
+                            </td>
+                            <td>
+                              <strong style={{ fontSize: "15px", color: "#16a34a" }}>
+                                ₹{parseFloat(item.amount_paid).toLocaleString()}
+                              </strong>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <span
+                                  style={{
+                                    fontFamily: "monospace",
+                                    fontWeight: 800,
+                                    fontSize: "13px",
+                                    background: "#f1f5f9",
+                                    padding: "4px 8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #e2e8f0",
+                                    color: "#0f172a",
+                                    letterSpacing: "0.5px",
+                                  }}
+                                >
+                                  {item.transaction_reference}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyUtr(item.transaction_reference, item.id)}
+                                  style={{
+                                    background: "transparent",
+                                    border: "none",
+                                    color: copiedUtrId === item.id ? "#16a34a" : "#64748b",
+                                    cursor: "pointer",
+                                    padding: "4px",
+                                  }}
+                                  title="Copy UTR to check bank portal"
+                                >
+                                  {copiedUtrId === item.id ? <FaCheck /> : <FaCopy />}
+                                </button>
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ fontSize: "12.5px", color: "#334155" }}>
+                                {new Date(item.payment_date).toLocaleDateString([], {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })}
+                              </div>
+                              <div style={{ fontSize: "11px", color: "#64748b" }}>
+                                {new Date(item.payment_date).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </div>
+                            </td>
+                            <td>
+                              {isPending && (
+                                <span
+                                  style={{
+                                    background: "#fef3c7",
+                                    color: "#b45309",
+                                    padding: "4px 10px",
+                                    borderRadius: "20px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 700,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      width: "6px",
+                                      height: "6px",
+                                      borderRadius: "50%",
+                                      background: "#d97706",
+                                    }}
+                                  />
+                                  Awaiting Review
+                                </span>
+                              )}
+                              {isVerified && (
+                                <div>
+                                  <span
+                                    style={{
+                                      background: "#dcfce7",
+                                      color: "#15803d",
+                                      padding: "4px 10px",
+                                      borderRadius: "20px",
+                                      fontSize: "11.5px",
+                                      fontWeight: 700,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                    }}
+                                  >
+                                    <FaCheckCircle /> Confirmed
+                                  </span>
+                                  <div style={{ fontSize: "10.5px", color: "#64748b", marginTop: "2px" }}>
+                                    by {item.verified_by_name || "Bursar"}
+                                  </div>
+                                </div>
+                              )}
+                              {isRejected && (
+                                <div>
+                                  <span
+                                    style={{
+                                      background: "#fee2e2",
+                                      color: "#b91c1c",
+                                      padding: "4px 10px",
+                                      borderRadius: "20px",
+                                      fontSize: "11.5px",
+                                      fontWeight: 700,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                    }}
+                                  >
+                                    <FaBan /> Rejected
+                                  </span>
+                                  {item.rejection_reason && (
+                                    <div
+                                      style={{
+                                        fontSize: "10px",
+                                        color: "#dc2626",
+                                        marginTop: "2px",
+                                        maxWidth: "160px",
+                                        lineHeight: "1.3",
+                                      }}
+                                    >
+                                      {item.rejection_reason}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <div style={{ display: "flex", gap: "6px", justifyContent: "center", flexWrap: "wrap" }}>
+                                {isPending ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConfirmPayment(item)}
+                                      disabled={confirmingPaymentId === item.id}
+                                      style={{
+                                        background: "linear-gradient(135deg, #16a34a 0%, #15803d 100%)",
+                                        color: "#ffffff",
+                                        border: "none",
+                                        borderRadius: "6px",
+                                        padding: "6px 12px",
+                                        fontSize: "12px",
+                                        fontWeight: 700,
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                        boxShadow: "0 2px 6px rgba(22, 163, 74, 0.3)",
+                                      }}
+                                      title="Verify & Clear student fees immediately"
+                                    >
+                                      <FaCheck /> {confirmingPaymentId === item.id ? "Clearing..." : "Accept & Clear"}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenRejectModal(item)}
+                                      style={{
+                                        background: "#fee2e2",
+                                        color: "#dc2626",
+                                        border: "1px solid #fca5a5",
+                                        borderRadius: "6px",
+                                        padding: "6px 10px",
+                                        fontSize: "12px",
+                                        fontWeight: 700,
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                      }}
+                                      title="Reject invalid transaction"
+                                    >
+                                      <FaTimes /> Reject
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewReceipt(item.receipt_number)}
+                                    style={{
+                                      background: "#eff6ff",
+                                      color: "#2563eb",
+                                      border: "1px solid #bfdbfe",
+                                      borderRadius: "6px",
+                                      padding: "6px 10px",
+                                      fontSize: "12px",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                    }}
+                                    title="View official digital receipt"
+                                  >
+                                    <FaPrint /> Receipt
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan="7" style={{ textAlign: "center", padding: "40px", color: "#94a3b8" }}>
+                          {verificationsStatusFilter === "PENDING"
+                            ? "🎉 No pending UTR submissions awaiting verification! All payments have been processed."
+                            : "No transaction submissions found matching selected filters."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
           {/* ========================================================= */}
           {/* MODAL 1: RECORD FEE PAYMENT                               */}
@@ -1496,6 +2182,171 @@ function Fees() {
                       }}
                     >
                       {isSavingUpi ? "Saving..." : "Save UPI Settings"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* MODAL 5: REJECT UTR PAYMENT VERIFICATION                  */}
+          {/* ========================================================= */}
+          {rejectModalPayment && (
+            <div className="att-modal-overlay" onClick={() => setRejectModalPayment(null)}>
+              <div
+                className="att-alert-modal-card"
+                style={{ maxWidth: "480px" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div
+                  className="att-alert-modal-header"
+                  style={{ background: "linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)" }}
+                >
+                  <div>
+                    <h3
+                      style={{
+                        margin: 0,
+                        fontSize: "17px",
+                        color: "#ffffff",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <FaTimes style={{ color: "#fca5a5" }} />
+                      Reject UTR Payment Submission
+                    </h3>
+                    <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#fecaca" }}>
+                      Dues will remain uncleared on the student dashboard
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="att-modal-close-btn"
+                    onClick={() => setRejectModalPayment(null)}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleConfirmReject} style={{ padding: "22px" }}>
+                  {/* Summary of payment being rejected */}
+                  <div
+                    style={{
+                      background: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      borderRadius: "10px",
+                      padding: "12px 16px",
+                      marginBottom: "16px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <span style={{ color: "#7f1d1d" }}>Student:</span>
+                      <strong>
+                        {rejectModalPayment.student_name} ({rejectModalPayment.student_roll_no})
+                      </strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <span style={{ color: "#7f1d1d" }}>Amount:</span>
+                      <strong style={{ color: "#dc2626" }}>
+                        ₹{parseFloat(rejectModalPayment.amount_paid).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#7f1d1d" }}>Submitted UTR:</span>
+                      <strong style={{ fontFamily: "monospace" }}>{rejectModalPayment.transaction_reference}</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
+                      Select Preset Rejection Reason:
+                    </label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {[
+                        "Transaction reference / UTR not found in bank statement.",
+                        "Amount credited does not match the invoice amount.",
+                        "Duplicate UTR reference already used for another payment.",
+                        "Remitter name does not match student account details.",
+                      ].map((preset, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setRejectionReason(preset)}
+                          style={{
+                            textAlign: "left",
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            border: rejectionReason === preset ? "2px solid #dc2626" : "1px solid #cbd5e1",
+                            background: rejectionReason === preset ? "#fef2f2" : "#ffffff",
+                            color: rejectionReason === preset ? "#991b1b" : "#334155",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            fontWeight: rejectionReason === preset ? 700 : 500,
+                          }}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "18px" }}>
+                    <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
+                      Official Reason Dispatched to Student:
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      value={rejectionReason}
+                      onChange={(e) => setRejectionReason(e.target.value)}
+                      placeholder="Explain why this payment could not be verified..."
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "13px",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setRejectModalPayment(null)}
+                      style={{
+                        flex: 1,
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        color: "#475569",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingReject}
+                      style={{
+                        flex: 1,
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "none",
+                        background: "#dc2626",
+                        color: "#ffffff",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        cursor: isSubmittingReject ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {isSubmittingReject ? "Rejecting..." : "Confirm Rejection"}
                     </button>
                   </div>
                 </form>

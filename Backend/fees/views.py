@@ -594,10 +594,16 @@ def my_fees_view(request):
     serializer = StudentFeeRecordSerializer(records, many=True)
     payment_serializer = FeePaymentSerializer(payments, many=True)
 
+    pending_payments = [p for p in payments if p.verification_status == 'PENDING']
+    pending_count = len(pending_payments)
+    pending_amount = float(sum([p.amount_paid for p in pending_payments]) or Decimal('0.00'))
+
     summary = {
         "total_invoiced": float(total_billed),
         "total_paid": float(total_paid),
         "total_due": float(total_due),
+        "pending_verifications_count": pending_count,
+        "pending_verifications_amount": pending_amount,
         "has_mandatory_dues": has_mandatory_dues,
         "exam_clearance_status": "CLEARED" if is_exam_eligible_by_fees else "LOCKED",
         "records_count": len(records),
@@ -614,6 +620,7 @@ def my_fees_view(request):
         "summary": summary,
         "records": serializer.data,
         "payments": payment_serializer.data,
+        "pending_payments": FeePaymentSerializer(pending_payments, many=True).data,
         "upi_config": FeePaymentSettingSerializer(upi_setting).data,
     }, status=status.HTTP_200_OK)
 
@@ -690,6 +697,14 @@ def submit_student_phonepe_payment(request):
             "detail": f"This UTR Number ({utr_number}) has already been recorded for an existing payment. Please check your transaction details."
         }, status=status.HTTP_400_BAD_REQUEST)
 
+    # Check fee payment settings for verification policy:
+    # Requires bursar verification unless auto_clear_on_utr is True and require_verification is False
+    setting = FeePaymentSetting.get_settings()
+    requires_approval = True
+    if setting.auto_clear_on_utr and not setting.require_verification:
+        requires_approval = False
+    initial_status = 'PENDING' if requires_approval else 'VERIFIED'
+
     # Record Payment
     payment = FeePayment.objects.create(
         fee_record=fee_record,
@@ -697,56 +712,97 @@ def submit_student_phonepe_payment(request):
         amount_paid=amount_paid,
         payment_method='UPI',
         transaction_reference=utr_number,
+        verification_status=initial_status,
         collected_by=None,
+        verified_by=request.user if not requires_approval else None,
+        verified_at=timezone.now() if not requires_approval else None,
         remarks=remarks or f"PhonePe UPI Payment • UTR: {utr_number}"
     )
 
     fee_record.refresh_from_db()
 
-    # If balance is zero, mark cleared for exam
-    if fee_record.balance_due <= Decimal('0.00'):
-        fee_record.is_cleared_for_exam = True
-        fee_record.status = 'PAID'
-        fee_record.clearance_remarks = f"Auto-cleared via PhonePe UPI (UTR: {utr_number})"
-        fee_record.cleared_at = timezone.now()
-        fee_record.save()
+    if not requires_approval:
+        # Immediate auto-clearance mode (if configured)
+        if fee_record.balance_due <= Decimal('0.00'):
+            fee_record.is_cleared_for_exam = True
+            fee_record.status = 'PAID'
+            fee_record.clearance_remarks = f"Auto-cleared via PhonePe UPI (UTR: {utr_number})"
+            fee_record.cleared_at = timezone.now()
+            fee_record.save()
 
-    # Log in audit
-    AuditLog.log(
-        action='STUDENT_PHONEPE_PAYMENT',
-        entity='FeePayment',
-        entity_id=str(payment.id),
-        description=(
-            f"Student {student.name} ({student.roll_no}) submitted PhonePe payment of ₹{amount_paid:,.2f} "
-            f"for {fee_record.fee_category.name}. UTR: {utr_number}. Receipt: {payment.receipt_number}. Remaining: ₹{fee_record.balance_due}"
-        ),
-        user=request.user,
-        request=request
-    )
-
-    # In-app notification to student
-    user_for_student = getattr(getattr(student, 'user_profile', None), 'user', None) or request.user
-    if user_for_student:
-        Notification.objects.create(
-            user=user_for_student,
-            title=f"PhonePe Payment Verified: ₹{amount_paid:,.2f} ✅",
-            message=(
-                f"Your PhonePe payment of ₹{amount_paid:,.2f} with UTR {utr_number} has been verified and applied to {fee_record.fee_category.name}. "
-                f"Receipt No: {payment.receipt_number}. Remaining Balance: ₹{fee_record.balance_due:,.2f}."
+        AuditLog.log(
+            action='STUDENT_PHONEPE_PAYMENT',
+            entity='FeePayment',
+            entity_id=str(payment.id),
+            description=(
+                f"Student {student.name} ({student.roll_no}) submitted PhonePe payment of ₹{amount_paid:,.2f} "
+                f"for {fee_record.fee_category.name}. UTR: {utr_number}. Instant auto-clearance applied."
             ),
-            notification_type='academic'
+            user=request.user,
+            request=request
         )
 
-    return Response({
-        "success": True,
-        "message": f"Payment of ₹{amount_paid:,.2f} successfully verified via PhonePe! Receipt: {payment.receipt_number}",
-        "receipt_number": payment.receipt_number,
-        "balance_due": float(fee_record.balance_due),
-        "is_cleared_for_exam": fee_record.is_cleared_for_exam,
-        "status": fee_record.status,
-        "payment": FeePaymentSerializer(payment).data,
-        "fee_record": StudentFeeRecordSerializer(fee_record).data,
-    }, status=status.HTTP_201_CREATED)
+        user_for_student = getattr(getattr(student, 'user_profile', None), 'user', None) or request.user
+        if user_for_student:
+            Notification.objects.create(
+                user=user_for_student,
+                title=f"PhonePe Payment Verified: ₹{amount_paid:,.2f} ✅",
+                message=(
+                    f"Your PhonePe payment of ₹{amount_paid:,.2f} with UTR {utr_number} has been verified and applied to {fee_record.fee_category.name}. "
+                    f"Receipt No: {payment.receipt_number}. Remaining Balance: ₹{fee_record.balance_due:,.2f}."
+                ),
+                notification_type='academic'
+            )
+
+        return Response({
+            "success": True,
+            "verification_status": "VERIFIED",
+            "message": f"Payment of ₹{amount_paid:,.2f} successfully verified via PhonePe! Receipt: {payment.receipt_number}",
+            "receipt_number": payment.receipt_number,
+            "balance_due": float(fee_record.balance_due),
+            "is_cleared_for_exam": fee_record.is_cleared_for_exam,
+            "status": fee_record.status,
+            "payment": FeePaymentSerializer(payment).data,
+            "fee_record": StudentFeeRecordSerializer(fee_record).data,
+        }, status=status.HTTP_201_CREATED)
+
+    else:
+        # PENDING verification mode - fees DO NOT disappear until confirmed!
+        AuditLog.log(
+            action='STUDENT_PHONEPE_SUBMISSION',
+            entity='FeePayment',
+            entity_id=str(payment.id),
+            description=(
+                f"Student {student.name} ({student.roll_no}) submitted PhonePe payment of ₹{amount_paid:,.2f} with UTR {utr_number} "
+                f"for {fee_record.fee_category.name}. Awaiting admin/bursar confirmation."
+            ),
+            user=request.user,
+            request=request
+        )
+
+        user_for_student = getattr(getattr(student, 'user_profile', None), 'user', None) or request.user
+        if user_for_student:
+            Notification.objects.create(
+                user=user_for_student,
+                title=f"Payment Submitted for Verification ⏳ (₹{amount_paid:,.2f})",
+                message=(
+                    f"Your PhonePe payment of ₹{amount_paid:,.2f} (UTR: {utr_number}) for {fee_record.fee_category.name} has been received. "
+                    f"Your dues will clear from your dashboard once Accounts verifies and confirms the transaction."
+                ),
+                notification_type='academic'
+            )
+
+        return Response({
+            "success": True,
+            "verification_status": "PENDING",
+            "message": f"Payment of ₹{amount_paid:,.2f} with UTR {utr_number} submitted! Fee dues will clear once verified and confirmed by Accounts.",
+            "receipt_number": payment.receipt_number,
+            "balance_due": float(fee_record.balance_due),
+            "is_cleared_for_exam": fee_record.is_cleared_for_exam,
+            "status": fee_record.status,
+            "payment": FeePaymentSerializer(payment).data,
+            "fee_record": StudentFeeRecordSerializer(fee_record).data,
+        }, status=status.HTTP_201_CREATED)
 
 
 # =====================================================================
@@ -811,3 +867,197 @@ def list_create_categories(request):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# =====================================================================
+# 10. BURSAR / ADMIN UTR PAYMENT VERIFICATION QUEUE
+# =====================================================================
+
+@api_view(['GET'])
+@permission_classes([IsTeacherOrAdmin])
+def list_pending_verifications(request):
+    """
+    Lists payments submitted by students for bursar/admin verification.
+    Supports filtering by status ('PENDING', 'VERIFIED', 'REJECTED', 'ALL'),
+    search query (student name, roll no, UTR, receipt number), branch, and category.
+    """
+    status_filter = request.GET.get('status', 'PENDING').upper()
+    search = request.GET.get('q', '').strip()
+    branch = request.GET.get('branch', '').strip()
+    category_id = request.GET.get('category')
+
+    queryset = FeePayment.objects.select_related(
+        'student', 'fee_record__fee_category', 'verified_by', 'collected_by'
+    ).order_by('-payment_date')
+
+    if status_filter != 'ALL':
+        if status_filter in ['PENDING', 'VERIFIED', 'REJECTED']:
+            queryset = queryset.filter(verification_status=status_filter)
+
+    if search:
+        queryset = queryset.filter(
+            Q(student__name__icontains=search) |
+            Q(student__roll_no__icontains=search) |
+            Q(transaction_reference__icontains=search) |
+            Q(receipt_number__icontains=search)
+        )
+
+    if branch and branch != 'ALL':
+        queryset = queryset.filter(student__branch__iexact=branch)
+
+    if category_id and category_id != 'ALL':
+        queryset = queryset.filter(fee_record__fee_category_id=category_id)
+
+    # Summary counts
+    total_pending = FeePayment.objects.filter(verification_status='PENDING').count()
+    total_pending_amount = sum(
+        [p.amount_paid for p in FeePayment.objects.filter(verification_status='PENDING')]
+    ) or Decimal('0.00')
+    total_verified = FeePayment.objects.filter(verification_status='VERIFIED').count()
+    total_rejected = FeePayment.objects.filter(verification_status='REJECTED').count()
+
+    serializer = FeePaymentSerializer(queryset, many=True)
+    return Response({
+        "results": serializer.data,
+        "counts": {
+            "pending": total_pending,
+            "pending_amount": float(total_pending_amount),
+            "verified": total_verified,
+            "rejected": total_rejected,
+            "total": total_pending + total_verified + total_rejected,
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def confirm_verify_payment(request, payment_id):
+    """
+    Admin/Bursar accepts and confirms a student UTR submission.
+    Clears the fees from the student dashboard, updates the balance,
+    and automatically clears exam eligibility if balance reaches zero.
+    """
+    payment = get_object_or_404(
+        FeePayment.objects.select_related('student', 'fee_record__fee_category'),
+        id=payment_id
+    )
+
+    fee_record = payment.fee_record
+    student = payment.student
+
+    payment.verification_status = 'VERIFIED'
+    payment.verified_by = request.user
+    payment.verified_at = timezone.now()
+    payment.rejection_reason = ''
+    payment.save()  # Triggers fee_record.update_status() and fee_record.save()
+
+    fee_record.refresh_from_db()
+
+    # If balance reached zero, automatically grant exam clearance
+    if fee_record.balance_due <= Decimal('0.00'):
+        fee_record.status = 'PAID'
+        fee_record.is_cleared_for_exam = True
+        verifier_name = request.user.get_full_name() or request.user.username
+        fee_record.clearance_remarks = f"Cleared upon UTR verification by {verifier_name} (UTR: {payment.transaction_reference})"
+        fee_record.cleared_at = timezone.now()
+        fee_record.cleared_by = request.user
+        fee_record.save()
+
+    # Institutional audit log
+    AuditLog.log(
+        action='FEE_PAYMENT_VERIFIED',
+        entity='FeePayment',
+        entity_id=str(payment.id),
+        description=(
+            f"Bursar {request.user.username} verified & confirmed payment of ₹{payment.amount_paid} "
+            f"(UTR: {payment.transaction_reference}) for {student.name} ({student.roll_no}). "
+            f"Receipt No: {payment.receipt_number}. Remaining Balance: ₹{fee_record.balance_due}."
+        ),
+        user=request.user,
+        request=request
+    )
+
+    # In-App Notification to student
+    user_for_student = getattr(getattr(student, 'user_profile', None), 'user', None)
+    if user_for_student:
+        Notification.objects.create(
+            user=user_for_student,
+            title=f"Fee Payment Verified & Dues Cleared: ₹{payment.amount_paid} ✅",
+            message=(
+                f"Great news! Your payment of ₹{payment.amount_paid} (UTR: {payment.transaction_reference}) "
+                f"for {fee_record.fee_category.name} has been verified and confirmed by Accounts. "
+                f"Official Receipt: {payment.receipt_number}. Remaining Balance: ₹{fee_record.balance_due}."
+            ),
+            notification_type='academic'
+        )
+
+    return Response({
+        "success": True,
+        "message": f"Payment of ₹{payment.amount_paid} verified successfully! Fee dues updated and receipt generated.",
+        "receipt_number": payment.receipt_number,
+        "balance_due": float(fee_record.balance_due),
+        "is_cleared_for_exam": fee_record.is_cleared_for_exam,
+        "payment": FeePaymentSerializer(payment).data,
+        "fee_record": StudentFeeRecordSerializer(fee_record).data,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def reject_verify_payment(request, payment_id):
+    """
+    Admin/Bursar rejects an invalid student UTR submission.
+    Dues remain uncleared and the student is notified with the rejection reason.
+    """
+    reason = (request.data.get('reason') or '').strip()
+    if not reason:
+        reason = "Transaction reference / UTR not found or amount mismatch in institutional account."
+
+    payment = get_object_or_404(
+        FeePayment.objects.select_related('student', 'fee_record__fee_category'),
+        id=payment_id
+    )
+
+    fee_record = payment.fee_record
+    student = payment.student
+
+    payment.verification_status = 'REJECTED'
+    payment.verified_by = request.user
+    payment.verified_at = timezone.now()
+    payment.rejection_reason = reason
+    payment.save()  # Triggers fee_record.update_status()
+
+    fee_record.refresh_from_db()
+
+    # Institutional audit log
+    AuditLog.log(
+        action='FEE_PAYMENT_REJECTED',
+        entity='FeePayment',
+        entity_id=str(payment.id),
+        description=(
+            f"Bursar {request.user.username} rejected payment of ₹{payment.amount_paid} "
+            f"(UTR: {payment.transaction_reference}) for {student.name} ({student.roll_no}). Reason: {reason}"
+        ),
+        user=request.user,
+        request=request
+    )
+
+    # In-App Notification to student
+    user_for_student = getattr(getattr(student, 'user_profile', None), 'user', None)
+    if user_for_student:
+        Notification.objects.create(
+            user=user_for_student,
+            title=f"Fee Payment Verification Rejected ❌ (UTR: {payment.transaction_reference})",
+            message=(
+                f"Your fee payment submission of ₹{payment.amount_paid} for {fee_record.fee_category.name} "
+                f"could not be verified. Reason: {reason}. Your fee dues remain pending. Please contact the Accounts Office."
+            ),
+            notification_type='academic'
+        )
+
+    return Response({
+        "success": True,
+        "message": f"Payment submission marked as rejected.",
+        "payment": FeePaymentSerializer(payment).data,
+        "fee_record": StudentFeeRecordSerializer(fee_record).data,
+    }, status=status.HTTP_200_OK)

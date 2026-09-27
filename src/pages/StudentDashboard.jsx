@@ -3497,6 +3497,70 @@ const StudentDashboard = () => {
             </div>
           </div>
 
+          {/* Pending Verification Notice Banner */}
+          {feesData?.summary?.pending_verifications_count > 0 && (
+            <div
+              className="no-print"
+              style={{
+                background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                border: "1px solid #fde68a",
+                borderRadius: "14px",
+                padding: "16px 20px",
+                marginBottom: "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "14px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <div
+                  style={{
+                    width: "42px",
+                    height: "42px",
+                    borderRadius: "50%",
+                    background: "#fde047",
+                    color: "#854d0e",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "20px",
+                    flexShrink: 0,
+                  }}
+                >
+                  ⏳
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: "#854d0e", fontSize: "14px" }}>
+                    Payment Submitted — Under Bursar / Accounts Verification
+                  </div>
+                  <div style={{ color: "#a16207", fontSize: "12.5px", marginTop: "3px" }}>
+                    You have submitted ₹{feesData.summary.pending_verifications_amount?.toLocaleString()} via PhonePe UPI.
+                    Fee dues remain on your dashboard until the Bursar verifies and confirms your 12-digit UTR reference. Once confirmed, dues will clear and hall tickets will unlock automatically.
+                  </div>
+                </div>
+              </div>
+              <span
+                style={{
+                  background: "#fef08a",
+                  color: "#854d0e",
+                  border: "1px solid #facc15",
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                ⏳ {feesData.summary.pending_verifications_count} Under Verification
+              </span>
+            </div>
+          )}
+
           {/* Dedicated On-Page PhonePe UPI Instant Clearance Card */}
           <div
             className="no-print"
@@ -3922,70 +3986,160 @@ const StudentDashboard = () => {
                       <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Amount Paid</th>
                       <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Payment Mode</th>
                       <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Transaction Ref / UTR</th>
+                      <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700 }}>Verification Status</th>
                       <th style={{ padding: "10px 14px", color: "#475569", fontWeight: 700, textAlign: "right" }}>
                         Action
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {feesData.payments.map((p) => (
-                      <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                        <td style={{ padding: "12px 14px", fontWeight: 700, color: "#2563eb" }}>
-                          {p.receipt_number}
-                        </td>
-                        <td style={{ padding: "12px 14px", color: "#475569" }}>
-                          {new Date(p.payment_date).toLocaleDateString([], {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </td>
-                        <td style={{ padding: "12px 14px", color: "#1e293b", fontWeight: 600 }}>
-                          {p.category_name}
-                        </td>
-                        <td style={{ padding: "12px 14px", fontWeight: 800, color: "#16a34a" }}>
-                          ₹{parseFloat(p.amount_paid).toLocaleString()}
-                        </td>
-                        <td style={{ padding: "12px 14px", color: "#475569" }}>
-                          <span
-                            style={{
-                              background: "#f1f5f9",
-                              padding: "2px 8px",
-                              borderRadius: "4px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {p.payment_method}
-                          </span>
-                        </td>
-                        <td style={{ padding: "12px 14px", color: "#64748b", fontFamily: "monospace" }}>
-                          {p.transaction_reference || "—"}
-                        </td>
-                        <td style={{ padding: "12px 14px", textAlign: "right" }}>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenReceipt(p.receipt_number)}
-                            disabled={loadingReceipt}
-                            style={{
-                              padding: "6px 14px",
-                              borderRadius: "6px",
-                              border: "1px solid #cbd5e1",
-                              background: "#f8fafc",
-                              color: "#1e293b",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                            }}
-                          >
-                            <FaPrint /> Print Official Receipt
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {feesData.payments.map((p) => {
+                      const isPending = p.verification_status === "PENDING";
+                      const isVerified = p.verification_status === "VERIFIED";
+                      const isRejected = p.verification_status === "REJECTED";
+
+                      return (
+                        <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "12px 14px", fontWeight: 700, color: "#2563eb" }}>
+                            {p.receipt_number}
+                          </td>
+                          <td style={{ padding: "12px 14px", color: "#475569" }}>
+                            {new Date(p.payment_date).toLocaleDateString([], {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </td>
+                          <td style={{ padding: "12px 14px", color: "#1e293b", fontWeight: 600 }}>
+                            {p.category_name}
+                          </td>
+                          <td style={{ padding: "12px 14px", fontWeight: 800, color: "#16a34a" }}>
+                            ₹{parseFloat(p.amount_paid).toLocaleString()}
+                          </td>
+                          <td style={{ padding: "12px 14px", color: "#475569" }}>
+                            <span
+                              style={{
+                                background: "#f1f5f9",
+                                padding: "2px 8px",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {p.payment_method}
+                            </span>
+                          </td>
+                          <td style={{ padding: "12px 14px", color: "#64748b", fontFamily: "monospace" }}>
+                            {p.transaction_reference || "—"}
+                          </td>
+                          <td style={{ padding: "12px 14px" }}>
+                            {isPending && (
+                              <span
+                                style={{
+                                  background: "#fef3c7",
+                                  color: "#b45309",
+                                  padding: "3px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                ⏳ Under Review
+                              </span>
+                            )}
+                            {isVerified && (
+                              <span
+                                style={{
+                                  background: "#dcfce7",
+                                  color: "#15803d",
+                                  padding: "3px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <FaCheckCircle /> Confirmed &amp; Cleared
+                              </span>
+                            )}
+                            {isRejected && (
+                              <div>
+                                <span
+                                  style={{
+                                    background: "#fee2e2",
+                                    color: "#b91c1c",
+                                    padding: "3px 8px",
+                                    borderRadius: "12px",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                  }}
+                                >
+                                  ❌ Rejected
+                                </span>
+                                {p.rejection_reason && (
+                                  <div style={{ fontSize: "10.5px", color: "#dc2626", marginTop: "2px" }}>
+                                    {p.rejection_reason}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                            {isVerified ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenReceipt(p.receipt_number)}
+                                disabled={loadingReceipt}
+                                style={{
+                                  padding: "6px 14px",
+                                  borderRadius: "6px",
+                                  border: "1px solid #cbd5e1",
+                                  background: "#f8fafc",
+                                  color: "#1e293b",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <FaPrint /> Print Official Receipt
+                              </button>
+                            ) : isPending ? (
+                              <span style={{ fontSize: "11.5px", color: "#a16207", fontWeight: 600 }}>
+                                ⏳ Awaiting Bursar Approval
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openPhonePePayment()}
+                                style={{
+                                  padding: "5px 12px",
+                                  borderRadius: "6px",
+                                  border: "none",
+                                  background: "#5f259f",
+                                  color: "#ffffff",
+                                  fontSize: "11.5px",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Resubmit Payment
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -5238,107 +5392,190 @@ const StudentDashboard = () => {
             {/* Modal Body */}
             <div style={{ padding: "24px" }}>
               {phonePeSuccess ? (
-                /* Celebration Success View */
-                <div style={{ textAlign: "center", padding: "16px 8px" }}>
-                  <div
-                    style={{
-                      width: "72px",
-                      height: "72px",
-                      borderRadius: "50%",
-                      background: "#dcfce7",
-                      color: "#16a34a",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "36px",
-                      marginBottom: "16px",
-                    }}
-                  >
-                    <FaCheckCircle />
-                  </div>
-                  <h2 style={{ margin: "0 0 6px 0", fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>
-                    Payment Verified &amp; Dues Cleared!
-                  </h2>
-                  <p style={{ margin: "0 0 20px 0", color: "#059669", fontSize: "13.5px", fontWeight: 600 }}>
-                    {phonePeSuccess.message}
-                  </p>
-
-                  <div
-                    style={{
-                      background: "#f8fafc",
-                      borderRadius: "12px",
-                      padding: "16px",
-                      textAlign: "left",
-                      fontSize: "13px",
-                      marginBottom: "24px",
-                      border: "1px solid #e2e8f0",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                      <span style={{ color: "#64748b" }}>Receipt Number:</span>
-                      <strong style={{ color: "#2563eb" }}>{phonePeSuccess.receipt_number}</strong>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                      <span style={{ color: "#64748b" }}>Amount Paid:</span>
-                      <strong style={{ color: "#16a34a" }}>₹{parseFloat(phonePeAmount).toLocaleString()}</strong>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                      <span style={{ color: "#64748b" }}>Remaining Dues:</span>
-                      <strong style={{ color: phonePeSuccess.balance_due > 0 ? "#dc2626" : "#16a34a" }}>
-                        ₹{phonePeSuccess.balance_due.toLocaleString()}
-                      </strong>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#64748b" }}>Hall Ticket Clearance:</span>
-                      <strong style={{ color: phonePeSuccess.is_cleared_for_exam ? "#16a34a" : "#b45309" }}>
-                        {phonePeSuccess.is_cleared_for_exam ? "No-Dues Cleared • Unlocked 🎓" : "Pending Balance"}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "10px" }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPhonePeModal(false);
-                        handleOpenReceipt(phonePeSuccess.receipt_number);
-                      }}
+                phonePeSuccess.verification_status === "PENDING" ? (
+                  /* Pending Verification State View */
+                  <div style={{ textAlign: "center", padding: "16px 8px" }}>
+                    <div
                       style={{
-                        flex: 1,
-                        padding: "12px",
-                        background: "#2563eb",
-                        color: "#ffffff",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontWeight: 700,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "flex",
+                        width: "72px",
+                        height: "72px",
+                        borderRadius: "50%",
+                        background: "#fef3c7",
+                        color: "#b45309",
+                        display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: "6px",
+                        fontSize: "36px",
+                        marginBottom: "16px",
                       }}
                     >
-                      <FaPrint /> View Official Receipt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowPhonePeModal(false)}
+                      ⏳
+                    </div>
+                    <h2 style={{ margin: "0 0 6px 0", fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>
+                      Payment Submitted for Verification ⏳
+                    </h2>
+                    <p style={{ margin: "0 0 20px 0", color: "#b45309", fontSize: "13.5px", fontWeight: 600 }}>
+                      {phonePeSuccess.message}
+                    </p>
+
+                    <div
                       style={{
-                        padding: "12px 20px",
-                        background: "#f1f5f9",
-                        color: "#334155",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "8px",
-                        fontWeight: 600,
+                        background: "#fffbeb",
+                        borderRadius: "12px",
+                        padding: "16px",
+                        textAlign: "left",
                         fontSize: "13px",
-                        cursor: "pointer",
+                        marginBottom: "24px",
+                        border: "1px solid #fde68a",
                       }}
                     >
-                      Close
-                    </button>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span style={{ color: "#92400e" }}>Submission Ref / Receipt:</span>
+                        <strong style={{ color: "#2563eb" }}>{phonePeSuccess.receipt_number}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span style={{ color: "#92400e" }}>Amount Submitted:</span>
+                        <strong style={{ color: "#16a34a" }}>₹{parseFloat(phonePeAmount).toLocaleString()}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span style={{ color: "#92400e" }}>PhonePe UTR Number:</span>
+                        <strong style={{ fontFamily: "monospace", color: "#0f172a" }}>{phonePeUtr}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span style={{ color: "#92400e" }}>Verification Status:</span>
+                        <strong style={{ color: "#d97706" }}>⏳ Pending Accounts Confirmation</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#92400e" }}>Fee Clearance:</span>
+                        <span style={{ color: "#b45309", fontSize: "12px", fontWeight: 600 }}>
+                          Dues will clear as soon as Accounts verifies UTR
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowPhonePeModal(false)}
+                        style={{
+                          flex: 1,
+                          padding: "12px",
+                          background: "#0f172a",
+                          color: "#ffffff",
+                          border: "none",
+                          borderRadius: "8px",
+                          fontWeight: 700,
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        ✓ Understood &amp; Close
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* Instant Verified Clearance View */
+                  <div style={{ textAlign: "center", padding: "16px 8px" }}>
+                    <div
+                      style={{
+                        width: "72px",
+                        height: "72px",
+                        borderRadius: "50%",
+                        background: "#dcfce7",
+                        color: "#16a34a",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "36px",
+                        marginBottom: "16px",
+                      }}
+                    >
+                      <FaCheckCircle />
+                    </div>
+                    <h2 style={{ margin: "0 0 6px 0", fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>
+                      Payment Verified &amp; Dues Cleared!
+                    </h2>
+                    <p style={{ margin: "0 0 20px 0", color: "#059669", fontSize: "13.5px", fontWeight: 600 }}>
+                      {phonePeSuccess.message}
+                    </p>
+
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        borderRadius: "12px",
+                        padding: "16px",
+                        textAlign: "left",
+                        fontSize: "13px",
+                        marginBottom: "24px",
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                        <span style={{ color: "#64748b" }}>Receipt Number:</span>
+                        <strong style={{ color: "#2563eb" }}>{phonePeSuccess.receipt_number}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                        <span style={{ color: "#64748b" }}>Amount Paid:</span>
+                        <strong style={{ color: "#16a34a" }}>₹{parseFloat(phonePeAmount).toLocaleString()}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                        <span style={{ color: "#64748b" }}>Remaining Dues:</span>
+                        <strong style={{ color: phonePeSuccess.balance_due > 0 ? "#dc2626" : "#16a34a" }}>
+                          ₹{phonePeSuccess.balance_due.toLocaleString()}
+                        </strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#64748b" }}>Hall Ticket Clearance:</span>
+                        <strong style={{ color: phonePeSuccess.is_cleared_for_exam ? "#16a34a" : "#b45309" }}>
+                          {phonePeSuccess.is_cleared_for_exam ? "No-Dues Cleared • Unlocked 🎓" : "Pending Balance"}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPhonePeModal(false);
+                          handleOpenReceipt(phonePeSuccess.receipt_number);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: "12px",
+                          background: "#2563eb",
+                          color: "#ffffff",
+                          border: "none",
+                          borderRadius: "8px",
+                          fontWeight: 700,
+                          fontSize: "13px",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <FaPrint /> View Official Receipt
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowPhonePeModal(false)}
+                        style={{
+                          padding: "12px 20px",
+                          background: "#f1f5f9",
+                          color: "#334155",
+                          border: "1px solid #cbd5e1",
+                          borderRadius: "8px",
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )
               ) : (
                 /* Payment & QR Submission Flow */
                 (() => {

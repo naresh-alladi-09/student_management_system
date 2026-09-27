@@ -11,6 +11,9 @@ from .views import (
     list_create_categories,
     submit_student_phonepe_payment,
     get_update_upi_config,
+    list_pending_verifications,
+    confirm_verify_payment,
+    reject_verify_payment,
 )
 
 urlpatterns = [
@@ -25,4 +28,7 @@ urlpatterns = [
     path('remind/', send_fee_reminder, name='send_fee_reminder'),
     path('my/', my_fees_view, name='my_fees_view'),
     path('categories/', list_create_categories, name='list_create_categories'),
+    path('verifications/', list_pending_verifications, name='list_pending_verifications'),
+    path('verifications/<int:payment_id>/confirm/', confirm_verify_payment, name='confirm_verify_payment'),
+    path('verifications/<int:payment_id>/reject/', reject_verify_payment, name='reject_verify_payment'),
 ]

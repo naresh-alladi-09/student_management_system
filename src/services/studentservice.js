@@ -446,3 +446,15 @@ export const getFeeUpiConfig = () => {
 export const updateFeeUpiConfig = (configData) => {
   return apiClient.post("/api/fees/upi-config/", configData);
 };
+
+export const getPendingFeeVerifications = (params) => {
+  return apiClient.get("/api/fees/verifications/", { params });
+};
+
+export const confirmFeePaymentVerification = (paymentId, data) => {
+  return apiClient.post(`/api/fees/verifications/${paymentId}/confirm/`, data || {});
+};
+
+export const rejectFeePaymentVerification = (paymentId, reason) => {
+  return apiClient.post(`/api/fees/verifications/${paymentId}/reject/`, { reason });
+};

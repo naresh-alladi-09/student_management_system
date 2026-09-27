@@ -21,8 +21,13 @@ class FeeStructureSerializer(serializers.ModelSerializer):
 class FeePaymentSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.name', read_only=True)
     student_roll_no = serializers.CharField(source='student.roll_no', read_only=True)
+    student_branch = serializers.CharField(source='student.branch', read_only=True)
+    student_year = serializers.IntegerField(source='student.year', read_only=True)
+    student_semester = serializers.CharField(source='student.semester', read_only=True)
     category_name = serializers.CharField(source='fee_record.fee_category.name', read_only=True)
+    category_code = serializers.CharField(source='fee_record.fee_category.code', read_only=True)
     collected_by_name = serializers.SerializerMethodField()
+    verified_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = FeePayment
@@ -31,7 +36,12 @@ class FeePaymentSerializer(serializers.ModelSerializer):
     def get_collected_by_name(self, obj):
         if obj.collected_by:
             return obj.collected_by.get_full_name() or obj.collected_by.username
-        return 'System Automated'
+        return 'Self-Service UPI'
+
+    def get_verified_by_name(self, obj):
+        if obj.verified_by:
+            return obj.verified_by.get_full_name() or obj.verified_by.username
+        return 'System Automated' if obj.verification_status == 'VERIFIED' and not obj.verified_by else '—'
 
 
 class StudentFeeRecordSerializer(serializers.ModelSerializer):
