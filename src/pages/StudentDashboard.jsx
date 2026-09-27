@@ -282,10 +282,22 @@ const StudentDashboard = () => {
   const [qrViewMode, setQrViewMode] = useState("auto");
 
   const openPhonePePayment = (rec) => {
-    const targetRec = rec || feesData?.records?.find((r) => parseFloat(r.balance_due) > 0);
+    let targetRec = rec;
     if (!targetRec) {
-      alert("All enrolled fees are already fully paid! No outstanding dues.");
-      return;
+      targetRec = feesData?.records?.find((r) => parseFloat(r.balance_due || 0) > 0);
+    }
+    if (!targetRec && feesData?.records && feesData.records.length > 0) {
+      targetRec = feesData.records[0];
+    }
+    if (!targetRec) {
+      targetRec = {
+        id: null,
+        category_name: "Academic Fee Dues",
+        category_code: "FEES",
+        balance_due: feesData?.summary?.total_due || 0,
+        semester: currentUser?.semester || 1,
+        academic_year: "2025-2026",
+      };
     }
 
     // Always fetch latest PhonePe UPI config directly from backend
@@ -296,7 +308,10 @@ const StudentDashboard = () => {
       .catch(() => {});
 
     setPhonePeRecord(targetRec);
-    setPhonePeAmount(String(targetRec.balance_due));
+    const payable = targetRec.balance_due && parseFloat(targetRec.balance_due) > 0
+      ? String(targetRec.balance_due)
+      : (feesData?.summary?.total_due ? String(feesData.summary.total_due) : "0");
+    setPhonePeAmount(payable);
     setPhonePeUtr("");
     setPhonePeRemarks("");
     setPhonePeError(null);
@@ -2631,9 +2646,30 @@ const StudentDashboard = () => {
                     <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                       <button
                         type="button"
-                        onClick={() => setActiveTab("fees")}
+                        onClick={() => openPhonePePayment()}
                         style={{
                           padding: "12px 24px",
+                          borderRadius: "10px",
+                          background: "linear-gradient(135deg, #5f259f 0%, #3f156d 100%)",
+                          color: "#ffffff",
+                          border: "none",
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          boxShadow: "0 4px 14px rgba(95, 37, 159, 0.35)",
+                        }}
+                      >
+                        <FaMobileAlt /> Pay via PhonePe QR &amp; Unlock
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("fees")}
+                        style={{
+                          padding: "12px 20px",
                           borderRadius: "10px",
                           background: "#2563eb",
                           color: "#ffffff",
@@ -2647,7 +2683,7 @@ const StudentDashboard = () => {
                           boxShadow: "0 4px 12px rgba(37, 99, 235, 0.2)",
                         }}
                       >
-                        <FaCreditCard /> View Fee Ledger &amp; Clear Dues
+                        <FaCreditCard /> View Fee Ledger
                       </button>
 
                       <button
@@ -3383,6 +3419,32 @@ const StudentDashboard = () => {
               <div style={{ fontSize: "12px", color: feesData?.summary?.total_due > 0 ? "#b91c1c" : "#166534" }}>
                 {feesData?.summary?.total_due > 0 ? "Pending clearance" : "All accounts cleared"}
               </div>
+
+              {feesData?.summary?.total_due > 0 && (
+                <button
+                  type="button"
+                  onClick={() => openPhonePePayment()}
+                  style={{
+                    marginTop: "10px",
+                    width: "100%",
+                    padding: "7px 12px",
+                    background: "linear-gradient(135deg, #5f259f 0%, #3f156d 100%)",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    boxShadow: "0 2px 6px rgba(95, 37, 159, 0.25)",
+                  }}
+                >
+                  <FaMobileAlt /> Scan PhonePe QR
+                </button>
+              )}
             </div>
 
             <div
@@ -3431,6 +3493,164 @@ const StudentDashboard = () => {
                 {feesData?.summary?.has_mandatory_dues
                   ? "Exam Hall Ticket is locked until cleared"
                   : "Admit Card Unlocked for Exams"}
+              </div>
+            </div>
+          </div>
+
+          {/* Dedicated On-Page PhonePe UPI Instant Clearance Card */}
+          <div
+            className="no-print"
+            style={{
+              background: "linear-gradient(135deg, #2e0854 0%, #4a157d 60%, #5f259f 100%)",
+              borderRadius: "18px",
+              padding: "24px 28px",
+              marginBottom: "24px",
+              color: "#ffffff",
+              boxShadow: "0 10px 25px rgba(95, 37, 159, 0.25)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "24px",
+            }}
+          >
+            <div style={{ flex: "1 1 360px", maxWidth: "600px" }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "rgba(255, 255, 255, 0.15)",
+                  padding: "4px 12px",
+                  borderRadius: "20px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                  marginBottom: "10px",
+                }}
+              >
+                <FaMobileAlt /> Official PhonePe / UPI Clearance Portal
+              </div>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "20px", fontWeight: 800 }}>
+                Scan &amp; Clear College Fees Instantly
+              </h3>
+              <p style={{ margin: "0 0 16px 0", color: "#e9d5ff", fontSize: "13.5px", lineHeight: "1.5" }}>
+                Scan using PhonePe, Google Pay, or Paytm. Enter your 12-digit UPI UTR reference number below to clear dues immediately and unlock your Semester Examination Hall Ticket.
+              </p>
+
+              <div
+                style={{
+                  background: "rgba(255, 255, 255, 0.1)",
+                  borderRadius: "12px",
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  marginBottom: "16px",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "11px", color: "#d8b4fe", textTransform: "uppercase", fontWeight: 700 }}>
+                    Official Payee VPA
+                  </div>
+                  <div style={{ fontSize: "15px", fontWeight: 800, marginTop: "2px" }}>
+                    {phonePeUpiConfig?.upi_id || feesData?.upi_config?.upi_id || "6301609560@ybl"}
+                  </div>
+                  <div style={{ fontSize: "11.5px", color: "#e9d5ff" }}>
+                    {phonePeUpiConfig?.payee_name || feesData?.upi_config?.payee_name || "Naresh Alladi"}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const vpa = phonePeUpiConfig?.upi_id || feesData?.upi_config?.upi_id || "6301609560@ybl";
+                    navigator.clipboard.writeText(vpa);
+                    setCopiedUpi(true);
+                    setTimeout(() => setCopiedUpi(false), 2000);
+                  }}
+                  style={{
+                    background: "#ffffff",
+                    color: "#5f259f",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "8px 14px",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <FaCopy /> {copiedUpi ? "Copied!" : "Copy VPA"}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openPhonePePayment()}
+                style={{
+                  background: "#22c55e",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "10px",
+                  padding: "12px 24px",
+                  fontSize: "14px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  boxShadow: "0 4px 14px rgba(34, 197, 94, 0.4)",
+                }}
+              >
+                <FaCheckCircle /> Open QR Code &amp; Submit UTR to Clear Dues
+              </button>
+            </div>
+
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: "16px",
+                padding: "14px",
+                textAlign: "center",
+                boxShadow: "0 10px 25px rgba(0, 0, 0, 0.25)",
+                maxWidth: "200px",
+                cursor: "pointer",
+              }}
+              onClick={() => openPhonePePayment()}
+              title="Click to expand PhonePe Payment Modal"
+            >
+              <div style={{ fontSize: "11px", fontWeight: 700, color: "#5f259f", marginBottom: "8px", textTransform: "uppercase" }}>
+                Official QR
+              </div>
+              <div
+                style={{
+                  display: "inline-block",
+                  background: "#ffffff",
+                  padding: "6px",
+                  borderRadius: "10px",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                {(phonePeUpiConfig?.custom_qr_image || feesData?.upi_config?.custom_qr_image) ? (
+                  <img
+                    src={phonePeUpiConfig?.custom_qr_image || feesData?.upi_config?.custom_qr_image}
+                    alt="PhonePe QR"
+                    style={{ width: "140px", height: "140px", objectFit: "contain", display: "block" }}
+                  />
+                ) : (
+                  <QRCodeSVG
+                    value={`upi://pay?pa=${encodeURIComponent(phonePeUpiConfig?.upi_id || feesData?.upi_config?.upi_id || "6301609560@ybl")}&pn=${encodeURIComponent(phonePeUpiConfig?.payee_name || feesData?.upi_config?.payee_name || "Naresh Alladi")}&cu=INR`}
+                    size={140}
+                    level="M"
+                  />
+                )}
+              </div>
+              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "6px", fontWeight: 600 }}>
+                Click to Pay &amp; Clear
               </div>
             </div>
           </div>

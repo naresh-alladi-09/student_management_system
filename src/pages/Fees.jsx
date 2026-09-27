@@ -1180,13 +1180,31 @@ function Fees() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            if (file.size > 5 * 1024 * 1024) {
-                              alert("Please select an image smaller than 5MB.");
-                              return;
-                            }
                             const reader = new FileReader();
-                            reader.onload = () => {
-                              setCustomQrImage(reader.result);
+                            reader.onload = (ev) => {
+                              const img = new Image();
+                              img.onload = () => {
+                                const canvas = document.createElement("canvas");
+                                const maxDim = 700;
+                                let width = img.width;
+                                let height = img.height;
+                                if (width > maxDim || height > maxDim) {
+                                  if (width > height) {
+                                    height = Math.round((height * maxDim) / width);
+                                    width = maxDim;
+                                  } else {
+                                    width = Math.round((width * maxDim) / height);
+                                    height = maxDim;
+                                  }
+                                }
+                                canvas.width = width;
+                                canvas.height = height;
+                                const ctx = canvas.getContext("2d");
+                                ctx.drawImage(img, 0, 0, width, height);
+                                const optimizedBase64 = canvas.toDataURL("image/jpeg", 0.92);
+                                setCustomQrImage(optimizedBase64);
+                              };
+                              img.src = ev.target.result;
                             };
                             reader.readAsDataURL(file);
                           }
