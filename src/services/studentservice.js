@@ -434,3 +434,15 @@ export const getMyFees = () => {
 export const getFeeCategories = () => {
   return apiClient.get("/api/fees/categories/");
 };
+
+export const submitStudentPhonePePayment = (paymentData) => {
+  return apiClient.post("/api/fees/phonepe-pay/", paymentData);
+};
+
+export const getFeeUpiConfig = () => {
+  return apiClient.get("/api/fees/upi-config/");
+};
+
+export const updateFeeUpiConfig = (configData) => {
+  return apiClient.post("/api/fees/upi-config/", configData);
+};

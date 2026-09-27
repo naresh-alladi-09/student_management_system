@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import "../styles/fees.css";
@@ -11,6 +12,8 @@ import {
   bulkGenerateCohortFees,
   getFeeReceipt,
   getFeeCategories,
+  getFeeUpiConfig,
+  updateFeeUpiConfig,
 } from "../services/studentservice";
 import {
   FaMoneyBillWave,
@@ -30,6 +33,8 @@ import {
   FaCheck,
   FaBuilding,
   FaUserGraduate,
+  FaQrcode,
+  FaMobileAlt,
 } from "react-icons/fa";
 
 function Fees() {
@@ -67,12 +72,50 @@ function Fees() {
   const [bulkDueDate, setBulkDueDate] = useState("");
   const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
 
+  // PhonePe UPI Admin Config States
+  const [upiModalOpen, setUpiModalOpen] = useState(false);
+  const [upiId, setUpiId] = useState("bursar.spec@ybl");
+  const [payeeName, setPayeeName] = useState("St. Peter's Engineering College Accounts");
+  const [upiInstructions, setUpiInstructions] = useState("");
+  const [isSavingUpi, setIsSavingUpi] = useState(false);
+
   const [statusMessage, setStatusMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
+  const loadUpiConfig = () => {
+    getFeeUpiConfig()
+      .then((res) => {
+        if (res.data) {
+          setUpiId(res.data.upi_id || "bursar.spec@ybl");
+          setPayeeName(res.data.payee_name || "St. Peter's Engineering College Accounts");
+          setUpiInstructions(res.data.instructions || "");
+        }
+      })
+      .catch(() => {});
+  };
+
+  const handleSaveUpiConfig = async (e) => {
+    if (e) e.preventDefault();
+    setIsSavingUpi(true);
+    try {
+      await updateFeeUpiConfig({
+        upi_id: upiId.trim(),
+        payee_name: payeeName.trim(),
+        instructions: upiInstructions.trim(),
+      });
+      setStatusMessage(`PhonePe UPI ID updated to "${upiId.trim()}"! Students will now pay to this VPA.`);
+      setUpiModalOpen(false);
+    } catch (err) {
+      alert("Failed to update UPI settings: " + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsSavingUpi(false);
+    }
+  };
+
   const loadData = () => {
     setLoading(true);
+    loadUpiConfig();
     Promise.all([
       getFeeStats(),
       getFeeCategories(),
@@ -267,6 +310,28 @@ function Fees() {
                 onClick={() => setBulkModalOpen(true)}
               >
                 <FaPlus /> Generate Semester Invoices
+              </button>
+
+              <button
+                type="button"
+                className="action-btn"
+                style={{
+                  background: "linear-gradient(135deg, #5f259f 0%, #3f156d 100%)",
+                  color: "#ffffff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "9px 16px",
+                  borderRadius: "8px",
+                  border: "none",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(95, 37, 159, 0.25)",
+                }}
+                onClick={() => setUpiModalOpen(true)}
+              >
+                <FaQrcode /> PhonePe UPI Settings
               </button>
 
               <button
@@ -984,6 +1049,215 @@ function Fees() {
                     <FaCheck />
                     {isGeneratingBulk ? "Generating Invoices..." : "Generate Invoices for Cohort"}
                   </button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* PhonePe UPI Configuration Modal */}
+          {upiModalOpen && (
+            <div
+              className="fees-modal-overlay"
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "rgba(15, 23, 42, 0.7)",
+                backdropFilter: "blur(4px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+                padding: "16px",
+              }}
+            >
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: "16px",
+                  maxWidth: "500px",
+                  width: "100%",
+                  boxShadow: "0 20px 40px rgba(0, 0, 0, 0.2)",
+                  overflow: "hidden",
+                  border: "1px solid #cbd5e1",
+                }}
+              >
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, #5f259f 0%, #3f156d 100%)",
+                    color: "#ffffff",
+                    padding: "18px 24px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <FaQrcode style={{ fontSize: "20px" }} />
+                    <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>
+                      Configure PhonePe UPI for Student Fees
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUpiModalOpen(false)}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.2)",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: "28px",
+                      height: "28px",
+                      color: "#ffffff",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveUpiConfig} style={{ padding: "24px" }}>
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
+                      Your PhonePe UPI ID (VPA): *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 9876543210@ybl or college@ybl"
+                      value={upiId}
+                      onChange={(e) => setUpiId(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: "8px",
+                        border: "2px solid #5f259f",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: "#0f172a",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                      Enter your PhonePe UPI ID (ends in @ybl, @ibl, or your bank). The QR code will dynamically direct payments to this VPA.
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
+                      Payee Display Name: *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. St. Peter's Engineering College Accounts"
+                      value={payeeName}
+                      onChange={(e) => setPayeeName(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "13.5px",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: "20px" }}>
+                    <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
+                      Payment Instructions for Students:
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="Instructions shown to students when scanning..."
+                      value={upiInstructions}
+                      onChange={(e) => setUpiInstructions(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "13px",
+                        boxSizing: "border-box",
+                        resize: "vertical",
+                      }}
+                    />
+                  </div>
+
+                  {upiId && (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        marginBottom: "20px",
+                        padding: "14px",
+                        background: "#f8fafc",
+                        borderRadius: "10px",
+                        border: "1px dashed #cbd5e1",
+                      }}
+                    >
+                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        PhonePe QR Preview
+                      </div>
+                      <div
+                        style={{
+                          display: "inline-block",
+                          background: "#ffffff",
+                          padding: "10px",
+                          borderRadius: "10px",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                          border: "1px solid #e2e8f0",
+                        }}
+                      >
+                        <QRCodeSVG
+                          value={`upi://pay?pa=${encodeURIComponent(upiId.trim())}&pn=${encodeURIComponent(payeeName.trim() || 'College Fee Counter')}&cu=INR`}
+                          size={120}
+                          level="M"
+                        />
+                      </div>
+                      <div style={{ fontSize: "11.5px", color: "#5f259f", fontWeight: 600, marginTop: "8px" }}>
+                        Directs to: <strong>{upiId}</strong>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setUpiModalOpen(false)}
+                      style={{
+                        flex: 1,
+                        padding: "11px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        color: "#475569",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSavingUpi}
+                      style={{
+                        flex: 2,
+                        padding: "11px",
+                        borderRadius: "8px",
+                        border: "none",
+                        background: "linear-gradient(135deg, #5f259f 0%, #3f156d 100%)",
+                        color: "#ffffff",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        cursor: isSavingUpi ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {isSavingUpi ? "Saving..." : "Save UPI Settings"}
+                    </button>
+                  </div>
                 </form>
               </div>
             </div>

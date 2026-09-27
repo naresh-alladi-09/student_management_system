@@ -158,3 +158,27 @@ class FeePayment(models.Model):
 
     def __str__(self):
         return f"Receipt {self.receipt_number}: ₹{self.amount_paid} by {self.student.name}"
+
+
+class FeePaymentSetting(models.Model):
+    upi_id = models.CharField(max_length=100, default='bursar.spec@ybl', help_text="PhonePe UPI ID / VPA")
+    payee_name = models.CharField(max_length=150, default="St. Peter's Engineering College Accounts")
+    merchant_code = models.CharField(max_length=50, blank=True, default='')
+    custom_qr_image = models.TextField(blank=True, default='', help_text="Optional base64 or URL for static PhonePe QR")
+    instructions = models.TextField(
+        blank=True,
+        default="Scan with PhonePe, Google Pay, or Paytm. Enter the 12-digit UTR/UPI Transaction ID to clear dues immediately."
+    )
+    auto_clear_on_utr = models.BooleanField(default=True, help_text="Automatically clear fee balance when student submits UTR")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def get_settings(cls):
+        obj = cls.objects.first()
+        if not obj:
+            obj = cls.objects.create()
+        return obj
+
+    def __str__(self):
+        return f"UPI Setting: {self.upi_id} ({self.payee_name})"
+

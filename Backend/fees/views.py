@@ -15,12 +15,13 @@ from accounts.permissions import IsTeacherOrAdmin
 from students.models import Student
 from notifications.models import Notification
 from audit.models import AuditLog
-from .models import FeeCategory, FeeStructure, StudentFeeRecord, FeePayment
+from .models import FeeCategory, FeeStructure, StudentFeeRecord, FeePayment, FeePaymentSetting
 from .serializers import (
     FeeCategorySerializer,
     FeeStructureSerializer,
     StudentFeeRecordSerializer,
     FeePaymentSerializer,
+    FeePaymentSettingSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -567,14 +568,20 @@ def send_fee_reminder(request):
 @permission_classes([IsAuthenticated])
 def my_fees_view(request):
     """
-    Logged-in student views their own fee accounts, dues, payments, and receipt list.
+    Logged-in student views their own fee accounts, dues, payments, receipt list, and active PhonePe UPI settings.
     """
     profile = getattr(request.user, 'profile', None)
-    if not profile or not profile.student:
+    student = getattr(profile, 'student', None) if profile else None
+
+    if not student:
+        student = Student.objects.filter(email=request.user.email).first()
+
+    if not student:
         return Response({"detail": "Student profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    student = profile.student
     records = StudentFeeRecord.objects.filter(student=student).select_related('fee_category').prefetch_related('payments')
+    payments = FeePayment.objects.filter(student=student).select_related('fee_record__fee_category').order_by('-payment_date')
+    upi_setting = FeePaymentSetting.get_settings()
 
     total_billed = sum([r.net_amount for r in records]) or Decimal('0.00')
     total_paid = sum([r.paid_amount for r in records]) or Decimal('0.00')
@@ -585,6 +592,16 @@ def my_fees_view(request):
     is_exam_eligible_by_fees = not has_mandatory_dues
 
     serializer = StudentFeeRecordSerializer(records, many=True)
+    payment_serializer = FeePaymentSerializer(payments, many=True)
+
+    summary = {
+        "total_invoiced": float(total_billed),
+        "total_paid": float(total_paid),
+        "total_due": float(total_due),
+        "has_mandatory_dues": has_mandatory_dues,
+        "exam_clearance_status": "CLEARED" if is_exam_eligible_by_fees else "LOCKED",
+        "records_count": len(records),
+    }
 
     return Response({
         "student_id": student.id,
@@ -594,8 +611,169 @@ def my_fees_view(request):
         "total_paid": float(total_paid),
         "total_due": float(total_due),
         "is_exam_eligible_by_fees": is_exam_eligible_by_fees,
+        "summary": summary,
         "records": serializer.data,
+        "payments": payment_serializer.data,
+        "upi_config": FeePaymentSettingSerializer(upi_setting).data,
     }, status=status.HTTP_200_OK)
+
+
+# =====================================================================
+# 8.1 STUDENT PHONEPE UPI PAYMENT SUBMISSION & INSTANT DUES CLEARANCE
+# =====================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_student_phonepe_payment(request):
+    """
+    Self-service PhonePe / UPI payment submission by a student.
+    Verifies UTR reference, records payment, recalculates balance, and immediately
+    clears dues and unlocks exam hall tickets if paid in full.
+    Payload:
+      - fee_record_id: int
+      - amount_paid: float/decimal
+      - utr_number: str (12-digit UPI reference ID from PhonePe)
+      - remarks: str (optional)
+    """
+    record_id = request.data.get('fee_record_id')
+    amount_paid_raw = request.data.get('amount_paid')
+    utr_number = str(request.data.get('utr_number') or '').strip().upper()
+    remarks = (request.data.get('remarks') or '').strip()
+
+    if not record_id:
+        return Response({"detail": "fee_record_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not utr_number or len(utr_number) < 6:
+        return Response({
+            "detail": "Please provide a valid 12-digit UPI Reference / UTR Number from your PhonePe transaction screen."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    fee_record = get_object_or_404(
+        StudentFeeRecord.objects.select_related('student', 'fee_category'),
+        id=record_id
+    )
+    student = fee_record.student
+
+    # Verify authorization: student can only pay for their own fee record
+    profile = getattr(request.user, 'profile', None)
+    role = getattr(profile, 'role', 'admin') if profile else ('admin' if request.user.is_staff else None)
+    if role == 'student':
+        if not profile or not profile.student or profile.student.id != student.id:
+            return Response({"detail": "You are not authorized to make payment for another student."}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        amount_paid = Decimal(str(amount_paid_raw))
+        if amount_paid <= 0:
+            return Response({"detail": "Payment amount must be greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
+        if amount_paid > fee_record.balance_due:
+            return Response({
+                "detail": f"Payment amount (₹{amount_paid}) cannot exceed current balance due (₹{fee_record.balance_due})."
+            }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        return Response({"detail": "Invalid amount_paid format."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Check for duplicate UTR
+    if FeePayment.objects.filter(transaction_reference=utr_number).exists():
+        return Response({
+            "detail": f"This UTR Number ({utr_number}) has already been recorded for an existing payment. Please check your transaction details."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Record Payment
+    payment = FeePayment.objects.create(
+        fee_record=fee_record,
+        student=student,
+        amount_paid=amount_paid,
+        payment_method='UPI',
+        transaction_reference=utr_number,
+        collected_by=None,
+        remarks=remarks or f"PhonePe UPI Payment • UTR: {utr_number}"
+    )
+
+    fee_record.refresh_from_db()
+
+    # If balance is zero, mark cleared for exam
+    if fee_record.balance_due <= Decimal('0.00'):
+        fee_record.is_cleared_for_exam = True
+        fee_record.status = 'PAID'
+        fee_record.clearance_remarks = f"Auto-cleared via PhonePe UPI (UTR: {utr_number})"
+        fee_record.cleared_at = timezone.now()
+        fee_record.save()
+
+    # Log in audit
+    AuditLog.log(
+        action='STUDENT_PHONEPE_PAYMENT',
+        entity='FeePayment',
+        entity_id=str(payment.id),
+        description=(
+            f"Student {student.name} ({student.roll_no}) submitted PhonePe payment of ₹{amount_paid:,.2f} "
+            f"for {fee_record.fee_category.name}. UTR: {utr_number}. Receipt: {payment.receipt_number}. Remaining: ₹{fee_record.balance_due}"
+        ),
+        user=request.user,
+        request=request
+    )
+
+    # In-app notification to student
+    user_for_student = getattr(getattr(student, 'user_profile', None), 'user', None) or request.user
+    if user_for_student:
+        Notification.objects.create(
+            user=user_for_student,
+            title=f"PhonePe Payment Verified: ₹{amount_paid:,.2f} ✅",
+            message=(
+                f"Your PhonePe payment of ₹{amount_paid:,.2f} with UTR {utr_number} has been verified and applied to {fee_record.fee_category.name}. "
+                f"Receipt No: {payment.receipt_number}. Remaining Balance: ₹{fee_record.balance_due:,.2f}."
+            ),
+            notification_type='academic'
+        )
+
+    return Response({
+        "success": True,
+        "message": f"Payment of ₹{amount_paid:,.2f} successfully verified via PhonePe! Receipt: {payment.receipt_number}",
+        "receipt_number": payment.receipt_number,
+        "balance_due": float(fee_record.balance_due),
+        "is_cleared_for_exam": fee_record.is_cleared_for_exam,
+        "status": fee_record.status,
+        "payment": FeePaymentSerializer(payment).data,
+        "fee_record": StudentFeeRecordSerializer(fee_record).data,
+    }, status=status.HTTP_201_CREATED)
+
+
+# =====================================================================
+# 8.2 PHONEPE UPI SETTINGS CONFIGURATION
+# =====================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def get_update_upi_config(request):
+    """
+    GET: Returns current PhonePe UPI ID, Payee Name, instructions, and custom QR.
+    POST: Admin/Teacher updates PhonePe UPI ID, Payee Name, and settings.
+    """
+    setting = FeePaymentSetting.get_settings()
+    if request.method == 'GET':
+        return Response(FeePaymentSettingSerializer(setting).data, status=status.HTTP_200_OK)
+
+    profile = getattr(request.user, 'profile', None)
+    role = getattr(profile, 'role', 'admin') if profile else ('admin' if request.user.is_staff else None)
+    if role not in ['admin', 'teacher'] and not request.user.is_staff:
+        return Response({"detail": "Only administrators can configure PhonePe UPI settings."}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = FeePaymentSettingSerializer(setting, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        AuditLog.log(
+            action='UPDATE_UPI_CONFIG',
+            entity='FeePaymentSetting',
+            entity_id=str(setting.id),
+            description=f"Updated PhonePe UPI settings to VPA: {setting.upi_id} ({setting.payee_name}).",
+            user=request.user,
+            request=request
+        )
+        return Response({
+            "success": True,
+            "message": "PhonePe UPI settings updated successfully.",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # =====================================================================

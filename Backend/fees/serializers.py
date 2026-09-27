@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import FeeCategory, FeeStructure, StudentFeeRecord, FeePayment
+from .models import FeeCategory, FeeStructure, StudentFeeRecord, FeePayment, FeePaymentSetting
 from students.serializers import StudentSerializer
 
 
@@ -85,3 +85,10 @@ class StudentFeeRecordSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+
+class FeePaymentSettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeePaymentSetting
+        fields = '__all__'
+
