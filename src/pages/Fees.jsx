@@ -77,6 +77,7 @@ function Fees() {
   const [upiId, setUpiId] = useState("bursar.spec@ybl");
   const [payeeName, setPayeeName] = useState("St. Peter's Engineering College Accounts");
   const [upiInstructions, setUpiInstructions] = useState("");
+  const [customQrImage, setCustomQrImage] = useState("");
   const [isSavingUpi, setIsSavingUpi] = useState(false);
 
   const [statusMessage, setStatusMessage] = useState(null);
@@ -90,6 +91,7 @@ function Fees() {
           setUpiId(res.data.upi_id || "bursar.spec@ybl");
           setPayeeName(res.data.payee_name || "St. Peter's Engineering College Accounts");
           setUpiInstructions(res.data.instructions || "");
+          setCustomQrImage(res.data.custom_qr_image || "");
         }
       })
       .catch(() => {});
@@ -103,8 +105,9 @@ function Fees() {
         upi_id: upiId.trim(),
         payee_name: payeeName.trim(),
         instructions: upiInstructions.trim(),
+        custom_qr_image: customQrImage || "",
       });
-      setStatusMessage(`PhonePe UPI ID updated to "${upiId.trim()}"! Students will now pay to this VPA.`);
+      setStatusMessage(`PhonePe UPI settings updated successfully! Students will now pay using this QR & VPA.`);
       setUpiModalOpen(false);
     } catch (err) {
       alert("Failed to update UPI settings: " + (err.response?.data?.detail || err.message));
@@ -1168,10 +1171,61 @@ function Fees() {
 
                   <div style={{ marginBottom: "20px" }}>
                     <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
+                      Upload Your PhonePe QR Code Image (Screenshot or Poster):
+                    </label>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            if (file.size > 5 * 1024 * 1024) {
+                              alert("Please select an image smaller than 5MB.");
+                              return;
+                            }
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                              setCustomQrImage(reader.result);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        style={{
+                          fontSize: "12px",
+                          color: "#475569",
+                        }}
+                      />
+                      {customQrImage && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomQrImage("")}
+                          style={{
+                            padding: "5px 10px",
+                            background: "#fee2e2",
+                            color: "#dc2626",
+                            border: "none",
+                            borderRadius: "6px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          ✕ Remove Uploaded Image
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                      Upload the screenshot or poster of your PhonePe QR code from your phone. If uploaded, students will see your exact QR image!
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "20px" }}>
+                    <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
                       Payment Instructions for Students:
                     </label>
                     <textarea
-                      rows={3}
+                      rows={2}
                       placeholder="Instructions shown to students when scanning..."
                       value={upiInstructions}
                       onChange={(e) => setUpiInstructions(e.target.value)}
@@ -1187,41 +1241,58 @@ function Fees() {
                     />
                   </div>
 
-                  {upiId && (
+                  {/* QR Preview Section */}
+                  <div
+                    style={{
+                      textAlign: "center",
+                      marginBottom: "20px",
+                      padding: "14px",
+                      background: "#f8fafc",
+                      borderRadius: "10px",
+                      border: "1px dashed #cbd5e1",
+                    }}
+                  >
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      {customQrImage ? "Your Uploaded PhonePe QR Poster" : "Dynamic PhonePe QR Preview"}
+                    </div>
+
                     <div
                       style={{
-                        textAlign: "center",
-                        marginBottom: "20px",
-                        padding: "14px",
-                        background: "#f8fafc",
+                        display: "inline-block",
+                        background: "#ffffff",
+                        padding: "10px",
                         borderRadius: "10px",
-                        border: "1px dashed #cbd5e1",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                        border: "1px solid #e2e8f0",
                       }}
                     >
-                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        PhonePe QR Preview
-                      </div>
-                      <div
-                        style={{
-                          display: "inline-block",
-                          background: "#ffffff",
-                          padding: "10px",
-                          borderRadius: "10px",
-                          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                          border: "1px solid #e2e8f0",
-                        }}
-                      >
+                      {customQrImage ? (
+                        <img
+                          src={customQrImage}
+                          alt="Custom PhonePe QR"
+                          style={{
+                            maxWidth: "180px",
+                            maxHeight: "180px",
+                            objectFit: "contain",
+                            display: "block",
+                            borderRadius: "6px",
+                          }}
+                        />
+                      ) : upiId ? (
                         <QRCodeSVG
                           value={`upi://pay?pa=${encodeURIComponent(upiId.trim())}&pn=${encodeURIComponent(payeeName.trim() || 'College Fee Counter')}&cu=INR`}
                           size={120}
                           level="M"
                         />
-                      </div>
-                      <div style={{ fontSize: "11.5px", color: "#5f259f", fontWeight: 600, marginTop: "8px" }}>
-                        Directs to: <strong>{upiId}</strong>
-                      </div>
+                      ) : null}
                     </div>
-                  )}
+
+                    <div style={{ fontSize: "11.5px", color: "#5f259f", fontWeight: 600, marginTop: "8px" }}>
+                      {customQrImage
+                        ? "Students will scan your uploaded PhonePe QR poster"
+                        : <span>Scans will direct to: <strong>{upiId}</strong></span>}
+                    </div>
+                  </div>
 
                   <div style={{ display: "flex", gap: "10px" }}>
                     <button

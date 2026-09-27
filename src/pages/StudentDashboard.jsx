@@ -17,6 +17,7 @@ import {
   getMyFees,
   getFeeReceipt,
   submitStudentPhonePePayment,
+  getFeeUpiConfig,
 } from "../services/studentservice";
 import "../styles/studentdashboard.css";
 import "../styles/fees.css";
@@ -277,6 +278,8 @@ const StudentDashboard = () => {
   const [phonePeSuccess, setPhonePeSuccess] = useState(null);
   const [phonePeError, setPhonePeError] = useState(null);
   const [copiedUpi, setCopiedUpi] = useState(false);
+  const [phonePeUpiConfig, setPhonePeUpiConfig] = useState(null);
+  const [qrViewMode, setQrViewMode] = useState("auto");
 
   const openPhonePePayment = (rec) => {
     const targetRec = rec || feesData?.records?.find((r) => parseFloat(r.balance_due) > 0);
@@ -284,6 +287,14 @@ const StudentDashboard = () => {
       alert("All enrolled fees are already fully paid! No outstanding dues.");
       return;
     }
+
+    // Always fetch latest PhonePe UPI config directly from backend
+    getFeeUpiConfig()
+      .then((res) => {
+        if (res.data) setPhonePeUpiConfig(res.data);
+      })
+      .catch(() => {});
+
     setPhonePeRecord(targetRec);
     setPhonePeAmount(String(targetRec.balance_due));
     setPhonePeUtr("");
@@ -5111,13 +5122,34 @@ const StudentDashboard = () => {
               ) : (
                 /* Payment & QR Submission Flow */
                 (() => {
-                  const payeeVpa = feesData?.upi_config?.upi_id || "bursar.spec@ybl";
-                  const payeeName = feesData?.upi_config?.payee_name || "St. Peter's Engineering College Accounts";
+                  const activeConfig = phonePeUpiConfig || feesData?.upi_config;
+                  const payeeVpa = activeConfig?.upi_id || "6301609560@ybl";
+                  const payeeName = activeConfig?.payee_name || "Naresh Alladi";
+                  const customQrImage = activeConfig?.custom_qr_image;
+                  const instructions = activeConfig?.instructions;
                   const note = `FEES-${currentUser?.rollNo || "STU"}-${phonePeRecord?.category_code || "ACAD"}`;
-                  const upiUri = `upi://pay?pa=${payeVpa}&pn=${encodeURIComponent(payeeName)}&am=${phonePeAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
+                  const upiUri = `upi://pay?pa=${encodeURIComponent(payeVpa)}&pn=${encodeURIComponent(payeeName)}&am=${phonePeAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
 
                   return (
                     <form onSubmit={handlePhonePeSubmit}>
+                      {/* Optional Admin Notice / Instructions */}
+                      {instructions && (
+                        <div
+                          style={{
+                            background: "#f0fdf4",
+                            border: "1px solid #bbf7d0",
+                            color: "#166534",
+                            borderRadius: "8px",
+                            padding: "8px 12px",
+                            fontSize: "11.5px",
+                            marginBottom: "14px",
+                            textAlign: "center",
+                          }}
+                        >
+                          📢 <strong>Notice:</strong> {instructions}
+                        </div>
+                      )}
+
                       {/* Fee Info Card */}
                       <div
                         style={{
@@ -5149,6 +5181,44 @@ const StudentDashboard = () => {
 
                       {/* Step 1: Scan QR */}
                       <div style={{ textAlign: "center", marginBottom: "18px" }}>
+                        {/* Toggle between Admin QR Poster and Dynamic QR if custom image exists */}
+                        {customQrImage && (
+                          <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginBottom: "12px" }}>
+                            <button
+                              type="button"
+                              onClick={() => setQrViewMode("custom")}
+                              style={{
+                                padding: "5px 12px",
+                                borderRadius: "20px",
+                                border: (qrViewMode === "custom" || qrViewMode === "auto") ? "2px solid #5f259f" : "1px solid #cbd5e1",
+                                background: (qrViewMode === "custom" || qrViewMode === "auto") ? "#f3e8ff" : "#ffffff",
+                                color: (qrViewMode === "custom" || qrViewMode === "auto") ? "#5f259f" : "#64748b",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Official PhonePe QR Poster
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setQrViewMode("dynamic")}
+                              style={{
+                                padding: "5px 12px",
+                                borderRadius: "20px",
+                                border: qrViewMode === "dynamic" ? "2px solid #5f259f" : "1px solid #cbd5e1",
+                                background: qrViewMode === "dynamic" ? "#f3e8ff" : "#ffffff",
+                                color: qrViewMode === "dynamic" ? "#5f259f" : "#64748b",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Dynamic Fee QR (₹{parseFloat(phonePeAmount || 0).toLocaleString()})
+                            </button>
+                          </div>
+                        )}
+
                         <div
                           style={{
                             display: "inline-block",
@@ -5160,7 +5230,21 @@ const StudentDashboard = () => {
                             marginBottom: "12px",
                           }}
                         >
-                          <QRCodeSVG value={upiUri} size={180} level="M" />
+                          {customQrImage && (qrViewMode === "custom" || qrViewMode === "auto") ? (
+                            <img
+                              src={customQrImage}
+                              alt="Official PhonePe QR"
+                              style={{
+                                maxWidth: "220px",
+                                maxHeight: "240px",
+                                objectFit: "contain",
+                                display: "block",
+                                borderRadius: "8px",
+                              }}
+                            />
+                          ) : (
+                            <QRCodeSVG value={upiUri} size={180} level="M" />
+                          )}
                         </div>
 
                         <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>
@@ -5182,7 +5266,7 @@ const StudentDashboard = () => {
                             marginTop: "8px",
                           }}
                         >
-                          <span>UPI ID: <strong>{payeVpa}</strong></span>
+                          <span>Payee UPI ID: <strong>{payeVpa}</strong></span>
                           <button
                             type="button"
                             onClick={() => {
@@ -5205,24 +5289,37 @@ const StudentDashboard = () => {
                           </button>
                         </div>
 
-                        <div style={{ marginTop: "10px" }}>
-                          <a
-                            href={upiUri}
+                        <div style={{ marginTop: "12px" }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+                              if (isMobile) {
+                                window.location.href = upiUri;
+                              } else {
+                                alert("You are on a desktop/laptop computer. Desktop browsers cannot open mobile apps directly.\n\n👉 Please open PhonePe, Google Pay, or Paytm on your mobile phone and scan the QR code displayed on screen!");
+                              }
+                            }}
                             style={{
                               display: "inline-flex",
                               alignItems: "center",
                               gap: "6px",
-                              padding: "7px 16px",
+                              padding: "8px 18px",
                               background: "#5f259f",
                               color: "#ffffff",
+                              border: "none",
                               borderRadius: "8px",
-                              fontSize: "12px",
+                              fontSize: "12.5px",
                               fontWeight: 700,
-                              textDecoration: "none",
+                              cursor: "pointer",
+                              boxShadow: "0 2px 8px rgba(95, 37, 159, 0.25)",
                             }}
                           >
-                            <FaMobileAlt /> Open in PhonePe Mobile App
-                          </a>
+                            <FaMobileAlt /> Open PhonePe App (Mobile Only)
+                          </button>
+                          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "5px" }}>
+                            💻 On Laptop/PC: Simply open PhonePe on your phone and scan the QR code above.
+                          </div>
                         </div>
                       </div>
 
