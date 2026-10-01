@@ -228,25 +228,34 @@ class Student(models.Model):
                         email=self.email or '',
                         first_name=self.name or ''
                     )
+                    # Students must NOT receive a predictable default password.
+                    # Account must be securely activated by the student.
+                    user.set_unusable_password()
 
             if user:
                 user.first_name = self.name or user.first_name
                 if self.email:
                     user.email = self.email
                 user.is_active = self.is_active
-                # Ensure the student password in backend is their studentid
-                user.set_password(student_ident)
                 user.save()
 
-                UserProfile.objects.update_or_create(
+                profile, created_prof = UserProfile.objects.get_or_create(
                     user=user,
                     defaults={
                         "role": "student",
                         "student": self,
                         "phone": (self.phone or '')[:30],
-                        "department": self.department or ''
+                        "department": self.department or '',
+                        "is_activated": False,
                     }
                 )
+                if not profile.student:
+                    profile.student = self
+                    profile.save(update_fields=['student'])
+
+                # If student account is not activated and has no valid token, generate one
+                if not profile.is_activated and not profile.activation_token:
+                    profile.generate_activation_token(hours=168)
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Could not provision user account for student '{self.roll_no}': {e}")

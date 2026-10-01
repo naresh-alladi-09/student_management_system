@@ -394,3 +394,27 @@ export const checkInExamCandidate = (token) => {
 export const getExamHallCheckins = (params = {}) => {
   return apiClient.get("/api/performance/hallticket/check-ins/", { params });
 };
+
+// ==========================================
+// ACCOUNT ACTIVATION & SECURITY SERVICES
+// ==========================================
+
+export const activateStudentAccount = (payload) => {
+  return apiClient.post("/api/auth/activate/", payload);
+};
+
+export const requestActivationToken = (payload) => {
+  return apiClient.post("/api/auth/request-activation/", payload);
+};
+
+export const changePassword = (payload) => {
+  return apiClient.post("/api/auth/change-password/", payload);
+};
+
+export const getStudentActivationStatus = (studentId) => {
+  return apiClient.get(`/api/auth/students/${studentId}/activation/`);
+};
+
+export const generateStudentActivationToken = (studentId) => {
+  return apiClient.post(`/api/auth/students/${studentId}/activation/`);
+};

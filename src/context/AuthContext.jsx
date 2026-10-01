@@ -103,8 +103,47 @@ export const AuthProvider = ({ children }) => {
           ? err.response.data.non_field_errors.join(", ")
           : err.response.data.non_field_errors;
       }
-      return { success: false, message: errMsg };
+      return {
+        success: false,
+        message: errMsg,
+        needsActivation: Boolean(err.response?.data?.needs_activation),
+        identifier: err.response?.data?.identifier || trimmedId,
+        studentId: err.response?.data?.student_id,
+        rollNo: err.response?.data?.roll_no,
+      };
     }
+  };
+
+  const setAuthenticatedUser = (data) => {
+    const role = data.role || "student";
+    let userData = {
+      role: role,
+      token: data.token,
+      userId: data.user_id,
+      username: data.username,
+      email: data.email,
+      name: data.name || data.username,
+      department: data.department || "Academic Operations",
+      isStaff: Boolean(data.is_staff),
+      profilePic: data.profile_pic || (data.student?.profile_photo || ""),
+    };
+    if (role === "student" && data.student) {
+      const s = data.student;
+      userData = {
+        ...userData,
+        id: s.id,
+        name: s.name,
+        rollNo: s.rollNo,
+        phone: s.phone,
+        branch: s.branch,
+        year: s.year,
+        semester: s.semester,
+        profilePic: s.profile_photo || data.profile_pic || "",
+      };
+    }
+    setCurrentUser(userData);
+    localStorage.setItem("sms_auth_user", JSON.stringify(userData));
+    return userData;
   };
 
   const loginTeacher = async (username, password) => {
@@ -178,6 +217,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         refreshUser,
         updateUserProfilePicState,
+        setAuthenticatedUser,
         loading,
         apiBaseUrl: API_BASE_URL,
       }}

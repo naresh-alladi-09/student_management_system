@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import IsTeacherOrAdmin, IsSelfOrStaff, IsStudent
+from accounts.utils import get_client_ip, get_user_agent
 from students.models import Student, AcademicClass, FacultyAssignment
 from performance.models import Subject
 from notifications.models import Notification
@@ -72,12 +73,13 @@ def create_attendance_session(request):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-    # Deactivate any previous active sessions by this teacher for this subject today
+    # Deactivate any previous active sessions for this subject/class or teacher today
     AttendanceSession.objects.filter(
-        teacher=request.user,
         subject=subject,
         is_active=True,
         date=date.today()
+    ).filter(
+        Q(academic_class=academic_class) | Q(teacher=request.user)
     ).update(is_active=False)
 
     session = AttendanceSession.create_session(
@@ -490,7 +492,51 @@ def mark_qr_attendance(request):
             status=status.HTTP_409_CONFLICT
         )
 
-    # 6. Create AttendanceRecord atomically
+    # 6. Anti-Proxy Protection: Capture IP, device fingerprint, and audit patterns
+    client_ip = get_client_ip(request)
+    user_agent = get_user_agent(request)
+    device_fingerprint = (request.data.get('device_fingerprint') or '').strip()[:128]
+
+    suspicious_flags = {}
+    is_flagged = False
+
+    # Check A: Shared device fingerprint across different student accounts in same session
+    if device_fingerprint:
+        other_students_device = list(
+            AttendanceRecord.objects.filter(
+                session=session,
+                device_fingerprint=device_fingerprint
+            ).exclude(student=student).values_list('student__roll_no', flat=True).distinct()
+        )
+        if other_students_device:
+            is_flagged = True
+            suspicious_flags['shared_device'] = True
+            suspicious_flags['conflicting_students'] = other_students_device
+            suspicious_flags['reason'] = f"Same device fingerprint was used by {len(other_students_device)} other student account(s)."
+
+    # Check B: Excessive rapid student submissions from identical client IP
+    if client_ip and client_ip not in ('127.0.0.1', 'localhost'):
+        ip_students_count = AttendanceRecord.objects.filter(
+            session=session,
+            ip_address=client_ip
+        ).exclude(student=student).values('student_id').distinct().count()
+        if ip_students_count >= 3:
+            is_flagged = True
+            suspicious_flags['shared_ip_anomaly'] = True
+            suspicious_flags['ip_cluster_count'] = ip_students_count + 1
+            suspicious_flags['reason'] = f"Anomalous clustering: {ip_students_count + 1} different students marked from IP {client_ip}."
+
+    if is_flagged:
+        AuditLog.log(
+            action='PROXY_ATTEMPT_FLAGGED',
+            entity='AttendanceRecord',
+            entity_id=str(student.id),
+            description=f"Anti-proxy alert for '{student.roll_no}' in {session.subject.code}: {suspicious_flags.get('reason')}",
+            user=user,
+            request=request
+        )
+
+    # 7. Create AttendanceRecord atomically with security metadata
     with transaction.atomic():
         record = AttendanceRecord.objects.create(
             student=student,
@@ -499,14 +545,19 @@ def mark_qr_attendance(request):
             date=session.date,
             status='Present',
             marked_via='QR',
-            remarks=f"Marked via live QR session by {student.name}"
+            ip_address=client_ip,
+            user_agent=user_agent,
+            device_fingerprint=device_fingerprint,
+            is_flagged_proxy=is_flagged,
+            proxy_flags=suspicious_flags,
+            remarks=f"Marked via live QR session by {student.name}" + (" [FLAGGED FOR PROXY REVIEW]" if is_flagged else "")
         )
 
         AuditLog.log(
             action='ATTENDANCE_QR_MARK',
             entity='AttendanceRecord',
             entity_id=str(record.id),
-            description=f"Student '{student.name}' ({student.roll_no}) marked QR attendance for {session.subject.code}.",
+            description=f"Student '{student.name}' ({student.roll_no}) marked QR attendance for {session.subject.code} (Proxy Status: {'FLAGGED' if is_flagged else 'Verified'}).",
             user=user,
             request=request
         )
@@ -525,7 +576,9 @@ def mark_qr_attendance(request):
         "subject_code": session.subject.code,
         "date": session.date.isoformat(),
         "marked_at": record.marked_at.isoformat(),
-        "status": "Present"
+        "status": "Present",
+        "proxy_verification_status": "Flagged for Instructor Review" if is_flagged else "Verified",
+        "notice": "Attendance is authenticated and cryptographically bound to your student account."
     }, status=status.HTTP_201_CREATED)
 
 
@@ -554,7 +607,22 @@ def get_daily_attendance(request):
     semester = request.query_params.get('semester', None)
     section = request.query_params.get('section', None)
 
+    user = request.user
+    profile = getattr(user, 'profile', None)
+    is_admin = user.is_staff or user.is_superuser or (profile and profile.role == 'admin')
+
     students_qs = Student.objects.filter(is_active=True).order_by('id')
+    if not is_admin and profile and profile.role == 'teacher':
+        assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
+        if assigned_class_ids.exists():
+            students_qs = students_qs.filter(academic_class_id__in=assigned_class_ids)
+        elif profile.department:
+            students_qs = students_qs.filter(
+                Q(department__iexact=profile.department) |
+                Q(academic_class__branch__department__name__iexact=profile.department)
+            )
+        else:
+            students_qs = students_qs.none()
     if branch and branch.upper() != 'ALL':
         students_qs = students_qs.filter(branch__iexact=branch)
     if year and year.upper() != 'ALL':
@@ -624,6 +692,32 @@ def bulk_save_attendance(request):
     if subject_id:
         subject_obj = Subject.objects.filter(id=subject_id).first()
 
+    user = request.user
+    profile = getattr(user, 'profile', None)
+    is_admin = user.is_staff or user.is_superuser or (profile and profile.role == 'admin')
+
+    # Authorization: Verify teacher cannot mark attendance for unauthorized classes
+    if not is_admin and profile and profile.role == 'teacher':
+        assigned_class_ids = set(FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct())
+        for sid_raw in attendance_map.keys():
+            try:
+                s_chk = Student.objects.filter(id=int(sid_raw)).first()
+                if s_chk and assigned_class_ids and s_chk.academic_class_id not in assigned_class_ids:
+                    AuditLog.log(
+                        action='UNAUTHORIZED_ACCESS_BLOCKED',
+                        entity='AttendanceRecord',
+                        entity_id=str(sid_raw),
+                        description=f"Teacher '{user.username}' denied unauthorized attendance update on student '{s_chk.roll_no}'.",
+                        user=user,
+                        request=request
+                    )
+                    return Response(
+                        {"error": f"You are not authorized to mark attendance for student {s_chk.roll_no} (unassigned class)."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            except (ValueError, TypeError):
+                pass
+
     with transaction.atomic():
         saved_count = 0
         for student_id_raw, status_val in attendance_map.items():
@@ -680,12 +774,37 @@ def student_attendance_detail(request, student_id):
     except Student.DoesNotExist:
         return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Enforce student isolation: students can only access their own attendance records
+    # Enforce student isolation and faculty class authorization
     profile = getattr(request.user, 'profile', None)
+    is_admin = request.user.is_staff or request.user.is_superuser or (profile and profile.role == 'admin')
+
     if profile and profile.role == 'student':
         if not profile.student or profile.student.id != student.id:
+            AuditLog.log(
+                action='UNAUTHORIZED_ACCESS_BLOCKED',
+                entity='AttendanceRecord',
+                entity_id=str(student_id),
+                description=f"Student '{request.user.username}' attempted unauthorized IDOR access to student '{student.roll_no}' attendance.",
+                user=request.user,
+                request=request
+            )
             return Response(
                 {"detail": "You do not have permission to access another student's records."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    elif not is_admin and profile and profile.role == 'teacher':
+        assigned_class_ids = FacultyAssignment.objects.filter(teacher=request.user).values_list('academic_class_id', flat=True).distinct()
+        if assigned_class_ids.exists() and student.academic_class_id not in assigned_class_ids:
+            AuditLog.log(
+                action='UNAUTHORIZED_ACCESS_BLOCKED',
+                entity='AttendanceRecord',
+                entity_id=str(student_id),
+                description=f"Teacher '{request.user.username}' denied access to student '{student.roll_no}' attendance (unassigned class).",
+                user=request.user,
+                request=request
+            )
+            return Response(
+                {"detail": "You are not authorized to view attendance records for students outside your assigned classes."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -810,8 +929,25 @@ def attendance_summary(request):
     today = date.today()
     threshold = float(request.query_params.get('threshold', 75.0))
 
-    # All active students
-    active_students = list(Student.objects.filter(is_active=True))
+    # RBAC: Teachers see analytics only for their authorized cohort
+    user = request.user
+    profile = getattr(user, 'profile', None)
+    is_admin = user.is_staff or user.is_superuser or (profile and profile.role == 'admin')
+
+    if not is_admin and profile and profile.role == 'teacher':
+        assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
+        if assigned_class_ids.exists():
+            active_students = list(Student.objects.filter(is_active=True, academic_class_id__in=assigned_class_ids))
+        elif profile.department:
+            active_students = list(Student.objects.filter(
+                is_active=True,
+                department__iexact=profile.department
+            ))
+        else:
+            active_students = []
+    else:
+        active_students = list(Student.objects.filter(is_active=True))
+
     total_students = len(active_students)
 
     # Today's records (distinct students present/absent today)

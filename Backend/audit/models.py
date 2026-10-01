@@ -24,10 +24,17 @@ class AuditLog(models.Model):
         ('TIMETABLE_UPDATE', 'Timetable Slot Updated'),
         ('TIMETABLE_DELETE', 'Timetable Slot Deleted'),
         ('ACADEMIC_SETUP', 'Academic Structure Modified'),
+        ('LOGIN_FAILED', 'Failed Login Attempt'),
+        ('LOGIN_LOCKOUT', 'Account Lockout Triggered'),
+        ('PASSWORD_CHANGE', 'Password Changed'),
+        ('STUDENT_ACCOUNT_ACTIVATE', 'Student Account Activated'),
+        ('ACTIVATION_TOKEN_REQUEST', 'Activation Token Requested'),
+        ('PROXY_ATTEMPT_FLAGGED', 'Proxy Attendance Flagged'),
+        ('UNAUTHORIZED_ACCESS_BLOCKED', 'Unauthorized Access Blocked'),
     )
 
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
-    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
     entity = models.CharField(max_length=50)
     entity_id = models.CharField(max_length=50, blank=True, default='')
     description = models.TextField()

@@ -50,6 +50,25 @@ def list_student_scores(request):
     student_id_param = request.query_params.get('student_id', None)
 
     students = Student.objects.filter(is_active=True).select_related('academic_class')
+
+    # RBAC Enforcement: Faculty can only access authorized classes/departments
+    user = request.user
+    profile = getattr(user, 'profile', None)
+    is_admin = user.is_staff or user.is_superuser or (profile and profile.role == 'admin')
+
+    if not is_admin and profile and profile.role == 'teacher':
+        assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
+        if assigned_class_ids.exists():
+            students = students.filter(academic_class_id__in=assigned_class_ids)
+        elif profile.department:
+            from django.db.models import Q
+            students = students.filter(
+                Q(department__iexact=profile.department) |
+                Q(academic_class__branch__department__name__iexact=profile.department)
+            )
+        else:
+            students = students.none()
+
     if branch_param and branch_param.upper() != 'ALL':
         students = students.filter(branch__iexact=branch_param)
     if year_param:
@@ -153,12 +172,37 @@ def student_report_card(request, student_id):
     except Student.DoesNotExist:
         return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Enforce student isolation: students can only access their own academic records
+    # Enforce student isolation and faculty class authorization
     profile = getattr(request.user, 'profile', None)
+    is_admin = request.user.is_staff or request.user.is_superuser or (profile and profile.role == 'admin')
+
     if profile and profile.role == 'student':
         if not profile.student or profile.student.id != student.id:
+            AuditLog.log(
+                action='UNAUTHORIZED_ACCESS_BLOCKED',
+                entity='StudentReportCard',
+                entity_id=str(student_id),
+                description=f"Student '{request.user.username}' attempted unauthorized IDOR access to student '{student.roll_no}'.",
+                user=request.user,
+                request=request
+            )
             return Response(
                 {"detail": "You do not have permission to access another student's records."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    elif not is_admin and profile and profile.role == 'teacher':
+        assigned_class_ids = FacultyAssignment.objects.filter(teacher=request.user).values_list('academic_class_id', flat=True).distinct()
+        if assigned_class_ids.exists() and student.academic_class_id not in assigned_class_ids:
+            AuditLog.log(
+                action='UNAUTHORIZED_ACCESS_BLOCKED',
+                entity='StudentReportCard',
+                entity_id=str(student_id),
+                description=f"Teacher '{request.user.username}' denied access to student '{student.roll_no}' (unassigned class).",
+                user=request.user,
+                request=request
+            )
+            return Response(
+                {"detail": "You are not authorized to view academic records for students outside your assigned classes."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -282,15 +326,25 @@ def save_student_score(request):
     except (Student.DoesNotExist, Subject.DoesNotExist):
         return Response({"detail": "Student or Subject not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Authorization check: If user is teacher (not admin), verify faculty assignment if configured
-    is_admin = request.user.is_staff or getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
+    # Authorization check: If user is teacher (not admin), verify faculty assignment for subject and class
+    is_admin = request.user.is_staff or request.user.is_superuser or getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
     if not is_admin:
         teacher_assignments = FacultyAssignment.objects.filter(teacher=request.user)
         if teacher_assignments.exists():
-            is_assigned = teacher_assignments.filter(subject=subject).exists()
-            if not is_assigned:
+            assignment_qs = teacher_assignments.filter(subject=subject)
+            if student.academic_class:
+                assignment_qs = assignment_qs.filter(academic_class=student.academic_class)
+            if not assignment_qs.exists():
+                AuditLog.log(
+                    action='UNAUTHORIZED_ACCESS_BLOCKED',
+                    entity='StudentScore',
+                    entity_id=str(student.id),
+                    description=f"Teacher '{request.user.username}' attempted unauthorized marks entry for {subject.code} on student '{student.roll_no}'.",
+                    user=request.user,
+                    request=request
+                )
                 return Response(
-                    {"detail": f"You are not assigned to evaluate marks for {subject.code}."},
+                    {"detail": f"You are not assigned to evaluate marks for {subject.code} in this student's class."},
                     status=status.HTTP_403_FORBIDDEN
                 )
 

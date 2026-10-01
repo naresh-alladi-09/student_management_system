@@ -17,24 +17,57 @@ from .serializers import (
 )
 
 
+from rest_framework.exceptions import PermissionDenied
+
+
 class StudentViewSet(viewsets.ModelViewSet):
     serializer_class = StudentSerializer
 
     def get_permissions(self):
         if self.action in ['retrieve']:
-            # Student can view their own record; teachers/admins can view any
+            # Student can only view their own record; teachers and admins view authorized students
             return [IsAuthenticated(), IsSelfOrStaff()]
-        elif self.action in ['destroy']:
-            # Admins or teachers can deactivate
+        elif self.action in ['destroy', 'create', 'deactivate', 'activate']:
+            # Enrolling, deleting, or changing student lifecycle status requires Admin privileges
+            return [IsAuthenticated(), IsAdmin()]
+        elif self.action in ['update', 'partial_update', 'stats']:
+            # Permitted teachers or admins
             return [IsAuthenticated(), IsTeacherOrAdmin()]
         else:
-            # list, create, update, partial_update
-            return [IsAuthenticated(), IsTeacherOrAdmin()]
+            return [IsAuthenticated()]
 
     def get_queryset(self):
-        queryset = Student.objects.all().select_related('academic_class', 'academic_class__branch').order_by('-id')
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Student.objects.none()
 
-        # Filter by active status (default: show active unless requested otherwise)
+        profile = getattr(user, 'profile', None)
+        role = profile.role if profile else ('admin' if (user.is_superuser or user.is_staff) else 'student')
+
+        # 1. Base Queryset by Role
+        if user.is_superuser or user.is_staff or role == 'admin':
+            queryset = Student.objects.all().select_related('academic_class', 'academic_class__branch').order_by('-id')
+        elif role == 'teacher':
+            assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
+            if assigned_class_ids.exists():
+                queryset = Student.objects.filter(academic_class_id__in=assigned_class_ids).select_related('academic_class', 'academic_class__branch').order_by('-id')
+            elif profile and profile.department:
+                queryset = Student.objects.filter(
+                    Q(department__iexact=profile.department) |
+                    Q(academic_class__branch__department__name__iexact=profile.department)
+                ).select_related('academic_class', 'academic_class__branch').order_by('-id')
+            else:
+                queryset = Student.objects.none()
+        elif role == 'student':
+            if profile and profile.student:
+                # Student can ONLY ever access their own profile
+                queryset = Student.objects.filter(id=profile.student.id).select_related('academic_class', 'academic_class__branch')
+            else:
+                queryset = Student.objects.none()
+        else:
+            queryset = Student.objects.none()
+
+        # 2. Query Parameter Filters
         active_param = self.request.query_params.get('is_active', None)
         if active_param is not None:
             if active_param.lower() in ['true', '1']:
@@ -42,32 +75,27 @@ class StudentViewSet(viewsets.ModelViewSet):
             elif active_param.lower() in ['false', '0']:
                 queryset = queryset.filter(is_active=False)
 
-        # Filter by branch
         branch_param = self.request.query_params.get('branch', None)
         if branch_param and branch_param.upper() != 'ALL':
             queryset = queryset.filter(branch__iexact=branch_param)
 
-        # Filter by year
         year_param = self.request.query_params.get('year', None)
         if year_param:
             queryset = queryset.filter(year=year_param)
 
-        # Filter by semester
         semester_param = self.request.query_params.get('semester', None)
         if semester_param:
             queryset = queryset.filter(semester=semester_param)
 
-        # Filter by section
         section_param = self.request.query_params.get('section', None)
         if section_param and section_param.upper() != 'ALL':
             queryset = queryset.filter(section__iexact=section_param)
 
-        # Filter by academic_class id
         academic_class_id = self.request.query_params.get('academic_class', None)
         if academic_class_id:
             queryset = queryset.filter(academic_class_id=academic_class_id)
 
-        # Search by keyword
+        # Keyword search
         search = self.request.query_params.get('search', None)
         if search:
             s = search.strip()
@@ -82,7 +110,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         return queryset
 
     def list(self, request, *args, **kwargs):
-        # Support optional unpaginated response when ?all=true
         if request.query_params.get('all', '').lower() in ['true', '1']:
             queryset = self.filter_queryset(self.get_queryset())
             serializer = self.get_serializer(queryset, many=True)
@@ -95,35 +122,52 @@ class StudentViewSet(viewsets.ModelViewSet):
             action='STUDENT_CREATE',
             entity='Student',
             entity_id=str(student.id),
-            description=f"Student '{student.name}' ({student.roll_no}) enrolled into {student.branch} Year {student.year} Sec {student.section}.",
+            description=f"Admin '{self.request.user.username}' enrolled student '{student.name}' ({student.roll_no}).",
             user=self.request.user,
             request=self.request
         )
 
     def perform_update(self, serializer):
+        instance = serializer.instance
+        user = self.request.user
+        profile = getattr(user, 'profile', None)
+
+        # Faculty isolation check: verify teacher is authorized for this student's class
+        if not (user.is_superuser or user.is_staff or (profile and profile.role == 'admin')):
+            assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
+            if assigned_class_ids.exists() and instance.academic_class_id not in assigned_class_ids:
+                AuditLog.log(
+                    action='UNAUTHORIZED_ACCESS_BLOCKED',
+                    entity='Student',
+                    entity_id=str(instance.id),
+                    description=f"Teacher '{user.username}' attempted unauthorized modification of student '{instance.roll_no}'.",
+                    user=user,
+                    request=self.request
+                )
+                raise PermissionDenied("You are not authorized to modify students outside your assigned classes.")
+
         student = serializer.save()
         AuditLog.log(
             action='STUDENT_UPDATE',
             entity='Student',
             entity_id=str(student.id),
-            description=f"Student '{student.name}' ({student.roll_no}) record updated.",
-            user=self.request.user,
+            description=f"User '{user.username}' updated student record '{student.name}' ({student.roll_no}).",
+            user=user,
             request=self.request
         )
 
     def perform_destroy(self, instance):
-        # Soft delete instead of hard delete to preserve historical records
         instance.deactivate()
         AuditLog.log(
             action='STUDENT_DEACTIVATE',
             entity='Student',
             entity_id=str(instance.id),
-            description=f"Student '{instance.name}' ({instance.roll_no}) deactivated via deletion request.",
+            description=f"Admin '{self.request.user.username}' deactivated student '{instance.name}' ({instance.roll_no}).",
             user=self.request.user,
             request=self.request
         )
 
-    @action(detail=True, methods=['post'], permission_classes=[IsTeacherOrAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def deactivate(self, request, pk=None):
         student = self.get_object()
         student.deactivate()
@@ -131,7 +175,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             action='STUDENT_DEACTIVATE',
             entity='Student',
             entity_id=str(student.id),
-            description=f"Student '{student.name}' ({student.roll_no}) deactivated.",
+            description=f"Admin '{request.user.username}' deactivated student '{student.name}' ({student.roll_no}).",
             user=request.user,
             request=request
         )
@@ -140,7 +184,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             "is_active": False
         }, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsTeacherOrAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def activate(self, request, pk=None):
         student = self.get_object()
         student.activate()
@@ -148,7 +192,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             action='STUDENT_ACTIVATE',
             entity='Student',
             entity_id=str(student.id),
-            description=f"Student '{student.name}' ({student.roll_no}) restored successfully.",
+            description=f"Admin '{request.user.username}' restored student '{student.name}' ({student.roll_no}).",
             user=request.user,
             request=request
         )
@@ -159,11 +203,12 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], permission_classes=[IsTeacherOrAdmin])
     def stats(self, request):
-        total = Student.objects.count()
-        active = Student.objects.filter(is_active=True).count()
+        qs = self.get_queryset()
+        total = qs.count()
+        active = qs.filter(is_active=True).count()
         inactive = total - active
         by_branch = list(
-            Student.objects.filter(is_active=True)
+            qs.filter(is_active=True)
             .values('branch')
             .annotate(count=Count('id'))
             .order_by('-count')
@@ -174,6 +219,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             "inactive": inactive,
             "by_branch": by_branch,
         }, status=status.HTTP_200_OK)
+
 
 
 @api_view(['GET'])

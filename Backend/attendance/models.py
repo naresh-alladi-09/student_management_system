@@ -120,6 +120,17 @@ class AttendanceRecord(models.Model):
     )
     remarks = models.CharField(max_length=200, blank=True, default='')
     marked_at = models.DateTimeField(default=timezone.now)
+
+    # Anti-Proxy & Audit Tracking
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, default='')
+    device_fingerprint = models.CharField(max_length=128, blank=True, default='', db_index=True)
+    is_flagged_proxy = models.BooleanField(
+        default=False,
+        help_text="Flagged if anti-proxy heuristics detect suspicious shared device or rapid remote IP patterns."
+    )
+    proxy_flags = models.CharField(max_length=255, blank=True, default='')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
