@@ -18,7 +18,6 @@ const Sidebar = () => {
     { path: "/addstudents", label: "Add Student", icon: "fa-solid fa-user-plus" },
     { path: "/attendance", label: "Attendance", icon: "fa-regular fa-calendar-check" },
     { path: "/performance", label: "Performance", icon: "fa-solid fa-chart-simple" },
-    { path: "/fees", label: "Fees & Dues", icon: "fa-solid fa-credit-card" },
   ];
 
   if (isAdmin) {

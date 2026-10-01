@@ -224,43 +224,15 @@ class HallTicketSerializer(serializers.ModelSerializer):
         ]
 
     def get_fee_clearance(self, obj):
-        try:
-            from fees.models import StudentFeeRecord
-            records = StudentFeeRecord.objects.filter(
-                student=obj.student,
-                fee_category__is_mandatory_for_exam=True
-            ).select_related('fee_category')
-
-            uncleared = []
-            pending_total = Decimal('0.00')
-            for rec in records:
-                if not rec.is_cleared_for_exam and rec.balance_due > 0:
-                    uncleared.append({
-                        "category": rec.fee_category.name,
-                        "code": rec.fee_category.code,
-                        "balance_due": float(rec.balance_due),
-                        "total_amount": float(rec.net_amount),
-                    })
-                    pending_total += rec.balance_due
-
-            is_cleared = (len(uncleared) == 0)
-            return {
-                "is_cleared": is_cleared,
-                "pending_dues": float(pending_total),
-                "uncleared_categories": uncleared,
-                "has_records": records.exists(),
-            }
-        except Exception:
-            return {
-                "is_cleared": True,
-                "pending_dues": 0.0,
-                "uncleared_categories": [],
-                "has_records": False
-            }
+        return {
+            "is_cleared": True,
+            "pending_dues": 0.0,
+            "uncleared_categories": [],
+            "has_records": False
+        }
 
     def get_is_fee_locked(self, obj):
-        clearance = self.get_fee_clearance(obj)
-        return not clearance["is_cleared"]
+        return False
 
     def get_condoned_by_name(self, obj):
         if obj.condoned_by:

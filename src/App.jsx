@@ -15,7 +15,6 @@ import StudentDashboard from './pages/StudentDashboard';
 import MarkAttendancePage from './pages/MarkAttendancePage';
 import VerifyHallTicket from './pages/VerifyHallTicket';
 import ExamHallScanner from './pages/ExamHallScanner';
-import Fees from './pages/Fees';
 import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
@@ -96,16 +95,6 @@ function App() {
               <ProtectedRoute>
                 <RoleRoute allowedRoles={['teacher', 'admin']}>
                   <Performance />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/fees"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher', 'admin']}>
-                  <Fees />
                 </RoleRoute>
               </ProtectedRoute>
             }

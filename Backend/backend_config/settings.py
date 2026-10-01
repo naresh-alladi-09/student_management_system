@@ -63,7 +63,6 @@ INSTALLED_APPS = [
     'notifications',
     'audit',
     'reports',
-    'fees',
     'drf_spectacular',
 ]
 
