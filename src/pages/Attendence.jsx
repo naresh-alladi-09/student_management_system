@@ -69,6 +69,38 @@ function Attendance() {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Anti-Proxy Geolocation & Biometric Facial Verification States
+  const [geoEnabled, setGeoEnabled] = useState(true);
+  const [faceRequired, setFaceRequired] = useState(true);
+  const [classLatitude, setClassLatitude] = useState(null);
+  const [classLongitude, setClassLongitude] = useState(null);
+  const [geofenceRadius, setGeofenceRadius] = useState(100);
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [locationLockedMsg, setLocationLockedMsg] = useState("");
+
+  const handleDetectClassLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationLockedMsg("Geolocation is not supported by your browser.");
+      return;
+    }
+    setDetectingLocation(true);
+    setLocationLockedMsg("Detecting precise classroom coordinates via GPS satellite/network...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setClassLatitude(pos.coords.latitude);
+        setClassLongitude(pos.coords.longitude);
+        setLocationLockedMsg(`Locked: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)} (±${Math.round(pos.coords.accuracy)}m accuracy)`);
+        setDetectingLocation(false);
+      },
+      (err) => {
+        console.warn("Geolocation detection error:", err);
+        setLocationLockedMsg("Could not detect location. Please check browser GPS permissions.");
+        setDetectingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   // Analytics Dashboard States
   const [summaryData, setSummaryData] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -377,7 +409,14 @@ function Attendance() {
         parseInt(selectedSubjectId, 10),
         sessionDuration,
         selectedClassId ? parseInt(selectedClassId, 10) : null,
-        secVal
+        secVal,
+        {
+          latitude: geoEnabled ? classLatitude : null,
+          longitude: geoEnabled ? classLongitude : null,
+          radius_meters: geofenceRadius,
+          require_face: faceRequired,
+          require_geo: geoEnabled,
+        }
       );
       if (res.data?.session) {
         const sess = res.data.session;
@@ -709,7 +748,7 @@ function Attendance() {
                       </select>
                     </div>
 
-                    <div style={{ marginBottom: "24px" }}>
+                    <div style={{ marginBottom: "20px" }}>
                       <label
                         htmlFor="duration-select"
                         style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}
@@ -733,6 +772,114 @@ function Attendance() {
                         <option value={120}>2 Minutes</option>
                         <option value={300}>5 Minutes</option>
                       </select>
+                    </div>
+
+                    {/* ANTI-PROXY SECURITY: GEOFENCE & FACE MATCHING CONFIGURATION */}
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        border: "1.5px solid #e2e8f0",
+                        borderRadius: "12px",
+                        padding: "16px",
+                        marginBottom: "24px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", color: "#1e293b", fontWeight: 700, fontSize: "14px" }}>
+                        <i className="fa-solid fa-shield-halved" style={{ color: "#2563eb" }}></i>
+                        Anti-Proxy Security Controls
+                      </div>
+
+                      {/* 1. Geolocation Verification Toggle & GPS Capture */}
+                      <div style={{ marginBottom: "14px", paddingBottom: "12px", borderBottom: "1px solid #e2e8f0" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13.5px", fontWeight: 600, color: "#0f172a", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={geoEnabled}
+                            onChange={(e) => setGeoEnabled(e.target.checked)}
+                            style={{ width: "16px", height: "16px", accentColor: "#2563eb" }}
+                          />
+                          <span>Enforce GPS Geofence (Student Must Be in Classroom)</span>
+                        </label>
+
+                        {geoEnabled && (
+                          <div style={{ marginTop: "10px", paddingLeft: "26px" }}>
+                            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "8px" }}>
+                              <button
+                                type="button"
+                                onClick={handleDetectClassLocation}
+                                disabled={detectingLocation}
+                                style={{
+                                  background: "#eff6ff",
+                                  color: "#1d4ed8",
+                                  border: "1px solid #bfdbfe",
+                                  padding: "6px 14px",
+                                  borderRadius: "6px",
+                                  fontSize: "12.5px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                {detectingLocation ? (
+                                  <>
+                                    <i className="fa-solid fa-spinner fa-spin"></i> Detecting GPS...
+                                  </>
+                                ) : (
+                                  <>
+                                    <i className="fa-solid fa-location-crosshairs"></i> Detect Classroom Coordinates
+                                  </>
+                                )}
+                              </button>
+
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <label style={{ fontSize: "12px", color: "#64748b" }}>Radius:</label>
+                                <select
+                                  value={geofenceRadius}
+                                  onChange={(e) => setGeofenceRadius(Number(e.target.value))}
+                                  style={{ padding: "5px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                                >
+                                  <option value={50}>50m (Strict - Room Only)</option>
+                                  <option value={100}>100m (Standard Classroom)</option>
+                                  <option value={200}>200m (Auditorium / Hall)</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {locationLockedMsg && (
+                              <div style={{ fontSize: "12px", color: classLatitude ? "#166534" : "#b45309", fontWeight: 500 }}>
+                                {classLatitude && <i className="fa-solid fa-circle-check" style={{ marginRight: "4px" }}></i>}
+                                {locationLockedMsg}
+                              </div>
+                            )}
+
+                            {classLatitude && (
+                              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                                Classroom Center: <code>{classLatitude.toFixed(6)}</code>, <code>{classLongitude.toFixed(6)}</code> • Students outside {geofenceRadius}m radius will be blocked as proxy!
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 2. Biometric Facial Recognition Toggle */}
+                      <div>
+                        <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13.5px", fontWeight: 600, color: "#0f172a", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={faceRequired}
+                            onChange={(e) => setFaceRequired(e.target.checked)}
+                            style={{ width: "16px", height: "16px", accentColor: "#2563eb" }}
+                          />
+                          <span>Enforce Live Facial Biometrics (Face Match Required)</span>
+                        </label>
+                        {faceRequired && (
+                          <div style={{ paddingLeft: "26px", marginTop: "6px", fontSize: "12px", color: "#64748b" }}>
+                            Students must scan their face through their camera. Attendance is only marked if the live face matches the registered student photo in the database.
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <button
@@ -1067,6 +1214,38 @@ function Attendance() {
                     : "Live Attendance Check-Ins"}
                 </h3>
 
+                {/* Security and Anti-Proxy Mode Indicator */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    background: activeSessionData?.require_geo ? "#ecfdf5" : "#f1f5f9",
+                    color: activeSessionData?.require_geo ? "#047857" : "#64748b",
+                    padding: "4px 10px",
+                    borderRadius: "20px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    border: `1px solid ${activeSessionData?.require_geo ? "#a7f3d0" : "#cbd5e1"}`
+                  }}>
+                    📍 Geofence Anti-Proxy: {activeSessionData?.require_geo ? `Active (${activeSessionData?.radius_meters || 50}m)` : "Disabled"}
+                  </span>
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    background: activeSessionData?.require_face ? "#eef2ff" : "#f1f5f9",
+                    color: activeSessionData?.require_face ? "#4338ca" : "#64748b",
+                    padding: "4px 10px",
+                    borderRadius: "20px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    border: `1px solid ${activeSessionData?.require_face ? "#c7d2fe" : "#cbd5e1"}`
+                  }}>
+                    👤 Biometric Face Scan: {activeSessionData?.require_face ? "Enforced" : "Optional"}
+                  </span>
+                </div>
+
                 {/* Live Stats Pills */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "20px" }}>
                   <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "10px", textAlign: "center" }}>
@@ -1108,22 +1287,36 @@ function Attendance() {
                           borderRadius: "8px",
                           background: "#f8fafc",
                           marginBottom: "8px",
+                          border: "1px solid #f1f5f9",
                         }}
                       >
                         <div>
-                          <strong>{att.name}</strong>{" "}
-                          <span style={{ color: "#64748b", fontSize: "12px" }}>
-                            ({att.roll_no})
-                          </span>
+                          <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "14px" }}>
+                            {att.name}
+                          </div>
+                          <div style={{ color: "#64748b", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px", marginTop: "3px" }}>
+                            <span>{att.roll_no}</span>
+                            {att.distance_meters !== null && att.distance_meters !== undefined && (
+                              <span style={{ color: "#059669", fontWeight: 500, fontSize: "11px" }}>
+                                📍 {Math.round(att.distance_meters)}m away
+                              </span>
+                            )}
+                            {att.face_matched && (
+                              <span style={{ color: "#4f46e5", fontWeight: 500, fontSize: "11px" }}>
+                                👤 {att.face_confidence ? `${Math.round(att.face_confidence)}% face match` : "Face matched"}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <span
                           style={{
                             background: "#ecfdf5",
                             color: "#047857",
-                            padding: "2px 8px",
+                            padding: "4px 10px",
                             borderRadius: "12px",
                             fontSize: "11px",
                             fontWeight: 600,
+                            whiteSpace: "nowrap"
                           }}
                         >
                           ✓ Present ({new Date(att.marked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})

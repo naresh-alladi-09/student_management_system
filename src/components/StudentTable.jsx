@@ -23,6 +23,7 @@ const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
               <th>Branch / Department</th>
               <th>Semester & Sec</th>
               <th>Status</th>
+              <th>Face Biometrics</th>
               <th>Contact Email</th>
               <th>Phone</th>
               <th style={{ textAlign: "center" }}>Actions</th>
@@ -33,6 +34,7 @@ const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
             {students && students.length > 0 ? (
               students.map((student) => {
                 const isActive = student.is_active !== false;
+                const hasFace = Boolean(student.face_registered || student.profile_photo);
                 return (
                   <tr key={student.id} style={{ opacity: isActive ? 1 : 0.7 }}>
                     <td className="student-id-col">
@@ -41,7 +43,17 @@ const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
                     <td>
                       <div className="student-name-container">
                         <div className="avatar-circle">
-                          {student.name ? student.name[0].toUpperCase() : "S"}
+                          {student.profile_photo ? (
+                            <img
+                              src={student.profile_photo}
+                              alt={student.name}
+                              style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
+                            />
+                          ) : student.name ? (
+                            student.name[0].toUpperCase()
+                          ) : (
+                            "S"
+                          )}
                         </div>
                         <div>
                           <span className="student-display-name">{student.name}</span>
@@ -74,6 +86,25 @@ const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
                         {isActive ? "● Active" : "○ Deactivated"}
                       </span>
                     </td>
+                    <td>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          padding: "3px 8px",
+                          borderRadius: "12px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          background: hasFace ? "#ecfdf5" : "#fffbeb",
+                          color: hasFace ? "#047857" : "#b45309",
+                          border: `1px solid ${hasFace ? "#a7f3d0" : "#fde68a"}`,
+                        }}
+                      >
+                        <i className={`fa-solid ${hasFace ? "fa-shield-halved" : "fa-triangle-exclamation"}`}></i>
+                        {hasFace ? "Registered" : "Pending"}
+                      </span>
+                    </td>
                     <td className="email-col">
                       <i className="fa-regular fa-envelope"></i>
                       {student.email}
@@ -84,6 +115,18 @@ const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
                     </td>
                     <td style={{ textAlign: "center" }}>
                       <div className="action-buttons-cell" style={{ justifyContent: "center", gap: "6px" }}>
+                        {onRegisterFace && (
+                          <button
+                            type="button"
+                            className="action-btn"
+                            onClick={() => onRegisterFace(student)}
+                            title="Register / Update Face Biometrics"
+                            style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
+                          >
+                            <i className="fa-solid fa-camera"></i> Face
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           className="action-btn edit"

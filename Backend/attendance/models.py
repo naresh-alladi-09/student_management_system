@@ -32,13 +32,21 @@ class AttendanceSession(models.Model):
     expires_at = models.DateTimeField()
     duration_seconds = models.IntegerField(default=60)
     is_active = models.BooleanField(default=True)
+
+    # Classroom Geofence & Anti-Proxy Security
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    radius_meters = models.FloatField(default=100.0)
+    require_face = models.BooleanField(default=True)
+    require_geo = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']
 
     @classmethod
-    def create_session(cls, subject, teacher, duration_seconds=60, academic_class=None, section='A', expires_at=None, end_time=None):
+    def create_session(cls, subject, teacher, duration_seconds=60, academic_class=None, section='A', expires_at=None, end_time=None, latitude=None, longitude=None, radius_meters=100.0, require_face=True, require_geo=True):
         token = secrets.token_urlsafe(32)
         now = timezone.now()
         expires = expires_at if expires_at else (now + timedelta(seconds=duration_seconds))
@@ -53,6 +61,11 @@ class AttendanceSession(models.Model):
             academic_class=academic_class,
             section=section,
             end_time=end_time,
+            latitude=latitude,
+            longitude=longitude,
+            radius_meters=radius_meters or 100.0,
+            require_face=require_face,
+            require_geo=require_geo,
             is_active=True
         )
 
@@ -116,7 +129,12 @@ class AttendanceRecord(models.Model):
     marked_via = models.CharField(
         max_length=20,
         default='MANUAL',
-        choices=(('QR', 'QR Code'), ('MANUAL', 'Teacher Manual Entry'), ('LEAVE_APPROVAL', 'Approved Leave Credit'))
+        choices=(
+            ('QR', 'QR Code'),
+            ('QR_FACE_GEO', 'QR + Face + Geo Verified'),
+            ('MANUAL', 'Teacher Manual Entry'),
+            ('LEAVE_APPROVAL', 'Approved Leave Credit')
+        )
     )
     remarks = models.CharField(max_length=200, blank=True, default='')
     marked_at = models.DateTimeField(default=timezone.now)
@@ -130,6 +148,13 @@ class AttendanceRecord(models.Model):
         help_text="Flagged if anti-proxy heuristics detect suspicious shared device or rapid remote IP patterns."
     )
     proxy_flags = models.CharField(max_length=255, blank=True, default='')
+
+    # Geolocation & Biometric Verification Audit
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    distance_meters = models.FloatField(null=True, blank=True)
+    face_matched = models.BooleanField(default=False)
+    face_confidence = models.FloatField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

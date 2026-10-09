@@ -16,6 +16,7 @@ from performance.models import Subject
 from notifications.models import Notification
 from audit.models import AuditLog
 from .models import AttendanceSession, AttendanceRecord, LeaveRequest, AttendanceAlertLog
+from .face_geo_service import haversine_distance, is_within_geofence, verify_face_match
 from .serializers import (
     AttendanceSessionSerializer,
     AttendanceRecordSerializer,
@@ -32,13 +33,52 @@ from .serializers import (
 def create_attendance_session(request):
     """
     Teacher starts an attendance session for a subject and optional section/class.
-    Payload: { "subject_id": 1, "duration_seconds": 60, "class_id": 2, "section": "A" }
+    Payload: {
+        "subject_id": 1,
+        "duration_seconds": 60,
+        "class_id": 2,
+        "section": "A",
+        "latitude": 17.3850,
+        "longitude": 78.4867,
+        "radius_meters": 100.0,
+        "require_face": true,
+        "require_geo": true
+    }
     Returns: newly created session with temporary secure QR token.
     """
     subject_id = request.data.get('subject_id')
     duration_seconds = int(request.data.get('duration_seconds', 60))
     class_id = request.data.get('class_id') or request.data.get('academic_class_id')
     section_val = request.data.get('section', 'A')
+
+    # Geo-coordinates & anti-proxy settings
+    latitude = request.data.get('latitude')
+    longitude = request.data.get('longitude')
+    radius_meters = request.data.get('radius_meters', 100.0)
+    try:
+        radius_meters = float(radius_meters or 100.0)
+    except (ValueError, TypeError):
+        radius_meters = 100.0
+
+    require_face = request.data.get('require_face', True)
+    if isinstance(require_face, str):
+        require_face = require_face.lower() in ('true', '1')
+
+    require_geo = request.data.get('require_geo', True)
+    if isinstance(require_geo, str):
+        require_geo = require_geo.lower() in ('true', '1')
+
+    if latitude is not None and latitude != '':
+        try:
+            latitude = float(latitude)
+        except (ValueError, TypeError):
+            latitude = None
+
+    if longitude is not None and longitude != '':
+        try:
+            longitude = float(longitude)
+        except (ValueError, TypeError):
+            longitude = None
 
     if not subject_id:
         return Response({"detail": "subject_id is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -87,22 +127,41 @@ def create_attendance_session(request):
         teacher=request.user,
         duration_seconds=duration_seconds,
         academic_class=academic_class,
-        section=section_val
+        section=section_val,
+        latitude=latitude,
+        longitude=longitude,
+        radius_meters=radius_meters,
+        require_face=require_face,
+        require_geo=require_geo
     )
+
+    geo_desc = f" (Geo: {latitude}, {longitude} within {radius_meters}m)" if (latitude and longitude) else " (No Geo Enforced)"
+    face_desc = " [Face Scan Required]" if require_face else " [Face Scan Optional]"
 
     AuditLog.log(
         action='ATTENDANCE_SESSION_START',
         entity='AttendanceSession',
         entity_id=str(session.id),
-        description=f"Faculty '{request.user.username}' started QR attendance session for {subject.code} (Section {section_val}).",
+        description=f"Faculty '{request.user.username}' started QR attendance session for {subject.code} (Section {section_val}){geo_desc}{face_desc}.",
         user=request.user,
         request=request
     )
 
     serializer = AttendanceSessionSerializer(session)
+    session_data = serializer.data
     return Response({
         "message": f"Attendance session started for {subject.name} ({subject.code}).",
-        "session": serializer.data
+        "session": session_data,
+        "session_id": session.id,
+        "qr_token": session.qr_token,
+        "qr_code": session_data.get('qr_code_image', ''),
+        "expires_at": session_data.get('expires_at', ''),
+        "time_remaining": session_data.get('time_remaining', duration_seconds),
+        "latitude": session.latitude,
+        "longitude": session.longitude,
+        "radius_meters": session.radius_meters,
+        "require_face": session.require_face,
+        "require_geo": session.require_geo,
     }, status=status.HTTP_201_CREATED)
 
 
@@ -343,6 +402,10 @@ def get_session_attendees(request, session_id):
             "branch": r.student.branch,
             "status": r.status,
             "marked_at": r.marked_at.isoformat(),
+            "face_matched": r.face_matched,
+            "face_confidence": r.face_confidence,
+            "distance_meters": r.distance_meters,
+            "marked_via": r.marked_via,
         }
         for r in present_records
     ]
@@ -377,29 +440,120 @@ def get_session_attendees(request, session_id):
 
 
 # =====================================================================
-# STUDENT: QR ATTENDANCE SUBMISSION
+# STUDENT: QR ATTENDANCE & ANTI-PROXY VERIFICATION
 # =====================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def verify_session_token(request):
+    """
+    Verifies QR token for an authenticated student before scanning face/location.
+    Returns session subject, classroom geocoordinates, radius, and student face status.
+    """
+    token = request.query_params.get('token') or request.data.get('token') or request.data.get('qr_token') or ''
+    token = str(token).strip()
+    if 'token=' in token:
+        import urllib.parse
+        try:
+            parsed = urllib.parse.urlparse(token)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if 'token' in qs and qs['token']:
+                token = qs['token'][0].strip()
+        except Exception:
+            pass
+
+    if not token:
+        return Response({"detail": "Token is required.", "valid": False}, status=status.HTTP_400_BAD_REQUEST)
+
+    session = AttendanceSession.objects.filter(qr_token=token).select_related('subject', 'teacher', 'academic_class').first()
+    if not session:
+        return Response({"detail": "Invalid QR code or token.", "valid": False}, status=status.HTTP_404_NOT_FOUND)
+
+    user = request.user
+    student = getattr(getattr(user, 'profile', None), 'student', None)
+    if not student:
+        student = Student.objects.filter(
+            Q(user_profile__user=user) |
+            Q(roll_no__iexact=user.username) |
+            Q(student_id__iexact=user.username) |
+            Q(email__iexact=user.email)
+        ).first()
+        if student and hasattr(user, 'profile') and user.profile.student is None:
+            try:
+                user.profile.student = student
+                user.profile.save(update_fields=['student'])
+            except Exception:
+                pass
+
+    is_already_marked = False
+    if student:
+        is_already_marked = AttendanceRecord.objects.filter(student=student, session=session).exists()
+
+    has_registered_face = bool(
+        student and (student.face_registered or student.face_embedding or student.profile_photo)
+    )
+
+    remaining_secs = 0
+    if session.expires_at:
+        diff = (session.expires_at - timezone.localtime()).total_seconds()
+        remaining_secs = max(0, int(diff))
+
+    return Response({
+        "valid": True,
+        "session_id": session.id,
+        "subject": session.subject.name,
+        "subject_name": session.subject.name,
+        "subject_code": session.subject.code,
+        "faculty_name": session.teacher.get_full_name() or session.teacher.username,
+        "teacher": session.teacher.get_full_name() or session.teacher.username,
+        "class_display": session.academic_class.display_name if session.academic_class else "All Sections",
+        "section": session.section,
+        "date": session.date.isoformat(),
+        "is_active": session.is_active,
+        "is_expired": session.is_expired(),
+        "time_remaining": remaining_secs,
+        "latitude": session.latitude,
+        "longitude": session.longitude,
+        "radius_meters": session.radius_meters or 100.0,
+        "require_face": session.require_face,
+        "require_geo": session.require_geo,
+        "student_has_face": has_registered_face,
+        "student_face_registered": has_registered_face,
+        "student_name": student.name if student else None,
+        "student_roll": student.roll_no if student else None,
+        "is_already_marked": is_already_marked,
+    }, status=status.HTTP_200_OK)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def mark_qr_attendance(request):
     """
-    Authenticated student scans or submits the temporary QR token.
-    Validates token, active session, expiration, and ensures no duplicate attendance.
+    Authenticated student scans session QR token, captures live face photo,
+    and submits GPS coordinates. Validates token, student enrollment, classroom geofence,
+    and biometric face match before granting Present status.
     """
     user = request.user
     profile = getattr(user, 'profile', None)
+    student = getattr(profile, 'student', None)
 
-    if not profile or profile.role != 'student' or not profile.student:
+    if not student:
+        student = Student.objects.filter(
+            Q(user_profile__user=user) |
+            Q(roll_no__iexact=user.username) |
+            Q(student_id__iexact=user.username) |
+            Q(email__iexact=user.email)
+        ).first()
+        if student and profile and profile.student is None:
+            try:
+                profile.student = student
+                profile.save(update_fields=['student'])
+            except Exception:
+                pass
+
+    if not student:
         return Response(
             {"detail": "Only authenticated students can mark QR attendance."},
-            status=status.HTTP_403_FORBIDDEN
-        )
-
-    student = profile.student
-    if not student.is_active:
-        return Response(
-            {"detail": "Your student account is deactivated. Contact administration."},
             status=status.HTTP_403_FORBIDDEN
         )
 
@@ -492,7 +646,114 @@ def mark_qr_attendance(request):
             status=status.HTTP_409_CONFLICT
         )
 
-    # 6. Anti-Proxy Protection: Capture IP, device fingerprint, and audit patterns
+    # =========================================================================
+    # ANTI-PROXY VERIFICATION LAYER 1: GEOLOCATION / GEOFENCING CHECK
+    # =========================================================================
+    raw_lat = request.data.get('latitude') or request.data.get('lat')
+    raw_lng = request.data.get('longitude') or request.data.get('lng') or request.data.get('lon')
+    student_lat = None
+    student_lng = None
+    if raw_lat is not None and str(raw_lat).strip() != '':
+        try:
+            student_lat = float(raw_lat)
+        except (ValueError, TypeError):
+            pass
+    if raw_lng is not None and str(raw_lng).strip() != '':
+        try:
+            student_lng = float(raw_lng)
+        except (ValueError, TypeError):
+            pass
+
+    distance_meters = None
+    if session.require_geo and (session.latitude is not None and session.longitude is not None):
+        if student_lat is None or student_lng is None:
+            return Response({
+                "detail": "GPS location is required to verify physical presence in class. Please enable location permissions.",
+                "geo_error": "MISSING_COORDINATES"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        distance_meters = haversine_distance(student_lat, student_lng, session.latitude, session.longitude)
+        if distance_meters is None:
+            return Response({
+                "detail": "Invalid GPS coordinates received from device.",
+                "geo_error": "INVALID_COORDINATES"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        allowed_radius = session.radius_meters or 100.0
+        if distance_meters > allowed_radius:
+            AuditLog.log(
+                action='PROXY_ATTEMPT_FLAGGED',
+                entity='AttendanceRecord',
+                entity_id=str(student.id),
+                description=f"Anti-proxy alert: Student '{student.roll_no}' attempted attendance {int(distance_meters)}m outside classroom (allowed: {int(allowed_radius)}m).",
+                user=user,
+                request=request
+            )
+            return Response({
+                "detail": f"Location Verification Failed: You are {int(distance_meters)}m away from the classroom (Allowed boundary: {int(allowed_radius)}m). Proxy attendance outside the classroom is prohibited!",
+                "distance_meters": distance_meters,
+                "allowed_radius": allowed_radius,
+                "geo_error": "OUTSIDE_GEOFENCE",
+                "error_type": "GEOFENCE_VIOLATION"
+            }, status=status.HTTP_400_BAD_REQUEST)
+    elif student_lat is not None and student_lng is not None and session.latitude is not None and session.longitude is not None:
+        distance_meters = haversine_distance(student_lat, student_lng, session.latitude, session.longitude)
+
+    # =========================================================================
+    # ANTI-PROXY VERIFICATION LAYER 2: FACIAL BIOMETRIC RECOGNITION CHECK
+    # =========================================================================
+    face_image = (request.data.get('face_image') or request.data.get('photo') or request.data.get('image') or '').strip()
+    face_matched = False
+    face_confidence = 0.0
+
+    if session.require_face:
+        # Check student has registered face
+        has_registered_face = bool(student.face_registered or student.face_embedding or student.profile_photo)
+        if not has_registered_face:
+            return Response({
+                "detail": f"No registered face found for student '{student.name}' ({student.roll_no}). Faculty must register your face in the student registration portal before attendance can be marked.",
+                "face_error": "NOT_REGISTERED",
+                "error_type": "FACE_NOT_REGISTERED"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not face_image:
+            return Response({
+                "detail": "Live facial scan is required. Please align your face in front of the camera.",
+                "face_error": "MISSING_LIVE_PHOTO",
+                "error_type": "MISSING_LIVE_PHOTO"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        registered_target = student.face_embedding or student.profile_photo
+        matched, confidence, raw_score, face_msg = verify_face_match(
+            live_image_input=face_image,
+            registered_embedding_or_photo=registered_target,
+            threshold=0.36
+        )
+
+        if not matched:
+            AuditLog.log(
+                action='PROXY_ATTEMPT_FLAGGED',
+                entity='AttendanceRecord',
+                entity_id=str(student.id),
+                description=f"Anti-proxy alert: Face mismatch for student '{student.roll_no}' (Confidence: {confidence}%). {face_msg}",
+                user=user,
+                request=request
+            )
+            return Response({
+                "detail": f"Face Recognition Failed: Scanned face does not match the registered student photo for {student.name} ({student.roll_no}). Proxy attendance rejected.",
+                "face_confidence": confidence,
+                "raw_score": raw_score,
+                "reason": face_msg,
+                "face_error": "FACE_MISMATCH",
+                "error_type": "FACE_MISMATCH"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        face_matched = True
+        face_confidence = confidence
+
+    # =========================================================================
+    # ANTI-PROXY VERIFICATION LAYER 3: DEVICE FINGERPRINT & IP ANOMALY HEURISTICS
+    # =========================================================================
     client_ip = get_client_ip(request)
     user_agent = get_user_agent(request)
     device_fingerprint = (request.data.get('device_fingerprint') or '').strip()[:128]
@@ -500,7 +761,6 @@ def mark_qr_attendance(request):
     suspicious_flags = {}
     is_flagged = False
 
-    # Check A: Shared device fingerprint across different student accounts in same session
     if device_fingerprint:
         other_students_device = list(
             AttendanceRecord.objects.filter(
@@ -514,7 +774,6 @@ def mark_qr_attendance(request):
             suspicious_flags['conflicting_students'] = other_students_device
             suspicious_flags['reason'] = f"Same device fingerprint was used by {len(other_students_device)} other student account(s)."
 
-    # Check B: Excessive rapid student submissions from identical client IP
     if client_ip and client_ip not in ('127.0.0.1', 'localhost'):
         ip_students_count = AttendanceRecord.objects.filter(
             session=session,
@@ -536,7 +795,7 @@ def mark_qr_attendance(request):
             request=request
         )
 
-    # 7. Create AttendanceRecord atomically with security metadata
+    # 7. Create AttendanceRecord atomically with full security metadata
     with transaction.atomic():
         record = AttendanceRecord.objects.create(
             student=student,
@@ -544,20 +803,25 @@ def mark_qr_attendance(request):
             subject=session.subject,
             date=session.date,
             status='Present',
-            marked_via='QR',
+            marked_via='QR_FACE_GEO' if (face_matched or distance_meters is not None) else 'QR',
+            latitude=student_lat,
+            longitude=student_lng,
+            distance_meters=distance_meters,
+            face_matched=face_matched,
+            face_confidence=face_confidence,
             ip_address=client_ip,
             user_agent=user_agent,
             device_fingerprint=device_fingerprint,
             is_flagged_proxy=is_flagged,
             proxy_flags=suspicious_flags,
-            remarks=f"Marked via live QR session by {student.name}" + (" [FLAGGED FOR PROXY REVIEW]" if is_flagged else "")
+            remarks=f"Marked via live Face & Geo scan by {student.name}" + (f" (Biometric Conf: {face_confidence}%, Dist: {int(distance_meters or 0)}m)") + (" [FLAGGED FOR PROXY REVIEW]" if is_flagged else "")
         )
 
         AuditLog.log(
             action='ATTENDANCE_QR_MARK',
             entity='AttendanceRecord',
             entity_id=str(record.id),
-            description=f"Student '{student.name}' ({student.roll_no}) marked QR attendance for {session.subject.code} (Proxy Status: {'FLAGGED' if is_flagged else 'Verified'}).",
+            description=f"Student '{student.name}' ({student.roll_no}) marked attendance for {session.subject.code} (Biometric: {'Verified ' + str(face_confidence) + '%' if face_matched else 'N/A'}, Dist: {int(distance_meters) if distance_meters is not None else 0}m).",
             user=user,
             request=request
         )
@@ -571,14 +835,20 @@ def mark_qr_attendance(request):
 
     return Response({
         "success": True,
-        "message": f"Attendance successfully recorded for {session.subject.name} ({session.subject.code})!",
+        "message": f"Attendance verified & recorded successfully for {session.subject.name} ({session.subject.code})!",
+        "student": student.name,
+        "roll_no": student.roll_no,
         "subject": session.subject.name,
         "subject_code": session.subject.code,
         "date": session.date.isoformat(),
         "marked_at": record.marked_at.isoformat(),
         "status": "Present",
-        "proxy_verification_status": "Flagged for Instructor Review" if is_flagged else "Verified",
-        "notice": "Attendance is authenticated and cryptographically bound to your student account."
+        "face_verified": face_matched,
+        "face_confidence": face_confidence,
+        "distance_meters": distance_meters,
+        "location_status": "Classroom Geofence Verified" if distance_meters is not None else "Location Not Enforced",
+        "proxy_verification_status": "Flagged for Instructor Review" if is_flagged else "Verified Authentic",
+        "notice": "Attendance marked with Live Facial Biometrics & GPS Anti-Proxy Security."
     }, status=status.HTTP_201_CREATED)
 
 

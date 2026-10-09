@@ -12,6 +12,8 @@ import {
   FaBook,
   FaFileAlt,
   FaIdCard,
+  FaQrcode,
+  FaUserCheck,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -153,6 +155,30 @@ const StudentNavbar = ({ activeTab, setActiveTab }) => {
       </div>
 
       <div className="nav-links">
+        {/* Anti-Proxy Biometric Attendance Check-In Button */}
+        <button
+          type="button"
+          onClick={() => navigate("/mark-attendance")}
+          style={{
+            background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+            color: "#ffffff",
+            border: "none",
+            padding: "8px 14px",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontSize: "13px",
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            boxShadow: "0 2px 8px rgba(16, 185, 129, 0.25)",
+            transition: "all 0.2s ease",
+          }}
+          title="Face Recognition & QR Attendance Check-In"
+        >
+          <FaUserCheck /> Check-In
+        </button>
+
         {/* Notification Bell Dropdown */}
         <div style={{ position: "relative" }}>
           <button

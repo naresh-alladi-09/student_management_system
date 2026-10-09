@@ -252,31 +252,9 @@ const StudentDashboard = () => {
     const cleanToken = extractTokenFromInput(tokenValue);
     if (!cleanToken) return;
 
-    setQrSubmitting(true);
-    setQrResult(null);
-
-    try {
-      const res = await markQrAttendance(cleanToken);
-      setQrResult({
-        success: true,
-        message: res.data?.message || "Attendance marked successfully!",
-      });
-      setQrInputToken("");
-      getMyAttendance().then((attRes) => {
-        if (attRes.data) setAttendanceData(attRes.data);
-      });
-    } catch (err) {
-      const errMsg =
-        err.response?.data?.detail ||
-        err.response?.data?.error ||
-        "Failed to mark attendance. Please verify the code or ask faculty.";
-      setQrResult({
-        success: false,
-        message: errMsg,
-      });
-    } finally {
-      setQrSubmitting(false);
-    }
+    // Route to Biometric Facial Recognition & Anti-Proxy Geolocation Check-In
+    setShowQrModal(false);
+    navigate(`/mark-attendance?token=${encodeURIComponent(cleanToken)}`);
   };
 
   // Camera Scanner Lifecycle using Html5QrcodeScanner

@@ -5,6 +5,7 @@ import {
   updateStudent,
   deactivateStudent,
   activateStudent,
+  registerStudentFace,
 } from "../services/studentservice";
 
 import Navbar from "../components/Navbar";
@@ -63,6 +64,100 @@ const Students = () => {
     roll_no: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Biometric Face Registration Modal State
+  const [faceModalStudent, setFaceModalStudent] = useState(null);
+  const [faceCameraActive, setFaceCameraActive] = useState(false);
+  const [facePhotoSnap, setFacePhotoSnap] = useState(null);
+  const [savingFace, setSavingFace] = useState(false);
+  const [faceModalError, setFaceModalError] = useState(null);
+  const faceVideoRef = useState(null)[0] || { current: null };
+  const faceStreamRef = { current: null };
+
+  const handleOpenFaceModal = (student) => {
+    setFaceModalStudent(student);
+    setFacePhotoSnap(student.profile_photo || null);
+    setFaceModalError(null);
+    setFaceCameraActive(false);
+  };
+
+  const handleCloseFaceModal = () => {
+    if (faceStreamRef.current) {
+      faceStreamRef.current.getTracks().forEach((t) => t.stop());
+      faceStreamRef.current = null;
+    }
+    setFaceModalStudent(null);
+    setFaceCameraActive(false);
+    setFacePhotoSnap(null);
+    setFaceModalError(null);
+  };
+
+  const startFaceCamera = async () => {
+    setFaceModalError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+      });
+      faceStreamRef.current = stream;
+      setFaceCameraActive(true);
+      setTimeout(() => {
+        const vid = document.getElementById("face-modal-video");
+        if (vid) {
+          vid.srcObject = stream;
+          vid.play();
+        }
+      }, 100);
+    } catch (err) {
+      console.error("Camera error:", err);
+      setFaceModalError("Camera permission denied. You can upload an image file instead.");
+      setFaceCameraActive(false);
+    }
+  };
+
+  const stopFaceCamera = () => {
+    if (faceStreamRef.current) {
+      faceStreamRef.current.getTracks().forEach((t) => t.stop());
+      faceStreamRef.current = null;
+    }
+    setFaceCameraActive(false);
+  };
+
+  const captureFaceSnapshot = () => {
+    const vid = document.getElementById("face-modal-video");
+    if (!vid) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 480;
+    canvas.height = 480;
+    const ctx = canvas.getContext("2d");
+    const minDim = Math.min(vid.videoWidth || 480, vid.videoHeight || 480);
+    const sx = ((vid.videoWidth || 480) - minDim) / 2;
+    const sy = ((vid.videoHeight || 480) - minDim) / 2;
+    ctx.drawImage(vid, sx, sy, minDim, minDim, 0, 0, 480, 480);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    setFacePhotoSnap(dataUrl);
+    stopFaceCamera();
+  };
+
+  const handleSaveFaceRegistration = async () => {
+    if (!faceModalStudent || !facePhotoSnap) {
+      setFaceModalError("Please take or upload a photo of the student first.");
+      return;
+    }
+    setSavingFace(true);
+    setFaceModalError(null);
+    try {
+      const res = await registerStudentFace(faceModalStudent.id, facePhotoSnap);
+      setStatusMessage(res.data?.message || `✓ Biometric face registered for ${faceModalStudent.name}!`);
+      setTimeout(() => setStatusMessage(null), 4000);
+      handleCloseFaceModal();
+      loadStudents(currentPage);
+    } catch (err) {
+      console.error("Error registering face:", err);
+      setFaceModalError(err.response?.data?.detail || "Failed to register student face. Ensure a clear human face is visible.");
+    } finally {
+      setSavingFace(false);
+    }
+  };
 
   const loadStudents = useCallback(async (page = 1) => {
     setLoading(true);
@@ -383,6 +478,7 @@ const Students = () => {
                 onEdit={handleOpenEdit}
                 onDeactivate={handleDeactivateClick}
                 onActivate={handleActivate}
+                onRegisterFace={handleOpenFaceModal}
               />
 
               {/* Server-Side Pagination Bar */}
@@ -655,6 +751,152 @@ const Students = () => {
                     onClick={handleConfirmDeactivate}
                   >
                     Yes, Deactivate
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Biometric Face Registration Modal */}
+          {faceModalStudent && (
+            <div className="modal-overlay">
+              <div className="modal-card" style={{ maxWidth: "520px", padding: "26px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <div>
+                    <h3 style={{ margin: "0 0 4px 0", fontSize: "18px", color: "#0f172a" }}>
+                      <i className="fa-solid fa-camera" style={{ color: "#2563eb", marginRight: "8px" }}></i>
+                      Register Student Face
+                    </h3>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+                      {faceModalStudent.name} ({faceModalStudent.roll_no || faceModalStudent.student_id})
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCloseFaceModal}
+                    style={{ background: "transparent", border: "none", fontSize: "18px", color: "#94a3b8", cursor: "pointer" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {faceModalError && (
+                  <div style={{ background: "#fee2e2", color: "#991b1b", padding: "10px 14px", borderRadius: "8px", fontSize: "13px", marginBottom: "14px", borderLeft: "4px solid #ef4444" }}>
+                    {faceModalError}
+                  </div>
+                )}
+
+                {/* Viewport: Live Camera or Photo Preview */}
+                {faceCameraActive ? (
+                  <div style={{ background: "#0f172a", borderRadius: "12px", padding: "16px", textAlign: "center", position: "relative" }}>
+                    <div style={{ position: "relative", width: "100%", maxWidth: "340px", aspectRatio: "1/1", margin: "0 auto", borderRadius: "10px", overflow: "hidden", background: "#000" }}>
+                      <video id="face-modal-video" autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+                      <div style={{ position: "absolute", top: "15%", left: "20%", width: "60%", height: "70%", border: "2px dashed #38bdf8", borderRadius: "50%", pointerEvents: "none", boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.4)" }}>
+                        <div style={{ position: "absolute", bottom: "-28px", left: "50%", transform: "translateX(-50%)", background: "rgba(15,23,42,0.9)", color: "#38bdf8", padding: "3px 8px", borderRadius: "10px", fontSize: "11px", whiteSpace: "nowrap" }}>
+                          Center Face in Frame
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "14px", display: "flex", justifyContent: "center", gap: "10px" }}>
+                      <button
+                        type="button"
+                        onClick={captureFaceSnapshot}
+                        style={{ background: "#10b981", color: "white", border: "none", padding: "8px 18px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                      >
+                        <i className="fa-solid fa-camera"></i> Capture Face
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopFaceCamera}
+                        style={{ background: "rgba(255,255,255,0.15)", color: "white", border: "1px solid rgba(255,255,255,0.3)", padding: "8px 14px", borderRadius: "8px", cursor: "pointer" }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : facePhotoSnap ? (
+                  <div style={{ display: "flex", gap: "16px", alignItems: "center", background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ width: "100px", height: "100px", borderRadius: "10px", overflow: "hidden", border: "2px solid #2563eb", flexShrink: 0 }}>
+                      <img src={facePhotoSnap} alt="Student Snapshot" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: "#166534", fontWeight: 700, fontSize: "13px", marginBottom: "4px" }}>
+                        <i className="fa-solid fa-circle-check"></i> Photo Ready for Biometrics
+                      </div>
+                      <p style={{ margin: "0 0 10px 0", fontSize: "12px", color: "#64748b" }}>
+                        Click Save to compute and store the 128-dimensional facial embedding in the database.
+                      </p>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          type="button"
+                          onClick={startFaceCamera}
+                          style={{ background: "#fff", border: "1px solid #cbd5e1", padding: "5px 10px", borderRadius: "6px", fontSize: "12px", cursor: "pointer" }}
+                        >
+                          <i className="fa-solid fa-arrows-rotate"></i> Retake
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFacePhotoSnap(null)}
+                          style={{ background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca", padding: "5px 10px", borderRadius: "6px", fontSize: "12px", cursor: "pointer" }}
+                        >
+                          <i className="fa-solid fa-trash"></i> Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", padding: "28px 16px", background: "#f8fafc", border: "2px dashed #cbd5e1", borderRadius: "12px" }}>
+                    <p style={{ margin: "0 0 14px 0", fontSize: "13.5px", color: "#475569" }}>
+                      Take a live photo or upload an image of the student to register their biometric face profile.
+                    </p>
+                    <div style={{ display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={startFaceCamera}
+                        style={{ background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "white", border: "none", padding: "9px 18px", borderRadius: "8px", fontWeight: 600, fontSize: "13px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                      >
+                        <i className="fa-solid fa-camera"></i> Open Camera
+                      </button>
+                      <label style={{ background: "#fff", border: "1px solid #cbd5e1", padding: "9px 16px", borderRadius: "8px", fontWeight: 600, fontSize: "13px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <i className="fa-solid fa-upload"></i> Upload Image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const r = new FileReader();
+                              r.onload = (evt) => setFacePhotoSnap(evt.target.result);
+                              r.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #f1f5f9" }}>
+                  <button
+                    type="button"
+                    onClick={handleCloseFaceModal}
+                    disabled={savingFace}
+                    style={{ background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", padding: "8px 16px", borderRadius: "8px", fontWeight: 600, cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveFaceRegistration}
+                    disabled={savingFace || !facePhotoSnap}
+                    style={{ background: "linear-gradient(135deg, #10b981, #059669)", color: "white", border: "none", padding: "8px 20px", borderRadius: "8px", fontWeight: 700, cursor: facePhotoSnap ? "pointer" : "not-allowed", opacity: facePhotoSnap ? 1 : 0.6, display: "flex", alignItems: "center", gap: "6px" }}
+                  >
+                    {savingFace ? (
+                      <span><i className="fa-solid fa-spinner fa-spin"></i> Saving Biometrics...</span>
+                    ) : (
+                      <span><i className="fa-solid fa-shield-halved"></i> Save Biometric Face</span>
+                    )}
                   </button>
                 </div>
               </div>

@@ -38,6 +38,18 @@ export const activateStudent = (id) => {
   return apiClient.post(`/api/students/${id}/activate/`);
 };
 
+export const registerStudentFace = (id, photoData) => {
+  return apiClient.post(`/api/students/${id}/register_face/`, {
+    photo: photoData,
+  });
+};
+
+export const detectFaceInImage = (imageData) => {
+  return apiClient.post("/api/students/detect_face/", {
+    image: imageData,
+  });
+};
+
 export const getStudentStats = () => {
   return apiClient.get("/api/students/stats/");
 };
@@ -85,13 +97,28 @@ export const getAttendanceAlertHistory = (params = {}) => {
 };
 
 // QR Session Services
-export const createAttendanceSession = (subjectId, durationSeconds = 60, classId = null, section = 'A') => {
+export const createAttendanceSession = (
+  subjectId,
+  durationSeconds = 60,
+  classId = null,
+  section = 'A',
+  geoOptions = {}
+) => {
   return apiClient.post("/api/attendance/sessions/create/", {
     subject_id: subjectId,
     duration_seconds: durationSeconds,
     class_id: classId,
     section: section,
+    latitude: geoOptions.latitude ?? null,
+    longitude: geoOptions.longitude ?? null,
+    radius_meters: geoOptions.radius_meters ?? 100.0,
+    require_face: geoOptions.require_face ?? true,
+    require_geo: geoOptions.require_geo ?? true,
   });
+};
+
+export const verifySessionToken = (token) => {
+  return apiClient.get(`/api/attendance/sessions/verify-token/?token=${encodeURIComponent(token)}`);
 };
 
 // Academic Hierarchy Services
@@ -134,10 +161,17 @@ export const getSessionAttendees = (sessionId) => {
   return apiClient.get(`/api/attendance/sessions/${sessionId}/attendees/`);
 };
 
-export const markQrAttendance = (qrToken) => {
-  return apiClient.post("/api/attendance/mark-qr/", {
-    qr_token: qrToken,
-  });
+export const markQrAttendance = (qrTokenOrPayload, options = {}) => {
+  let payload = {};
+  if (typeof qrTokenOrPayload === "object" && qrTokenOrPayload !== null) {
+    payload = { ...qrTokenOrPayload };
+  } else {
+    payload = {
+      qr_token: qrTokenOrPayload,
+      ...(typeof options === "object" ? options : {}),
+    };
+  }
+  return apiClient.post("/api/attendance/mark-qr/", payload);
 };
 
 // ==========================================

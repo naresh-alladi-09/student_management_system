@@ -43,11 +43,13 @@ allowed_hosts_env = os.environ.get('ALLOWED_HOSTS')
 if allowed_hosts_env:
     ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
 elif DEBUG:
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]', 'testserver']
 else:
     raise ImproperlyConfigured(
         "CRITICAL SECURITY CONFIGURATION ERROR: ALLOWED_HOSTS environment variable must be configured when DEBUG=False."
     )
+if 'testserver' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('testserver')
 
 
 # =============================================================================
@@ -174,17 +176,37 @@ if ca_path.exists():
         'ca': str(ca_path.resolve()),
     }
 
-DATABASES = {
-    'default': {
-        "ENGINE": db_engine,
-        "NAME": db_name,
-        "USER": db_user,
-        "PASSWORD": db_password,
-        "HOST": db_host,
-        "PORT": db_port,
-        'OPTIONS': db_options,
+import socket
+
+# Verify remote database reachability; fallback cleanly to SQLite if offline
+use_local_sqlite = os.environ.get("USE_SQLITE", "false").lower() == "true"
+if not use_local_sqlite and db_engine == "django.db.backends.mysql":
+    if db_host not in ("127.0.0.1", "localhost"):
+        try:
+            socket.gethostbyname(db_host)
+        except Exception:
+            print(f"[WARNING] Remote MySQL host '{db_host}' is unreachable. Falling back to local SQLite database.")
+            use_local_sqlite = True
+
+if use_local_sqlite or db_engine == "django.db.backends.sqlite3":
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            "ENGINE": db_engine,
+            "NAME": db_name,
+            "USER": db_user,
+            "PASSWORD": db_password,
+            "HOST": db_host,
+            "PORT": db_port,
+            'OPTIONS': db_options,
+        }
+    }
 
 
 # =============================================================================

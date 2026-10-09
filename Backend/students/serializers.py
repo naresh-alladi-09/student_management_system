@@ -89,11 +89,13 @@ class StudentSerializer(serializers.ModelSerializer):
             'parent_email',
             'parent_phone',
             'profile_photo',
+            'face_registered',
+            'face_registered_at',
             'is_active',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'student_id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'student_id', 'face_registered', 'face_registered_at', 'created_at', 'updated_at']
 
     def validate_name(self, value):
         val = (value or '').strip()

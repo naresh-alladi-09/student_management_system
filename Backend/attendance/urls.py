@@ -11,6 +11,7 @@ from .views import (
     close_attendance_session,
     get_session_attendees,
     mark_qr_attendance,
+    verify_session_token,
     list_create_leave_requests,
     review_leave_request,
     delete_leave_request,
@@ -37,6 +38,7 @@ urlpatterns = [
     # QR Session Endpoints
     path('sessions/create/', create_attendance_session, name='create_attendance_session'),
     path('sessions/active/', get_active_session, name='get_active_session'),
+    path('sessions/verify-token/', verify_session_token, name='verify_session_token'),
     path('sessions/<int:session_id>/refresh/', refresh_session_token, name='refresh_session_token'),
     path('sessions/<int:session_id>/close/', close_attendance_session, name='close_attendance_session'),
     path('sessions/<int:session_id>/attendees/', get_session_attendees, name='get_session_attendees'),
