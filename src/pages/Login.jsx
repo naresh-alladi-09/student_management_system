@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../styles/Login.css";
 import {
@@ -14,6 +14,12 @@ import {
   FaExclamationTriangle,
   FaSyncAlt,
   FaEnvelope,
+  FaEye,
+  FaEyeSlash,
+  FaArrowRight,
+  FaShieldAlt,
+  FaUniversity,
+  FaMagic,
 } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL, pingBackend } from "../services/apiClient";
@@ -28,6 +34,7 @@ const Login = ({ initialRole }) => {
   const { loginUser, setAuthenticatedUser, apiBaseUrl = API_BASE_URL } = useAuth();
   const [wakeUpNotice, setWakeUpNotice] = useState(false);
   const [pingStatus, setPingStatus] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const isLocalhost =
     apiBaseUrl.includes("127.0.0.1") || apiBaseUrl.includes("localhost");
@@ -77,23 +84,38 @@ const Login = ({ initialRole }) => {
     navigate(`/login/${newRole}`, { replace: true });
   };
 
+  // Quick Demo Auto-fill Helper
+  const handleQuickFill = () => {
+    setError("");
+    if (activeRole === "student") {
+      setUsername("STU001");
+      setPassword("Student@123");
+    } else if (activeRole === "admin") {
+      setUsername("ADMIN01");
+      setPassword("Admin@123");
+    } else {
+      setUsername("FAC001");
+      setPassword("Teacher@123");
+    }
+  };
+
   const handleTestBackend = async () => {
     setPingStatus({
       state: "testing",
-      message: "Testing connection (waking up backend if asleep)...",
+      message: "Testing server connection...",
     });
     const res = await pingBackend();
     if (res.ok) {
       setPingStatus({
         state: "success",
-        message: "Backend is online and responding! You can now sign in.",
+        message: "Server is online & responding!",
       });
     } else {
       setPingStatus({
         state: "error",
         message:
           res.error ||
-          "Cannot reach backend. The server may be starting up; try again in 20 seconds.",
+          "Server is offline or starting up; retry in 15 seconds.",
       });
     }
   };
@@ -127,10 +149,10 @@ const Login = ({ initialRole }) => {
         setActivationIdentifier(res.identifier || username);
         setActivationMsg({
           type: "info",
-          text: "Student account requires activation: Please enter your activation token and set a secure password.",
+          text: "Student account requires activation: Enter your activation token and set a password.",
         });
       } else {
-        setError(res.message || "Invalid credentials. Please check your credentials.");
+        setError(res.message || "Invalid credentials. Please verify your details.");
       }
     }
   };
@@ -150,7 +172,7 @@ const Login = ({ initialRole }) => {
     }
 
     if (newPassword.length < 8) {
-      setActivationMsg({ type: "error", text: "Password must be at least 8 characters long and contain a digit." });
+      setActivationMsg({ type: "error", text: "Password must be at least 8 characters long." });
       return;
     }
 
@@ -176,7 +198,7 @@ const Login = ({ initialRole }) => {
       }
     } catch (err) {
       setIsActivating(false);
-      const detail = err.response?.data?.detail || "Account activation failed. Please check your token or contact support.";
+      const detail = err.response?.data?.detail || "Account activation failed. Please check your token.";
       setActivationMsg({ type: "error", text: detail });
     }
   };
@@ -204,12 +226,12 @@ const Login = ({ initialRole }) => {
         setShowRequestToken(false);
         setActivationMsg({
           type: "success",
-          text: `Activation token generated: ${res.data.activation_token}. Token copied to activation form.`,
+          text: `Activation token generated: ${res.data.activation_token}. Copied to form!`,
         });
       } else {
         setActivationMsg({
           type: "success",
-          text: res.data?.detail || "Token request submitted. Please check with your institutional administrator.",
+          text: res.data?.detail || "Token request submitted to department administrator.",
         });
         setShowRequestToken(false);
       }
@@ -217,7 +239,7 @@ const Login = ({ initialRole }) => {
       setIsRequestingToken(false);
       setActivationMsg({
         type: "error",
-        text: err.response?.data?.detail || "Could not generate activation token. Please verify your student ID.",
+        text: err.response?.data?.detail || "Could not generate activation token.",
       });
     }
   };
@@ -226,172 +248,228 @@ const Login = ({ initialRole }) => {
   const isAdminMode = activeRole === "admin";
 
   const getPortalTitle = () => {
-    if (isAdminMode) return "SYSTEM ADMINISTRATION PORTAL";
-    if (isStudentMode) return "STUDENT ACADEMIC PORTAL";
-    return "FACULTY MANAGEMENT SYSTEM";
+    if (isAdminMode) return "System Administration";
+    if (isStudentMode) return "Student Academic Portal";
+    return "Faculty Management System";
   };
 
   const getPortalDescription = () => {
     if (isAdminMode) {
-      return "Manage institution departments, curriculum courses, faculty assignments, user privileges, and system audit logs.";
+      return "Centralized management of departments, academic curriculum, faculty assignments, system audits, and institution controls.";
     }
     if (isStudentMode) {
-      return "View your individual course attendance, academic performance, semester grades, timetable, and department announcements.";
+      return "Access your verified real-time attendance, biometric check-ins, exam hall tickets, semester grades, and department notifications.";
     }
-    return "Manage student enrollments, record daily attendance, conduct live QR attendance sessions, evaluate grades, and monitor analytics.";
+    return "Streamline student enrollments, launch anti-proxy QR attendance sessions, evaluate grades, and monitor real-time class analytics.";
   };
 
   return (
     <div className="login-page-bg">
+      {/* Ambient background glow elements */}
+      <div className="ambient-glow glow-1" />
+      <div className="ambient-glow glow-2" />
+
       <div className="login-container">
-        {/* Left Branding Panel */}
-        <div className={`login-left ${isStudentMode ? "student-mode" : isAdminMode ? "admin-mode" : ""}`}>
-          <div className="login-branding">
-            <div className="login-hero-icon">
+        {/* ============================================================== */}
+        {/* LEFT BRANDING HERO PANEL                                       */}
+        {/* ============================================================== */}
+        <div
+          className={`login-left ${
+            isStudentMode ? "student-mode" : isAdminMode ? "admin-mode" : "teacher-mode"
+          }`}
+        >
+          <div className="login-branding-content">
+            <div className="login-badge-header">
+              <span className="portal-mini-pill">
+                <FaUniversity /> Smart Campus Suite
+              </span>
+              <span className="security-mini-pill">
+                <FaShieldAlt /> AI Biometrics
+              </span>
+            </div>
+
+            <div className="login-hero-icon-wrap">
               {isAdminMode ? (
-                <FaUserShield size={44} />
+                <FaUserShield />
               ) : isStudentMode ? (
-                <FaGraduationCap size={44} />
+                <FaGraduationCap />
               ) : (
-                <FaChalkboardTeacher size={44} />
+                <FaChalkboardTeacher />
               )}
             </div>
-            <h2>{getPortalTitle()}</h2>
-            <p>{getPortalDescription()}</p>
 
-            <ul className="login-feature-list">
-              {isAdminMode ? (
-                <>
-                  <li>
-                    <FaCheckCircle /> Full user role & faculty management
-                  </li>
-                  <li>
-                    <FaCheckCircle /> Institutional audit logging & security
-                  </li>
-                  <li>
-                    <FaCheckCircle /> Department and timetable orchestration
-                  </li>
-                </>
-              ) : isStudentMode ? (
-                <>
-                  <li>
-                    <FaCheckCircle /> Live QR code class attendance marking
-                  </li>
-                  <li>
-                    <FaCheckCircle /> Real-time 75% attendance shortage alerts
-                  </li>
-                  <li>
-                    <FaCheckCircle /> Semester SGPA / CGPA report cards
-                  </li>
-                </>
-              ) : (
-                <>
-                  <li>
-                    <FaCheckCircle /> Dynamic QR attendance sessions
-                  </li>
-                  <li>
-                    <FaCheckCircle /> Course evaluation & marks grading
-                  </li>
-                  <li>
-                    <FaCheckCircle /> Daily attendance rosters & class analytics
-                  </li>
-                </>
-              )}
-            </ul>
+            <h2 className="login-brand-title">{getPortalTitle()}</h2>
+            <p className="login-brand-desc">{getPortalDescription()}</p>
+
+            <div className="login-features-wrap">
+              <div className="feature-item">
+                <div className="feature-bullet">
+                  <FaCheckCircle />
+                </div>
+                <span>
+                  {isAdminMode
+                    ? "Full user privileges & faculty access controls"
+                    : isStudentMode
+                    ? "Anti-proxy live QR + AI facial recognition check-in"
+                    : "Geofenced dynamic QR code attendance sessions"}
+                </span>
+              </div>
+              <div className="feature-item">
+                <div className="feature-bullet">
+                  <FaCheckCircle />
+                </div>
+                <span>
+                  {isAdminMode
+                    ? "Institutional security audits & session tracking"
+                    : isStudentMode
+                    ? "Real-time 75% attendance threshold monitoring"
+                    : "Instant facial enrollment with 128-d biometrics"}
+                </span>
+              </div>
+              <div className="feature-item">
+                <div className="feature-bullet">
+                  <FaCheckCircle />
+                </div>
+                <span>
+                  {isAdminMode
+                    ? "Class cohort scheduling & branch configuration"
+                    : isStudentMode
+                    ? "Digital examination hall tickets & CGPA cards"
+                    : "Automated shortage warning dispatch via SMS & Email"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Demo Credentials Footer Pill */}
+          <div className="login-demo-helper-box">
+            <div className="demo-helper-header">
+              <span className="demo-tag">
+                <FaMagic /> Quick Demo Access
+              </span>
+              <button
+                type="button"
+                className="btn-autofill"
+                onClick={handleQuickFill}
+                title="Fill credentials for this role"
+              >
+                Auto-fill Creds
+              </button>
+            </div>
+            <div className="demo-helper-body">
+              <span>
+                User:{" "}
+                <code>
+                  {isAdminMode ? "ADMIN01" : isStudentMode ? "STU001" : "FAC001"}
+                </code>
+              </span>
+              <span>
+                Pass:{" "}
+                <code>
+                  {isAdminMode
+                    ? "Admin@123"
+                    : isStudentMode
+                    ? "Student@123"
+                    : "Teacher@123"}
+                </code>
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Right Form Card */}
+        {/* ============================================================== */}
+        {/* RIGHT LOGIN / ACTIVATION FORM CARD                             */}
+        {/* ============================================================== */}
         <div className="login-right">
-          {/* Role Navigation Tabs */}
-          <div className="login-role-tabs">
+          {/* Role Navigation Segmented Tabs */}
+          <div className="role-tabs-container">
             <button
               type="button"
-              className={`role-tab ${activeRole === "teacher" ? "active teacher" : ""}`}
+              className={`role-tab-btn ${activeRole === "teacher" ? "active teacher" : ""}`}
               onClick={() => switchRole("teacher")}
             >
-              <FaChalkboardTeacher /> Faculty
+              <FaChalkboardTeacher />
+              <span>Faculty</span>
             </button>
             <button
               type="button"
-              className={`role-tab ${activeRole === "student" ? "active student" : ""}`}
+              className={`role-tab-btn ${activeRole === "student" ? "active student" : ""}`}
               onClick={() => switchRole("student")}
             >
-              <FaGraduationCap /> Student
+              <FaGraduationCap />
+              <span>Student</span>
             </button>
             <button
               type="button"
-              className={`role-tab ${activeRole === "admin" ? "active admin" : ""}`}
+              className={`role-tab-btn ${activeRole === "admin" ? "active admin" : ""}`}
               onClick={() => switchRole("admin")}
             >
-              <FaUserShield /> Administrator
+              <FaUserShield />
+              <span>Admin</span>
             </button>
           </div>
 
-          <h3 className="login-form-title">
-            {showActivation
-              ? "Activate Student Account"
-              : showRequestToken
-              ? "Request Activation Token"
-              : isAdminMode
-              ? "Administrator Sign In"
-              : isStudentMode
-              ? "Student Portal Sign In"
-              : "Faculty Portal Sign In"}
-          </h3>
-          <p className="login-form-subtitle">
-            {showActivation
-              ? "Enter your student identifier and activation token to set your secure password."
-              : showRequestToken
-              ? "Enter your Student ID to receive or generate your activation credentials."
-              : "Enter your institutional credentials below to access your account."}
-          </p>
+          {/* Form Header Info */}
+          <div className="login-header-group">
+            <h3 className="login-form-title">
+              {showActivation
+                ? "Activate Student Account"
+                : showRequestToken
+                ? "Request Activation Token"
+                : isAdminMode
+                ? "Administrator Sign In"
+                : isStudentMode
+                ? "Student Portal Sign In"
+                : "Faculty Portal Sign In"}
+            </h3>
+            <p className="login-form-subtitle">
+              {showActivation
+                ? "Enter your identifier and activation token to set your secure password."
+                : showRequestToken
+                ? "Enter your student ID to generate or receive your activation token."
+                : "Sign in with your verified institutional account to continue."}
+            </p>
+          </div>
 
+          {/* Error & Feedback Alerts */}
           {error && (
-            <div className="login-error-alert">
-              <FaExclamationCircle />
+            <div className="login-alert-box alert-error">
+              <FaExclamationCircle className="alert-icon" />
               <span>{error}</span>
             </div>
           )}
 
           {activationMsg.text && (
             <div
-              className={`login-error-alert ${
+              className={`login-alert-box ${
                 activationMsg.type === "success"
                   ? "alert-success"
                   : activationMsg.type === "info"
                   ? "alert-info"
-                  : ""
+                  : "alert-error"
               }`}
-              style={{
-                backgroundColor:
-                  activationMsg.type === "success"
-                    ? "#064e3b"
-                    : activationMsg.type === "info"
-                    ? "#1e3a8a"
-                    : undefined,
-                color: "#fff",
-              }}
             >
               {activationMsg.type === "success" ? (
-                <FaCheckCircle />
+                <FaCheckCircle className="alert-icon" />
               ) : (
-                <FaExclamationCircle />
+                <FaExclamationCircle className="alert-icon" />
               )}
               <span>{activationMsg.text}</span>
             </div>
           )}
 
-          {/* Account Activation Mode */}
+          {/* ============================================================== */}
+          {/* SUB-FLOW: ACCOUNT ACTIVATION                                  */}
+          {/* ============================================================== */}
           {showActivation ? (
-            <form onSubmit={handleActivateSubmit} className="login-inner-form" autoComplete="off">
-              <div className="field-group">
-                <label className="input-label-text">Student ID or Roll Number</label>
-                <div className="username-cont student-focus">
-                  <FaIdCard className="login-field-icon" />
+            <form onSubmit={handleActivateSubmit} className="login-form-body" autoComplete="off">
+              <div className="form-group">
+                <label className="input-field-label">Student ID or Roll Number</label>
+                <div className="input-control-wrap student-theme">
+                  <FaIdCard className="field-adornment-icon" />
                   <input
                     type="text"
-                    placeholder="e.g. STU20240001 or STU-2024-001"
+                    placeholder="e.g. STU001 or STU-2024-001"
                     value={activationIdentifier}
                     required
                     onChange={(e) => setActivationIdentifier(e.target.value)}
@@ -399,10 +477,10 @@ const Login = ({ initialRole }) => {
                 </div>
               </div>
 
-              <div className="field-group">
-                <label className="input-label-text">Security Activation Token</label>
-                <div className="username-cont student-focus">
-                  <FaKey className="login-field-icon" />
+              <div className="form-group">
+                <label className="input-field-label">Security Activation Token</label>
+                <div className="input-control-wrap student-theme">
+                  <FaKey className="field-adornment-icon" />
                   <input
                     type="text"
                     placeholder="Enter 32+ character activation token"
@@ -413,27 +491,35 @@ const Login = ({ initialRole }) => {
                 </div>
               </div>
 
-              <div className="field-group">
-                <label className="input-label-text">New Secure Password</label>
-                <div className="password-cont student-focus">
-                  <FaLock className="login-field-icon" />
+              <div className="form-group">
+                <label className="input-field-label">New Secure Password</label>
+                <div className="input-control-wrap student-theme">
+                  <FaLock className="field-adornment-icon" />
                   <input
-                    type="password"
-                    placeholder="Min 8 characters with numbers"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Minimum 8 characters"
                     value={newPassword}
                     required
                     autoComplete="new-password"
                     onChange={(e) => setNewPassword(e.target.value)}
                   />
+                  <button
+                    type="button"
+                    className="btn-toggle-eye"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <FaEyeSlash /> : <FaEye />}
+                  </button>
                 </div>
               </div>
 
-              <div className="field-group">
-                <label className="input-label-text">Confirm New Password</label>
-                <div className="password-cont student-focus">
-                  <FaLock className="login-field-icon" />
+              <div className="form-group">
+                <label className="input-field-label">Confirm New Password</label>
+                <div className="input-control-wrap student-theme">
+                  <FaLock className="field-adornment-icon" />
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="Re-enter your new password"
                     value={confirmPassword}
                     required
@@ -445,22 +531,25 @@ const Login = ({ initialRole }) => {
 
               <button
                 type="submit"
-                className="login-submit-btn student-btn"
+                className="btn-submit-login student-theme-btn"
                 disabled={isActivating}
               >
                 {isActivating ? (
-                  <span>
+                  <>
                     <FaSyncAlt className="spin-icon" /> Activating Account...
-                  </span>
+                  </>
                 ) : (
-                  <span>Activate Account & Sign In →</span>
+                  <>
+                    <span>Activate Account & Sign In</span>
+                    <FaArrowRight />
+                  </>
                 )}
               </button>
 
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", fontSize: "0.85rem" }}>
+              <div className="auth-helper-links">
                 <button
                   type="button"
-                  style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", textDecoration: "underline" }}
+                  className="link-btn-text"
                   onClick={() => {
                     setShowRequestToken(true);
                     setShowActivation(false);
@@ -471,7 +560,7 @@ const Login = ({ initialRole }) => {
                 </button>
                 <button
                   type="button"
-                  style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer" }}
+                  className="link-btn-muted"
                   onClick={() => setShowActivation(false)}
                 >
                   ← Return to Sign In
@@ -479,15 +568,17 @@ const Login = ({ initialRole }) => {
               </div>
             </form>
           ) : showRequestToken ? (
-            /* Request Token Mode */
-            <form onSubmit={handleRequestToken} className="login-inner-form" autoComplete="off">
-              <div className="field-group">
-                <label className="input-label-text">Student ID or Roll Number</label>
-                <div className="username-cont student-focus">
-                  <FaIdCard className="login-field-icon" />
+            /* ============================================================== */
+            /* SUB-FLOW: REQUEST TOKEN                                        */
+            /* ============================================================== */
+            <form onSubmit={handleRequestToken} className="login-form-body" autoComplete="off">
+              <div className="form-group">
+                <label className="input-field-label">Student ID or Roll Number</label>
+                <div className="input-control-wrap student-theme">
+                  <FaIdCard className="field-adornment-icon" />
                   <input
                     type="text"
-                    placeholder="e.g. STU20240001 or STU-2024-001"
+                    placeholder="e.g. STU001 or STU-2024-001"
                     value={reqIdentifier}
                     required
                     onChange={(e) => setReqIdentifier(e.target.value)}
@@ -495,13 +586,13 @@ const Login = ({ initialRole }) => {
                 </div>
               </div>
 
-              <div className="field-group">
-                <label className="input-label-text">Institutional Email (Optional)</label>
-                <div className="username-cont student-focus">
-                  <FaEnvelope className="login-field-icon" />
+              <div className="form-group">
+                <label className="input-field-label">Institutional Email (Optional)</label>
+                <div className="input-control-wrap student-theme">
+                  <FaEnvelope className="field-adornment-icon" />
                   <input
                     type="email"
-                    placeholder="e.g. yourname@college.edu"
+                    placeholder="e.g. student@college.edu"
                     value={reqEmail}
                     onChange={(e) => setReqEmail(e.target.value)}
                   />
@@ -510,22 +601,25 @@ const Login = ({ initialRole }) => {
 
               <button
                 type="submit"
-                className="login-submit-btn student-btn"
+                className="btn-submit-login student-theme-btn"
                 disabled={isRequestingToken}
               >
                 {isRequestingToken ? (
-                  <span>
+                  <>
                     <FaSyncAlt className="spin-icon" /> Generating Token...
-                  </span>
+                  </>
                 ) : (
-                  <span>Request Activation Token →</span>
+                  <>
+                    <span>Request Activation Token</span>
+                    <FaArrowRight />
+                  </>
                 )}
               </button>
 
-              <div style={{ textAlign: "center", marginTop: "12px", fontSize: "0.85rem" }}>
+              <div className="auth-helper-links centered">
                 <button
                   type="button"
-                  style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", textDecoration: "underline" }}
+                  className="link-btn-text"
                   onClick={() => {
                     setShowRequestToken(false);
                     setShowActivation(true);
@@ -536,31 +630,33 @@ const Login = ({ initialRole }) => {
               </div>
             </form>
           ) : (
-            /* Standard Sign In Form */
-            <form onSubmit={handleSubmit} className="login-inner-form" autoComplete="off">
-              <div className="field-group">
-                <label className="input-label-text">
+            /* ============================================================== */
+            /* STANDARD ROLE SIGN IN FORM                                    */
+            /* ============================================================== */
+            <form onSubmit={handleSubmit} className="login-form-body" autoComplete="off">
+              <div className="form-group">
+                <label className="input-field-label">
                   {isAdminMode
                     ? "Administrator Username"
                     : isStudentMode
-                    ? "Student ID (or Roll Number / Email)"
+                    ? "Student ID or Roll Number"
                     : "Faculty Username or Email"}
                 </label>
                 <div
-                  className={`username-cont ${
+                  className={`input-control-wrap ${
                     isAdminMode
-                      ? "admin-focus"
+                      ? "admin-theme"
                       : isStudentMode
-                      ? "student-focus"
-                      : "teacher-focus"
+                      ? "student-theme"
+                      : "teacher-theme"
                   }`}
                 >
                   {isAdminMode ? (
-                    <FaUserShield className="login-field-icon" />
+                    <FaUserShield className="field-adornment-icon" />
                   ) : isStudentMode ? (
-                    <FaIdCard className="login-field-icon" />
+                    <FaIdCard className="field-adornment-icon" />
                   ) : (
-                    <FaUser className="login-field-icon" />
+                    <FaUser className="field-adornment-icon" />
                   )}
                   <input
                     type="text"
@@ -568,8 +664,8 @@ const Login = ({ initialRole }) => {
                       isAdminMode
                         ? "Enter admin username"
                         : isStudentMode
-                        ? "Enter Student ID (e.g. STU20240001)"
-                        : "Enter faculty username or email"
+                        ? "e.g. STU001 or roll number"
+                        : "e.g. FAC001 or faculty email"
                     }
                     value={username}
                     required
@@ -582,21 +678,35 @@ const Login = ({ initialRole }) => {
                 </div>
               </div>
 
-              <div className="field-group">
-                <label className="input-label-text">Password</label>
+              <div className="form-group">
+                <div className="label-with-action">
+                  <label className="input-field-label">Password</label>
+                  {isStudentMode && (
+                    <button
+                      type="button"
+                      className="inline-action-link"
+                      onClick={() => {
+                        setShowActivation(true);
+                        setActivationIdentifier(username);
+                      }}
+                    >
+                      First time? Activate Account
+                    </button>
+                  )}
+                </div>
                 <div
-                  className={`password-cont ${
+                  className={`input-control-wrap ${
                     isAdminMode
-                      ? "admin-focus"
+                      ? "admin-theme"
                       : isStudentMode
-                      ? "student-focus"
-                      : "teacher-focus"
+                      ? "student-theme"
+                      : "teacher-theme"
                   }`}
                 >
-                  <FaLock className="login-field-icon" />
+                  <FaLock className="field-adornment-icon" />
                   <input
-                    type="password"
-                    placeholder="Enter your password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your account password"
                     value={password}
                     required
                     autoComplete="current-password"
@@ -605,96 +715,98 @@ const Login = ({ initialRole }) => {
                       setError("");
                     }}
                   />
+                  <button
+                    type="button"
+                    className="btn-toggle-eye"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <FaEyeSlash /> : <FaEye />}
+                  </button>
                 </div>
               </div>
 
-              {isStudentMode && (
-                <div style={{ textAlign: "right", marginTop: "-6px", marginBottom: "10px" }}>
-                  <button
-                    type="button"
-                    style={{ background: "none", border: "none", color: "#38bdf8", cursor: "pointer", fontSize: "0.82rem", textDecoration: "underline" }}
-                    onClick={() => {
-                      setShowActivation(true);
-                      setActivationIdentifier(username);
-                    }}
-                  >
-                    First time? Activate Student Account
-                  </button>
-                </div>
-              )}
-
-              <div className="form-secondary-row">
-                <label className="remember-me-label">
-                  <input type="checkbox" defaultChecked /> Remember session
+              <div className="form-meta-row">
+                <label className="checkbox-wrap">
+                  <input type="checkbox" defaultChecked />
+                  <span>Remember session</span>
                 </label>
+                <button
+                  type="button"
+                  className="quick-sample-link"
+                  onClick={handleQuickFill}
+                >
+                  Use sample {activeRole} creds
+                </button>
               </div>
 
               {wakeUpNotice && (
-                <div className="render-wakeup-notice">
+                <div className="wakeup-banner">
                   <FaSyncAlt className="spin-icon" />
-                  <span>Connecting to backend services. Please wait...</span>
+                  <span>Connecting to cloud backend. Please hold on...</span>
                 </div>
               )}
 
               <button
                 type="submit"
-                className={`login-submit-btn ${
+                className={`btn-submit-login ${
                   isAdminMode
-                    ? "admin-btn"
+                    ? "admin-theme-btn"
                     : isStudentMode
-                    ? "student-btn"
-                    : "teacher-btn"
+                    ? "student-theme-btn"
+                    : "teacher-theme-btn"
                 }`}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
-                  <span>
-                    <FaSyncAlt className="spin-icon" /> Authenticating...
-                  </span>
+                  <>
+                    <FaSyncAlt className="spin-icon" />
+                    <span>Signing in...</span>
+                  </>
                 ) : (
-                  <span>Sign In to Portal →</span>
+                  <>
+                    <span>Sign In to {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)} Portal</span>
+                    <FaArrowRight />
+                  </>
                 )}
               </button>
             </form>
           )}
 
-          {/* Diagnostic Footer */}
-          <div className="login-backend-diag">
-            <div className="backend-diag-row">
-              <div className="backend-url-info">
-                <span
-                  className={`status-dot ${isLocalhost ? "status-warn" : "status-live"}`}
-                ></span>
-                <span className="backend-label">Backend:</span>
-                <span className="backend-url-code" title={apiBaseUrl}>
-                  {apiBaseUrl}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="btn-ping-backend"
-                onClick={handleTestBackend}
-                disabled={pingStatus?.state === "testing"}
-                title="Test live connection to backend"
-              >
-                {pingStatus?.state === "testing" ? (
-                  <span>
-                    <FaSyncAlt className="spin-icon" /> Testing...
-                  </span>
-                ) : (
-                  <span>Test Connection</span>
-                )}
-              </button>
+          {/* Diagnostic Footer Bar */}
+          <div className="login-footer-bar">
+            <div className="server-status-pill">
+              <span className={`status-led ${isLocalhost ? "local" : "cloud"}`} />
+              <span className="server-label">API Server:</span>
+              <span className="server-host" title={apiBaseUrl}>
+                {apiBaseUrl}
+              </span>
             </div>
-            {pingStatus && (
-              <div className={`backend-diag-notice ${pingStatus.state}`}>
-                {pingStatus.state === "success" && <FaCheckCircle />}
-                {pingStatus.state === "error" && <FaExclamationCircle />}
-                {pingStatus.state === "testing" && <FaSyncAlt className="spin-icon" />}
-                <span>{pingStatus.message}</span>
-              </div>
-            )}
+            <button
+              type="button"
+              className="btn-ping"
+              onClick={handleTestBackend}
+              disabled={pingStatus?.state === "testing"}
+            >
+              {pingStatus?.state === "testing" ? (
+                <>
+                  <FaSyncAlt className="spin-icon" /> Testing
+                </>
+              ) : (
+                "Ping Server"
+              )}
+            </button>
           </div>
+
+          {pingStatus && (
+            <div className={`ping-feedback-box ${pingStatus.state}`}>
+              {pingStatus.state === "success" && <FaCheckCircle />}
+              {pingStatus.state === "error" && <FaExclamationTriangle />}
+              {pingStatus.state === "testing" && <FaSyncAlt className="spin-icon" />}
+              <span>{pingStatus.message}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

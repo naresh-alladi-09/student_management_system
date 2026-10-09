@@ -1,166 +1,320 @@
+/* ==========================================================================
+   SMART CAMPUS PORTAL - LOGIN EXPERIENCE
+   Premium Modern Architecture with Dynamic Role Theming
+   ========================================================================== */
+
 .login-page-bg {
   min-height: 100vh;
   width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  padding: 24px;
+  background: radial-gradient(circle at 15% 15%, #172554 0%, #0b1120 40%, #030712 100%);
+  padding: 30px 20px;
   box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  position: relative;
+  overflow: hidden;
 }
 
+/* Ambient glow orbs behind login container */
+.ambient-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.45;
+}
+
+.ambient-glow.glow-1 {
+  width: 500px;
+  height: 500px;
+  background: #2563eb;
+  top: -100px;
+  left: -100px;
+}
+
+.ambient-glow.glow-2 {
+  width: 450px;
+  height: 450px;
+  background: #059669;
+  bottom: -100px;
+  right: -100px;
+}
+
+/* Central Card Container */
 .login-container {
   display: flex;
   width: 100%;
-  max-width: 1020px;
-  min-height: 580px;
-  background: white;
-  border-radius: 24px;
+  max-width: 1060px;
+  min-height: 640px;
+  background: #ffffff;
+  border-radius: 28px;
   overflow: hidden;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 35px 80px -15px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.15);
+  position: relative;
+  z-index: 1;
 }
 
-@media (max-width: 820px) {
+@media (max-width: 880px) {
   .login-container {
     flex-direction: column;
+    max-width: 540px;
+    min-height: auto;
+    border-radius: 22px;
   }
 }
 
-/* Left panel with dynamic theme */
+/* ==========================================================================
+   LEFT BRANDING HERO PANEL
+   ========================================================================== */
+
 .login-left {
   flex: 1;
-  background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
-  color: white;
-  padding: 48px;
+  color: #ffffff;
+  padding: 44px 40px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   box-sizing: border-box;
   position: relative;
-  transition: background 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-left.teacher-mode {
+  background: linear-gradient(145deg, #1e3a8a 0%, #1e293b 70%, #0f172a 100%);
 }
 
 .login-left.student-mode {
-  background: linear-gradient(135deg, #065f46 0%, #0f172a 100%);
+  background: linear-gradient(145deg, #065f46 0%, #064e3b 65%, #022c22 100%);
 }
 
 .login-left.admin-mode {
-  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  background: linear-gradient(145deg, #312e81 0%, #1e1b4b 65%, #0f172a 100%);
 }
 
-.login-branding {
+.login-branding-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.login-hero-icon {
-  font-size: 46px;
+.login-badge-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.portal-mini-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #f8fafc;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+}
+
+.security-mini-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(56, 189, 248, 0.18);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #7dd3fc;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+}
+
+.login-hero-icon-wrap {
+  width: 68px;
+  height: 68px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  color: #ffffff;
+  margin-top: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.teacher-mode .login-hero-icon-wrap {
   color: #60a5fa;
-  margin-bottom: 4px;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3);
 }
 
-.student-mode .login-hero-icon {
+.student-mode .login-hero-icon-wrap {
   color: #34d399;
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
 }
 
-.admin-mode .login-hero-icon {
-  color: #818cf8;
+.admin-mode .login-hero-icon-wrap {
+  color: #a5b4fc;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
 }
 
-.login-branding h2 {
+.login-brand-title {
   font-size: 26px;
   font-weight: 800;
   margin: 0;
   line-height: 1.25;
   letter-spacing: -0.5px;
+  color: #ffffff;
 }
 
-.login-branding p {
+.login-brand-desc {
   color: #cbd5e1;
-  font-size: 15px;
+  font-size: 14px;
   margin: 0;
   line-height: 1.6;
 }
 
-.login-feature-list {
-  list-style: none;
-  padding: 0;
-  margin: 24px 0 0 0;
+.login-features-wrap {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 14px;
 }
 
-.login-feature-list li {
+.feature-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   font-size: 13.5px;
   color: #e2e8f0;
+  line-height: 1.45;
 }
 
-.login-feature-list li i {
+.feature-bullet {
   color: #38bdf8;
   font-size: 14px;
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
-.student-mode .login-feature-list li i {
+.student-mode .feature-bullet {
   color: #34d399;
 }
 
-.login-demo-pill {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  padding: 14px 18px;
-  border-radius: 14px;
-  backdrop-filter: blur(10px);
-  margin-top: 24px;
+.admin-mode .feature-bullet {
+  color: #c084fc;
 }
 
-.login-demo-pill small {
-  display: block;
+/* Quick Demo Helper Box */
+.login-demo-helper-box {
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 14px 16px;
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  margin-top: 28px;
+}
+
+.demo-helper-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.demo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: #93c5fd;
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.6px;
   font-weight: 700;
-  margin-bottom: 6px;
 }
 
-.student-mode .login-demo-pill small {
+.student-mode .demo-tag {
   color: #6ee7b7;
 }
 
-.login-demo-pill code {
-  font-family: monospace;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12.5px;
+.admin-mode .demo-tag {
+  color: #c4b5fd;
 }
 
-/* Right Form Area */
-.login-form {
-  flex: 1.25;
-  padding: 44px 48px;
-  background: white;
+.btn-autofill {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-autofill:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.demo-helper-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.demo-helper-body code {
+  background: rgba(0, 0, 0, 0.4);
+  color: #f8fafc;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   RIGHT FORM AREA
+   ========================================================================== */
+
+.login-right {
+  flex: 1.15;
+  padding: 44px 44px;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   box-sizing: border-box;
 }
 
-/* Role Selector Tabs */
+@media (max-width: 880px) {
+  .login-right {
+    padding: 32px 24px;
+  }
+}
+
+/* Role Navigation Segmented Tabs */
 .role-tabs-container {
   display: flex;
   background: #f1f5f9;
   padding: 5px;
   border-radius: 14px;
-  margin-bottom: 24px;
+  margin-bottom: 22px;
   border: 1px solid #e2e8f0;
+  gap: 4px;
 }
 
 .role-tab-btn {
@@ -169,15 +323,15 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   border-radius: 10px;
   border: none;
   background: transparent;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: #64748b;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .role-tab-btn:hover {
@@ -185,336 +339,356 @@
 }
 
 .role-tab-btn.active.teacher {
-  background: #2563eb;
-  color: white;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
 .role-tab-btn.active.student {
-  background: #059669;
-  color: white;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .role-tab-btn.active.admin {
-  background: #1e1b4b;
-  color: white;
-  box-shadow: 0 4px 12px rgba(30, 27, 75, 0.25);
+  background: linear-gradient(135deg, #4f46e5, #3730a3);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
 }
 
-.form-header-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 10px;
-  width: fit-content;
+/* Header Text */
+.login-header-group {
+  margin-bottom: 20px;
+  text-align: left;
 }
 
-.form-header-badge.teacher {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.form-header-badge.student {
-  background: #d1fae5;
-  color: #047857;
-}
-
-.form-header-badge.admin {
-  background: #ede9fe;
-  color: #5b21b6;
-}
-
-.login-form h2 {
-  font-size: 22px;
+.login-form-title {
+  font-size: 23px;
   font-weight: 800;
   color: #0f172a;
   margin: 0 0 6px 0;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.4px;
 }
 
-.login-form p.login-subtitle {
+.login-form-subtitle {
   color: #64748b;
-  font-size: 14px;
-  margin: 0 0 20px 0;
+  font-size: 13.5px;
+  margin: 0;
+  line-height: 1.5;
 }
 
-.login-error-alert {
-  background: #fee2e2;
-  color: #991b1b;
+/* Alert Boxes */
+.login-alert-box {
   padding: 11px 14px;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
-  margin-bottom: 18px;
-  border-left: 4px solid #ef4444;
+  margin-bottom: 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  line-height: 1.4;
+  text-align: left;
 }
 
-.login-inner-form {
+.login-alert-box.alert-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.login-alert-box.alert-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.login-alert-box.alert-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}
+
+.login-alert-box .alert-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* Form Layout */
+.login-form-body {
   display: flex;
   flex-direction: column;
   gap: 16px;
   width: 100%;
+  text-align: left;
 }
 
-.input-label-text {
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-  margin-bottom: 4px;
-}
-
-.field-group {
+.form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
-.username-cont,
-.password-cont {
+.label-with-action {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+}
+
+.input-field-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.inline-action-link {
+  background: none;
+  border: none;
+  color: #059669;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  transition: color 0.15s ease;
+}
+
+.inline-action-link:hover {
+  color: #047857;
+}
+
+/* Input Control Wrappers */
+.input-control-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   background: #f8fafc;
   border: 1.5px solid #cbd5e1;
   border-radius: 12px;
-  padding: 12px 16px;
-  transition: all 0.2s;
+  padding: 11px 14px;
+  transition: all 0.2s ease;
 }
 
-.username-cont:focus-within,
-.password-cont:focus-within {
-  background: white;
+.input-control-wrap:focus-within {
+  background: #ffffff;
 }
 
-.teacher-focus:focus-within {
+.input-control-wrap.teacher-theme:focus-within {
   border-color: #2563eb;
   box-shadow: 0 0 0 3.5px rgba(37, 99, 235, 0.12);
 }
 
-.student-focus:focus-within {
-  border-color: #059669;
-  box-shadow: 0 0 0 3.5px rgba(5, 150, 105, 0.12);
+.input-control-wrap.student-theme:focus-within {
+  border-color: #10b981;
+  box-shadow: 0 0 0 3.5px rgba(16, 185, 129, 0.12);
 }
 
-.admin-focus:focus-within {
+.input-control-wrap.admin-theme:focus-within {
   border-color: #4f46e5;
-  box-shadow: 0 0 0 3.5px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 0 0 3.5px rgba(79, 70, 229, 0.14);
 }
 
-.login-field-icon {
+.field-adornment-icon {
   color: #94a3b8;
   font-size: 16px;
+  flex-shrink: 0;
 }
 
-.username-cont input,
-.password-cont input {
+.input-control-wrap input {
   border: none;
   background: transparent;
   outline: none;
   width: 100%;
   font-size: 14px;
   font-family: inherit;
-  color: #1e293b;
+  color: #0f172a;
 }
 
-.rem-cont {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  margin-top: 2px;
+.input-control-wrap input::placeholder {
+  color: #94a3b8;
+  font-size: 13.5px;
 }
 
-.remember-me {
+.btn-toggle-eye {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 15px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.btn-toggle-eye:hover {
   color: #475569;
 }
 
-.remember-me input {
+/* Form Meta Row (Remember me & sample link) */
+.form-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: #64748b;
+  margin-top: -2px;
+}
+
+.checkbox-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-wrap input {
   cursor: pointer;
   accent-color: #2563eb;
 }
 
-.student-form-mode .remember-me input {
-  accent-color: #059669;
-}
-
-.forget-pass a {
-  color: #2563eb;
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 12.5px;
-}
-
-.student-form-mode .forget-pass a {
-  color: #059669;
-}
-
-.forget-pass a:hover {
+.quick-sample-link {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
   text-decoration: underline;
+  transition: color 0.15s ease;
 }
 
-/* Submit buttons with role styles */
-.login-submit-btn {
-  color: white;
+.quick-sample-link:hover {
+  color: #0f172a;
+}
+
+/* Wakeup banner if cold starting */
+.wakeup-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #b45309;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+/* Submit Button */
+.btn-submit-login {
+  color: #ffffff;
   border: none;
   padding: 13px 20px;
   border-radius: 12px;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14.5px;
+  font-weight: 700;
   cursor: pointer;
-  margin-top: 6px;
+  margin-top: 4px;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+.btn-submit-login:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+}
+
+.btn-submit-login:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.teacher-theme-btn {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
 }
 
-.login-submit-btn:hover {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  transform: translateY(-1px);
+.teacher-theme-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45);
 }
 
-.login-submit-btn.teacher-btn {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+.student-theme-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
 }
 
-.login-submit-btn.teacher-btn:hover {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  transform: translateY(-1px);
+.student-theme-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.45);
 }
 
-.login-submit-btn.student-btn {
-  background: linear-gradient(135deg, #059669, #047857);
-  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
+.admin-theme-btn {
+  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
 }
 
-.login-submit-btn.student-btn:hover {
-  background: linear-gradient(135deg, #047857, #065f46);
-  transform: translateY(-1px);
+.admin-theme-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.45);
 }
 
-.login-submit-btn.admin-btn {
-  background: linear-gradient(135deg, #1e1b4b, #312e81);
-  box-shadow: 0 4px 14px rgba(30, 27, 75, 0.35);
-}
-
-.login-submit-btn.admin-btn:hover {
-  background: linear-gradient(135deg, #0f172a, #1e1b4b);
-  transform: translateY(-1px);
-}
-
-/* Quick autofill helper buttons */
-.quick-fill-box {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px dashed #e2e8f0;
+/* Helper Navigation Links below form */
+.auth-helper-links {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-}
-
-.quick-fill-text {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.quick-fill-btn {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  color: #334155;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+  margin-top: 6px;
+  font-size: 12.5px;
 }
 
-.quick-fill-btn:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-  color: #0f172a;
+.auth-helper-links.centered {
+  justify-content: center;
 }
 
-.switch-portal-link {
-  text-align: center;
-  margin-top: 14px;
-  font-size: 13px;
-  color: #64748b;
-}
-
-.switch-portal-link button {
+.link-btn-text {
   background: none;
   border: none;
   color: #2563eb;
-  font-weight: 600;
   cursor: pointer;
-  padding: 0 4px;
-  font-size: 13px;
-}
-
-.student-form-mode .switch-portal-link button {
-  color: #059669;
-}
-
-.switch-portal-link button:hover {
+  padding: 0;
+  font-weight: 600;
   text-decoration: underline;
-}
-
-/* Backend Connection Diagnostics Widget */
-.render-wakeup-notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fef3c7;
-  border: 1px solid #fde68a;
-  color: #92400e;
-  padding: 8px 12px;
-  border-radius: 8px;
   font-size: 12.5px;
-  margin-bottom: 12px;
-  animation: fadeIn 0.3s ease;
 }
 
-.login-backend-diag {
-  margin-top: 20px;
+.link-btn-text:hover {
+  color: #1d4ed8;
+}
+
+.link-btn-muted {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0;
+  font-size: 12.5px;
+}
+
+.link-btn-muted:hover {
+  color: #0f172a;
+}
+
+/* ==========================================================================
+   DIAGNOSTIC FOOTER
+   ========================================================================== */
+
+.login-footer-bar {
+  margin-top: 24px;
   padding-top: 14px;
   border-top: 1px solid #f1f5f9;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.backend-diag-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
-.backend-url-info {
+.server-status-pill {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -523,43 +697,40 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 68%;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
+.status-led {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.status-dot.status-live {
+.status-led.local {
   background: #10b981;
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
 }
 
-.status-dot.status-warn {
-  background: #f59e0b;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+.status-led.cloud {
+  background: #0ea5e9;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
 }
 
-.backend-label {
+.server-label {
   font-weight: 600;
   color: #475569;
 }
 
-.backend-url-code {
+.server-host {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   background: #f1f5f9;
   padding: 2px 6px;
   border-radius: 4px;
   color: #1e293b;
   font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.btn-ping-backend {
+.btn-ping {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   color: #3b82f6;
@@ -575,45 +746,41 @@
   white-space: nowrap;
 }
 
-.btn-ping-backend:hover:not(:disabled) {
+.btn-ping:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
 }
 
-.btn-ping-backend:disabled {
+.btn-ping:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.backend-diag-notice {
+.ping-feedback-box {
+  margin-top: 8px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   font-size: 11.5px;
   padding: 6px 10px;
   border-radius: 6px;
   line-height: 1.4;
+  text-align: left;
 }
 
-.backend-diag-notice.warn {
-  background: #fffbeb;
-  border: 1px solid #fef3c7;
-  color: #b45309;
-}
-
-.backend-diag-notice.success {
+.ping-feedback-box.success {
   background: #ecfdf5;
   border: 1px solid #d1fae5;
   color: #065f46;
 }
 
-.backend-diag-notice.error {
+.ping-feedback-box.error {
   background: #fef2f2;
   border: 1px solid #fee2e2;
   color: #991b1b;
 }
 
-.backend-diag-notice.testing {
+.ping-feedback-box.testing {
   background: #f0fdf4;
   border: 1px solid #dcfce7;
   color: #166534;
