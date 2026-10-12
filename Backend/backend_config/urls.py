@@ -24,11 +24,21 @@ from drf_spectacular.views import (
 )
 
 def health_check(request):
+    db_status = "connected"
+    try:
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1;")
+    except Exception as e:
+        db_status = f"unreachable: {str(e)}"
+
     return JsonResponse({
-        "status": "healthy",
+        "status": "healthy" if "unreachable" not in db_status else "degraded",
         "service": "Academic Management System API",
-        "version": "2.0.0"
+        "version": "2.0.0",
+        "database": db_status
     })
+
 
 urlpatterns = [
     path('', health_check, name='health-check-root'),

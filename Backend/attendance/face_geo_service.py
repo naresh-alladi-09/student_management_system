@@ -3,13 +3,21 @@ import io
 import math
 import os
 import json
-import numpy as np
-from PIL import Image
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 try:
     import cv2
 except ImportError:
     cv2 = None
+
 
 # Haversine distance calculation in meters
 def haversine_distance(lat1, lon1, lat2, lon2):
@@ -113,7 +121,7 @@ def decode_image(image_input):
     """
     Decodes base64 string or bytes into a NumPy BGR image for OpenCV.
     """
-    if not image_input:
+    if not image_input or np is None:
         return None
 
     if isinstance(image_input, str):

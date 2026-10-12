@@ -162,8 +162,8 @@ else:
     db_name = os.environ.get("AIVEN_DB_NAME", os.environ.get("DB_NAME", "defaultdb"))
     db_user = os.environ.get("AIVEN_DB_USER", os.environ.get("DB_USER", "avnadmin"))
     db_password = os.environ.get("AIVEN_PASSWORD", os.environ.get("DB_PASSWORD", ""))
-    db_host = os.environ.get("AIVEN_DB_HOST", os.environ.get("DB_HOST", "127.0.0.1"))
-    db_port = int(os.environ.get("AIVEN_DB_PORT", os.environ.get("DB_PORT", 3306)))
+    db_host = os.environ.get("AIVEN_DB_HOST", os.environ.get("DB_HOST", "mysql-26020f38-alekhyabandaru4-16f1.f.aivencloud.com"))
+    db_port = int(os.environ.get("AIVEN_DB_PORT", os.environ.get("DB_PORT", 22125)))
 
 db_options = {
     'charset': 'utf8mb4',
@@ -212,15 +212,20 @@ if ca_path.exists():
 
 import socket
 
-# Verify remote database reachability; fallback cleanly to SQLite if offline
+# Verify database reachability; fallback cleanly to SQLite if offline
 use_local_sqlite = os.environ.get("USE_SQLITE", "false").lower() == "true"
 if not use_local_sqlite and db_engine == "django.db.backends.mysql":
-    if db_host not in ("127.0.0.1", "localhost"):
+    if not db_password and db_host not in ("127.0.0.1", "localhost"):
+        print(f"[WARNING] Remote MySQL password missing for '{db_host}'. Falling back to local SQLite database.")
+        use_local_sqlite = True
+    else:
         try:
-            socket.gethostbyname(db_host)
-        except Exception:
-            print(f"[WARNING] Remote MySQL host '{db_host}' is unreachable. Falling back to local SQLite database.")
+            s = socket.create_connection((db_host, db_port), timeout=3)
+            s.close()
+        except Exception as exc:
+            print(f"[WARNING] MySQL database '{db_host}:{db_port}' is unreachable ({exc}). Falling back to local SQLite database.")
             use_local_sqlite = True
+
 
 if use_local_sqlite or db_engine == "django.db.backends.sqlite3":
     DATABASES = {
@@ -277,6 +282,8 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT.mkdir(exist_ok=True)
+
 
 
 # =============================================================================
@@ -361,7 +368,43 @@ else:
 # =============================================================================
 
 LOGS_DIR = BASE_DIR / 'logs'
-LOGS_DIR.mkdir(exist_ok=True)
+has_file_logging = False
+try:
+    LOGS_DIR.mkdir(exist_ok=True)
+    test_file = LOGS_DIR / '.write_test'
+    test_file.touch()
+    test_file.unlink()
+    has_file_logging = True
+except Exception:
+    has_file_logging = False
+
+active_app_handlers = ['console', 'app_file'] if has_file_logging else ['console']
+active_sec_handlers = ['console', 'security_file'] if has_file_logging else ['console']
+
+handlers_config = {
+    'console': {
+        'class': 'logging.StreamHandler',
+        'formatter': 'standard',
+    },
+}
+
+if has_file_logging:
+    handlers_config['app_file'] = {
+        'class': 'logging.handlers.RotatingFileHandler',
+        'filename': str(LOGS_DIR / 'django.log'),
+        'maxBytes': 10 * 1024 * 1024,  # 10 MB
+        'backupCount': 5,
+        'formatter': 'standard',
+        'encoding': 'utf-8',
+    }
+    handlers_config['security_file'] = {
+        'class': 'logging.handlers.RotatingFileHandler',
+        'filename': str(LOGS_DIR / 'security.log'),
+        'maxBytes': 10 * 1024 * 1024,  # 10 MB
+        'backupCount': 5,
+        'formatter': 'security',
+        'encoding': 'utf-8',
+    }
 
 LOGGING = {
     'version': 1,
@@ -376,56 +419,35 @@ LOGGING = {
             'style': '{',
         },
     },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'standard',
-        },
-        'app_file': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': str(LOGS_DIR / 'django.log'),
-            'maxBytes': 10 * 1024 * 1024,  # 10 MB
-            'backupCount': 5,
-            'formatter': 'standard',
-            'encoding': 'utf-8',
-        },
-        'security_file': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': str(LOGS_DIR / 'security.log'),
-            'maxBytes': 10 * 1024 * 1024,  # 10 MB
-            'backupCount': 5,
-            'formatter': 'security',
-            'encoding': 'utf-8',
-        },
-    },
+    'handlers': handlers_config,
     'loggers': {
         'django': {
-            'handlers': ['console', 'app_file'],
+            'handlers': active_app_handlers,
             'level': os.environ.get('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
         'django.security': {
-            'handlers': ['console', 'security_file'],
+            'handlers': active_sec_handlers,
             'level': 'WARNING',
             'propagate': False,
         },
         'security': {
-            'handlers': ['console', 'security_file'],
+            'handlers': active_sec_handlers,
             'level': 'INFO',
             'propagate': False,
         },
         'accounts': {
-            'handlers': ['console', 'app_file'],
+            'handlers': active_app_handlers,
             'level': 'INFO',
             'propagate': False,
         },
         'attendance': {
-            'handlers': ['console', 'app_file'],
+            'handlers': active_app_handlers,
             'level': 'INFO',
             'propagate': False,
         },
         'students': {
-            'handlers': ['console', 'app_file'],
+            'handlers': active_app_handlers,
             'level': 'INFO',
             'propagate': False,
         },

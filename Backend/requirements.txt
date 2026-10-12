@@ -9,4 +9,7 @@ asgiref>=3.8.0
 drf-spectacular>=0.27.0
 gunicorn>=21.2.0
 whitenoise>=6.6.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
 
