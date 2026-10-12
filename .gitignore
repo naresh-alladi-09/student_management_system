@@ -26,8 +26,8 @@ __pycache__/
 *.pyc
 
 .env
-*.env
 *.pem
+!Backend/ca.pem
 *.sqlite3
 *.sqlite3-journal
 db.sqlite3
