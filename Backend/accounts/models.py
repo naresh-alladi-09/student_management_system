@@ -133,28 +133,35 @@ class LoginAttempt(models.Model):
         """
         Record a failed attempt for this identifier & IP. Locks out if >= max_attempts.
         """
-        now = timezone.now()
-        ident = (identifier or '').strip().lower()
-        record, _ = cls.objects.get_or_create(
-            identifier=ident,
-            ip_address=ip_address,
-            defaults={'failed_attempts': 0}
-        )
-        record.failed_attempts += 1
-        record.last_attempt_at = now
+        try:
+            now = timezone.now()
+            ident = (identifier or '').strip().lower()
+            record, _ = cls.objects.get_or_create(
+                identifier=ident,
+                ip_address=ip_address,
+                defaults={'failed_attempts': 0}
+            )
+            record.failed_attempts += 1
+            record.last_attempt_at = now
 
-        if record.failed_attempts >= max_attempts:
-            record.locked_until = now + timedelta(minutes=lockout_minutes)
+            if record.failed_attempts >= max_attempts:
+                record.locked_until = now + timedelta(minutes=lockout_minutes)
 
-        record.save(update_fields=['failed_attempts', 'locked_until', 'last_attempt_at'])
-        return record.failed_attempts >= max_attempts
+            record.save(update_fields=['failed_attempts', 'locked_until', 'last_attempt_at'])
+            return record.failed_attempts >= max_attempts
+        except Exception:
+            return False
 
     @classmethod
     def record_success(cls, identifier, ip_address):
         """
         Reset failed attempts on successful login.
         """
-        ident = (identifier or '').strip().lower()
-        cls.objects.filter(models.Q(identifier=ident) | models.Q(ip_address=ip_address)).delete()
+        try:
+            ident = (identifier or '').strip().lower()
+            cls.objects.filter(models.Q(identifier=ident) | models.Q(ip_address=ip_address)).delete()
+        except Exception:
+            pass
+
 
 

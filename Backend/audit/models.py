@@ -56,14 +56,28 @@ class AuditLog(models.Model):
             if not user and request.user and request.user.is_authenticated:
                 user = request.user
 
-        return cls.objects.create(
-            user=user,
-            action=action,
-            entity=entity,
-            entity_id=str(entity_id),
-            description=description,
-            ip_address=ip
-        )
+        try:
+            return cls.objects.create(
+                user=user,
+                action=action,
+                entity=entity,
+                entity_id=str(entity_id),
+                description=description,
+                ip_address=ip
+            )
+        except Exception:
+            try:
+                # Fallback without IP address if IP format was invalid
+                return cls.objects.create(
+                    user=user,
+                    action=action,
+                    entity=entity,
+                    entity_id=str(entity_id),
+                    description=description,
+                    ip_address=None
+                )
+            except Exception:
+                return None
 
     def __str__(self):
         u = self.user.username if self.user else "System"
