@@ -88,14 +88,14 @@ const Login = ({ initialRole }) => {
   const handleQuickFill = () => {
     setError("");
     if (activeRole === "student") {
-      setUsername("STU001");
-      setPassword("Student@123");
+      setUsername("STU20240001");
+      setPassword("student123");
     } else if (activeRole === "admin") {
-      setUsername("ADMIN01");
-      setPassword("Admin@123");
+      setUsername("admin");
+      setPassword("admin123");
     } else {
-      setUsername("FAC001");
-      setPassword("Teacher@123");
+      setUsername("madam");
+      setPassword("123456");
     }
   };
 
