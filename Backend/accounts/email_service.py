@@ -102,7 +102,63 @@ def send_smart_email(subject, plain_msg, recipient_list, html_msg=None, from_ema
             }
 
     # -------------------------------------------------------------------------
-    # 2. LOCALHOST / STANDARD SMTP (Gmail Port 587)
+    # 2. LIVE CLOUD / RENDER: BREVO REST API (HTTPS Port 443 - No custom domain needed)
+    # -------------------------------------------------------------------------
+    brevo_api_key = os.environ.get('BREVO_API_KEY', '').strip()
+    if brevo_api_key:
+        try:
+            sender_email = (
+                os.environ.get('BREVO_SENDER_EMAIL', '').strip()
+                or getattr(settings, 'EMAIL_HOST_USER', '')
+                or 'nareshalladi09@gmail.com'
+            )
+            payload = {
+                "sender": {"name": "Smart Campus Academic Affairs", "email": sender_email},
+                "to": [{"email": r} for r in recipient_list],
+                "subject": subject,
+                "textContent": plain_msg,
+            }
+            if html_msg:
+                payload["htmlContent"] = html_msg
+
+            req = urllib.request.Request(
+                "https://api.brevo.com/v3/smtp/email",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "api-key": brevo_api_key,
+                    "Content-Type": "application/json",
+                    "User-Agent": "SmartCampus/2.0"
+                },
+                method="POST"
+            )
+
+            with urllib.request.urlopen(req, timeout=12) as response:
+                resp_data = json.loads(response.read().decode("utf-8"))
+                logger.info(f"[Brevo] Email successfully dispatched to {recipient_list}: {resp_data}")
+                return True, {
+                    "provider": "brevo_https",
+                    "message": f"Student ID details successfully sent to {', '.join(recipient_list)} via Brevo (HTTPS).",
+                    "details": resp_data,
+                    "is_live_smtp": True,
+                }
+        except urllib.error.HTTPError as e:
+            raw_body = e.read().decode("utf-8", errors="ignore")
+            logger.error(f"[Brevo] HTTP Error {e.code}: {raw_body}")
+            return False, {
+                "provider": "brevo_https",
+                "message": f"Brevo API Error ({e.code}): {raw_body}",
+                "error": raw_body
+            }
+        except Exception as e:
+            logger.error(f"[Brevo] Unexpected error: {e}")
+            return False, {
+                "provider": "brevo_https",
+                "message": f"Brevo dispatch error: {str(e)}",
+                "error": str(e)
+            }
+
+    # -------------------------------------------------------------------------
+    # 3. LOCALHOST / STANDARD SMTP (Gmail Port 587)
     # -------------------------------------------------------------------------
     if not from_email:
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None)
