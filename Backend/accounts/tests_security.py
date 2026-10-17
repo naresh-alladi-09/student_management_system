@@ -275,7 +275,9 @@ class SecurityTestSuite(TestCase):
             teacher=self.faculty_user,
             duration_seconds=300,
             academic_class=self.academic_class_a,
-            section='A'
+            section='A',
+            require_face=False,
+            require_geo=False
         )
 
         self.client.force_authenticate(user=self.student_1_user)
@@ -301,7 +303,9 @@ class SecurityTestSuite(TestCase):
             teacher=self.faculty_user,
             duration_seconds=300,
             academic_class=self.academic_class_a,
-            section='A'
+            section='A',
+            require_face=False,
+            require_geo=False
         )
 
         # Student 1 marks attendance on device "phone_abc"
