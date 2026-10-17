@@ -41,7 +41,69 @@ def send_smart_email(subject, plain_msg, recipient_list, html_msg=None, from_ema
         }
 
     # -------------------------------------------------------------------------
-    # 1. LIVE CLOUD / RENDER: RESEND REST API (HTTPS Port 443)
+    # 1. LIVE CLOUD / RENDER: BREVO REST API (HTTPS Port 443 - No custom domain needed)
+    # -------------------------------------------------------------------------
+    brevo_api_key = os.environ.get('BREVO_API_KEY', '').strip()
+    if brevo_api_key:
+        try:
+            sender_email = (
+                os.environ.get('BREVO_SENDER_EMAIL', '').strip()
+                or getattr(settings, 'EMAIL_HOST_USER', '')
+                or 'nareshalladi09@gmail.com'
+            )
+            payload = {
+                "sender": {"name": "Smart Campus Academic Affairs", "email": sender_email},
+                "to": [{"email": r} for r in recipient_list],
+                "subject": subject,
+                "textContent": plain_msg,
+            }
+            if html_msg:
+                payload["htmlContent"] = html_msg
+
+            req = urllib.request.Request(
+                "https://api.brevo.com/v3/smtp/email",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "api-key": brevo_api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "User-Agent": "SmartCampus/2.0"
+                },
+                method="POST"
+            )
+
+            with urllib.request.urlopen(req, timeout=12) as response:
+                resp_data = json.loads(response.read().decode("utf-8"))
+                logger.info(f"[Brevo] Email successfully dispatched to {recipient_list}: {resp_data}")
+                return True, {
+                    "provider": "brevo_https",
+                    "message": f"Student ID details successfully sent to {', '.join(recipient_list)} via Brevo.",
+                    "details": resp_data,
+                    "is_live_smtp": True,
+                }
+        except urllib.error.HTTPError as e:
+            raw_body = e.read().decode("utf-8", errors="ignore")
+            logger.error(f"[Brevo] HTTP Error {e.code}: {raw_body}")
+            try:
+                err_json = json.loads(raw_body)
+                err_msg = err_json.get("message", raw_body)
+            except Exception:
+                err_msg = raw_body
+            return False, {
+                "provider": "brevo_https",
+                "message": f"Brevo API Error ({e.code}): {err_msg}",
+                "error": err_msg
+            }
+        except Exception as e:
+            logger.error(f"[Brevo] Unexpected error: {e}")
+            return False, {
+                "provider": "brevo_https",
+                "message": f"Brevo dispatch error: {str(e)}",
+                "error": str(e)
+            }
+
+    # -------------------------------------------------------------------------
+    # 2. LIVE CLOUD / RENDER: RESEND REST API (HTTPS Port 443)
     # -------------------------------------------------------------------------
     resend_api_key = os.environ.get('RESEND_API_KEY', '').strip()
     if resend_api_key:
@@ -98,62 +160,6 @@ def send_smart_email(subject, plain_msg, recipient_list, html_msg=None, from_ema
             return False, {
                 "provider": "resend_https",
                 "message": f"Resend dispatch error: {str(e)}",
-                "error": str(e)
-            }
-
-    # -------------------------------------------------------------------------
-    # 2. LIVE CLOUD / RENDER: BREVO REST API (HTTPS Port 443 - No custom domain needed)
-    # -------------------------------------------------------------------------
-    brevo_api_key = os.environ.get('BREVO_API_KEY', '').strip()
-    if brevo_api_key:
-        try:
-            sender_email = (
-                os.environ.get('BREVO_SENDER_EMAIL', '').strip()
-                or getattr(settings, 'EMAIL_HOST_USER', '')
-                or 'nareshalladi09@gmail.com'
-            )
-            payload = {
-                "sender": {"name": "Smart Campus Academic Affairs", "email": sender_email},
-                "to": [{"email": r} for r in recipient_list],
-                "subject": subject,
-                "textContent": plain_msg,
-            }
-            if html_msg:
-                payload["htmlContent"] = html_msg
-
-            req = urllib.request.Request(
-                "https://api.brevo.com/v3/smtp/email",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "api-key": brevo_api_key,
-                    "Content-Type": "application/json",
-                    "User-Agent": "SmartCampus/2.0"
-                },
-                method="POST"
-            )
-
-            with urllib.request.urlopen(req, timeout=12) as response:
-                resp_data = json.loads(response.read().decode("utf-8"))
-                logger.info(f"[Brevo] Email successfully dispatched to {recipient_list}: {resp_data}")
-                return True, {
-                    "provider": "brevo_https",
-                    "message": f"Student ID details successfully sent to {', '.join(recipient_list)} via Brevo (HTTPS).",
-                    "details": resp_data,
-                    "is_live_smtp": True,
-                }
-        except urllib.error.HTTPError as e:
-            raw_body = e.read().decode("utf-8", errors="ignore")
-            logger.error(f"[Brevo] HTTP Error {e.code}: {raw_body}")
-            return False, {
-                "provider": "brevo_https",
-                "message": f"Brevo API Error ({e.code}): {raw_body}",
-                "error": raw_body
-            }
-        except Exception as e:
-            logger.error(f"[Brevo] Unexpected error: {e}")
-            return False, {
-                "provider": "brevo_https",
-                "message": f"Brevo dispatch error: {str(e)}",
                 "error": str(e)
             }
 
