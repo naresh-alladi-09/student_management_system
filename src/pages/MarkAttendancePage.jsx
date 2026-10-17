@@ -23,6 +23,7 @@ import {
   FaTimes,
   FaCrosshairs,
   FaCheck,
+  FaSmile,
 } from "react-icons/fa";
 
 // Helper for client-side haversine distance calculation in meters
@@ -39,6 +40,58 @@ const calculateDistanceMeters = (lat1, lon1, lat2, lon2) => {
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c);
+};
+
+// Web Audio synthesizer for futuristic hands-free biometric feedback chimes
+const playBiometricChime = (type = "detected") => {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (type === "detected") {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.06, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } else if (type === "locked") {
+      [523.25, 659.25, 783.99].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        const startTime = ctx.currentTime + idx * 0.06;
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.07, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.22);
+      });
+    } else if (type === "success") {
+      [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        const startTime = ctx.currentTime + idx * 0.08;
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.09, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.3);
+      });
+    }
+  } catch {
+    // Audio context may be restricted by autoplay policy; fail gracefully
+  }
 };
 
 const MarkAttendancePage = () => {
@@ -69,6 +122,11 @@ const MarkAttendancePage = () => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [faceCheckFeedback, setFaceCheckFeedback] = useState(null);
 
+  // Autonomous Face Auto-Detection states & refs
+  const [autoDetectState, setAutoDetectState] = useState("scanning"); // 'scanning' | 'detected' | 'locked' | 'verifying'
+  const [detectConfidence, setDetectConfidence] = useState(0);
+  const [lockProgress, setLockProgress] = useState(0);
+
   // Check-in submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resultStatus, setResultStatus] = useState("idle"); // 'idle' | 'success' | 'already' | 'error'
@@ -83,6 +141,11 @@ const MarkAttendancePage = () => {
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const consecutiveHitsRef = useRef(0);
+  const isDetectingRef = useRef(false);
+  const isVerifyingRef = useRef(false);
+  const autoDetectTimerRef = useRef(null);
+  const detectorRef = useRef(null);
 
   // 1. Fetch Session Info when token or user changes
   const fetchSessionData = async (targetToken) => {
@@ -211,6 +274,11 @@ const MarkAttendancePage = () => {
     setCameraError("");
     setCapturedPhoto(null);
     setFaceCheckFeedback(null);
+    setAutoDetectState("scanning");
+    setLockProgress(0);
+    consecutiveHitsRef.current = 0;
+    isDetectingRef.current = false;
+    isVerifyingRef.current = false;
 
     try {
       if (streamRef.current) {
@@ -244,6 +312,10 @@ const MarkAttendancePage = () => {
   };
 
   const stopCamera = () => {
+    if (autoDetectTimerRef.current) {
+      clearInterval(autoDetectTimerRef.current);
+      autoDetectTimerRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -262,9 +334,156 @@ const MarkAttendancePage = () => {
     };
   }, [studentUser, sessionInfo, capturedPhoto, resultStatus]);
 
-  // 4. Capture Face Snapshot
+  // Autonomous Face Detection & Instant Verification Loop
+  useEffect(() => {
+    // Run detection loop only when:
+    // 1. Camera is actively streaming
+    // 2. Student is authenticated
+    // 3. QR session info is active & requires face
+    // 4. Photo has not yet been locked
+    // 5. Verification is idle
+    if (
+      !cameraActive ||
+      !studentUser ||
+      !sessionInfo ||
+      !sessionInfo.require_face ||
+      capturedPhoto ||
+      resultStatus !== "idle" ||
+      isSubmitting
+    ) {
+      if (autoDetectTimerRef.current) {
+        clearInterval(autoDetectTimerRef.current);
+        autoDetectTimerRef.current = null;
+      }
+      return;
+    }
+
+    consecutiveHitsRef.current = 0;
+    isDetectingRef.current = false;
+    isVerifyingRef.current = false;
+    setAutoDetectState("scanning");
+    setLockProgress(0);
+
+    const runDetectionStep = async () => {
+      const video = videoRef.current;
+      if (
+        !video ||
+        video.readyState < 2 ||
+        isDetectingRef.current ||
+        isVerifyingRef.current ||
+        isSubmitting
+      ) {
+        return;
+      }
+
+      isDetectingRef.current = true;
+
+      try {
+        let hasFace = false;
+        let confidenceScore = 0.9;
+
+        // 1. Try native browser FaceDetector API if available (Chrome, Edge, Chromium)
+        if (typeof window !== "undefined" && "FaceDetector" in window) {
+          try {
+            if (!detectorRef.current) {
+              detectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+            }
+            const detectedFaces = await detectorRef.current.detect(video);
+            if (detectedFaces && detectedFaces.length > 0) {
+              hasFace = true;
+              confidenceScore = 0.95;
+            }
+          } catch (e) {
+            detectorRef.current = null;
+          }
+        }
+
+        // 2. Fallback to fast thumbnail sampling sent to server detector
+        if (!hasFace && !detectorRef.current && video.videoWidth > 0) {
+          const vw = video.videoWidth || 640;
+          const vh = video.videoHeight || 480;
+          const sampleCanvas = document.createElement("canvas");
+          sampleCanvas.width = 240;
+          sampleCanvas.height = Math.round((240 * vh) / vw) || 180;
+          const sCtx = sampleCanvas.getContext("2d");
+          sCtx.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
+          const sampleData = sampleCanvas.toDataURL("image/jpeg", 0.6);
+
+          const res = await detectFaceInImage(sampleData);
+          if (res.data?.face_detected) {
+            hasFace = true;
+            confidenceScore = res.data.confidence || 0.85;
+          }
+        }
+
+        if (hasFace) {
+          consecutiveHitsRef.current += 1;
+          const hits = consecutiveHitsRef.current;
+          setDetectConfidence(Math.round(confidenceScore * 100));
+
+          if (hits === 1) {
+            setAutoDetectState("detected");
+            setLockProgress(50);
+            playBiometricChime("detected");
+          } else if (hits >= 2) {
+            // Biometric face locked! Auto-capture and auto-verify immediately!
+            setAutoDetectState("locked");
+            setLockProgress(100);
+            isVerifyingRef.current = true;
+            playBiometricChime("locked");
+
+            if (autoDetectTimerRef.current) {
+              clearInterval(autoDetectTimerRef.current);
+              autoDetectTimerRef.current = null;
+            }
+
+            // Capture high resolution photo from video
+            const fullCanvas = document.createElement("canvas");
+            fullCanvas.width = video.videoWidth || 640;
+            fullCanvas.height = video.videoHeight || 480;
+            const fCtx = fullCanvas.getContext("2d");
+            fCtx.drawImage(video, 0, 0, fullCanvas.width, fullCanvas.height);
+            const fullPhoto = fullCanvas.toDataURL("image/jpeg", 0.92);
+
+            setCapturedPhoto(fullPhoto);
+            stopCamera();
+            setAutoDetectState("verifying");
+
+            // Hands-free instant verification submission!
+            await handleConfirmAttendance(fullPhoto);
+          }
+        } else {
+          // No face detected in this frame, reset stability counter
+          if (consecutiveHitsRef.current > 0) {
+            consecutiveHitsRef.current = 0;
+            setAutoDetectState("scanning");
+            setLockProgress(0);
+          }
+        }
+      } catch (err) {
+        console.debug("Auto-detect interval exception:", err);
+      } finally {
+        isDetectingRef.current = false;
+      }
+    };
+
+    const initDelay = setTimeout(() => {
+      runDetectionStep();
+      autoDetectTimerRef.current = setInterval(runDetectionStep, 500);
+    }, 450);
+
+    return () => {
+      clearTimeout(initDelay);
+      if (autoDetectTimerRef.current) {
+        clearInterval(autoDetectTimerRef.current);
+        autoDetectTimerRef.current = null;
+      }
+    };
+  }, [cameraActive, studentUser, sessionInfo, capturedPhoto, resultStatus, isSubmitting]);
+
+  // 4. Manual Fallback Snapshot (if camera takes too long in poor lighting)
   const captureSnapshot = async () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || isSubmitting) return;
     setIsCapturing(true);
 
     try {
@@ -275,43 +494,35 @@ const MarkAttendancePage = () => {
       const ctx = canvas.getContext("2d");
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
       setCapturedPhoto(dataUrl);
       stopCamera();
+      setAutoDetectState("verifying");
+      isVerifyingRef.current = true;
+      playBiometricChime("locked");
 
-      // Quick visual validation of face
-      setFaceCheckFeedback({ checking: true, text: "Analyzing face quality..." });
-      try {
-        const checkRes = await detectFaceInImage(dataUrl);
-        if (checkRes.data?.face_detected) {
-          setFaceCheckFeedback({
-            valid: true,
-            text: `Face detected (${Math.round(checkRes.data.confidence * 100)}% clarity). Ready to verify!`,
-          });
-        } else {
-          setFaceCheckFeedback({
-            valid: false,
-            text: "No clear face detected in the photo. Please ensure good lighting and look directly into camera.",
-          });
-        }
-      } catch {
-        setFaceCheckFeedback({ valid: true, text: "Photo captured. Ready for verification." });
-      }
+      // Instantly trigger attendance verification
+      await handleConfirmAttendance(dataUrl);
     } catch (err) {
-      console.error("Capture failed:", err);
+      console.error("Manual capture failed:", err);
     } finally {
       setIsCapturing(false);
     }
   };
 
   const retakePhoto = () => {
+    isVerifyingRef.current = false;
+    isDetectingRef.current = false;
+    consecutiveHitsRef.current = 0;
     setCapturedPhoto(null);
     setFaceCheckFeedback(null);
+    setAutoDetectState("scanning");
+    setLockProgress(0);
     startCamera();
   };
 
   // 5. Final Submit Attendance to Backend
-  const handleConfirmAttendance = async () => {
+  const handleConfirmAttendance = async (photoOverride = null) => {
     const cleanToken = token.trim();
     if (!cleanToken) {
       setResultStatus("error");
@@ -319,19 +530,17 @@ const MarkAttendancePage = () => {
       return;
     }
 
+    const facePhotoToUse = photoOverride || capturedPhoto;
+
     // Biometric check requirement
-    if (sessionInfo?.require_face && !capturedPhoto) {
-      alert("Please capture your face photo first for biometric identity verification.");
+    if (sessionInfo?.require_face && !facePhotoToUse) {
+      alert("Face photo is required for biometric identity verification.");
       return;
     }
 
     // Geolocation check requirement
     if (sessionInfo?.require_geo && !userCoords) {
-      alert(
-        "GPS Coordinates are required for classroom geofence verification. Please enable location services."
-      );
       acquireGeolocation();
-      return;
     }
 
     setIsSubmitting(true);
@@ -341,7 +550,7 @@ const MarkAttendancePage = () => {
     try {
       const payload = {
         qr_token: cleanToken,
-        face_image: capturedPhoto || null,
+        face_image: facePhotoToUse || null,
         latitude: userCoords?.latitude ?? null,
         longitude: userCoords?.longitude ?? null,
         device_fingerprint: `${navigator.platform} | ${navigator.userAgent.slice(0, 80)}`,
@@ -361,8 +570,10 @@ const MarkAttendancePage = () => {
         faceConfidence: res.data.face_confidence,
         faceMatched: res.data.face_matched,
       });
+      playBiometricChime("success");
       stopCamera();
     } catch (err) {
+      stopCamera();
       if (err.response?.status === 409) {
         setResultStatus("already");
         setResultData({
@@ -1073,237 +1284,397 @@ const MarkAttendancePage = () => {
               </div>
             </div>
 
-            {/* BIOMETRIC CAMERA SECTION */}
-            <div style={{ marginBottom: "20px" }}>
-              <div
+            {/* BIOMETRIC CAMERA & AUTODETECT SECTION */}
+            {sessionInfo?.require_face && (
+              <div style={{ marginBottom: "20px" }}>
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    height: "270px",
+                    background: "#0f172a",
+                    borderRadius: "16px",
+                    overflow: "hidden",
+                    boxShadow: "inset 0 0 20px rgba(0,0,0,0.6)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {/* Live Video Feed */}
+                  {!capturedPhoto ? (
+                    <>
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          transform: "scaleX(-1)", // Mirror selfie
+                        }}
+                      />
+
+                      {/* Top Status Pill */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "12px",
+                          left: "50%",
+                          transform: "translateX(-50%)",
+                          background:
+                            autoDetectState === "locked" || autoDetectState === "verifying"
+                              ? "rgba(6, 78, 59, 0.92)"
+                              : autoDetectState === "detected"
+                              ? "rgba(120, 53, 15, 0.92)"
+                              : "rgba(15, 23, 42, 0.88)",
+                          color:
+                            autoDetectState === "locked" || autoDetectState === "verifying"
+                              ? "#34d399"
+                              : autoDetectState === "detected"
+                              ? "#fbbf24"
+                              : "#38bdf8",
+                          border: `1px solid ${
+                            autoDetectState === "locked" || autoDetectState === "verifying"
+                              ? "#10b981"
+                              : autoDetectState === "detected"
+                              ? "#f59e0b"
+                              : "rgba(56, 189, 248, 0.4)"
+                          }`,
+                          padding: "6px 14px",
+                          borderRadius: "20px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          whiteSpace: "nowrap",
+                          boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
+                          backdropFilter: "blur(8px)",
+                          zIndex: 10,
+                        }}
+                      >
+                        {autoDetectState === "locked" || autoDetectState === "verifying" ? (
+                          <>
+                            <FaLock /> Face Locked — Auto-Verifying...
+                          </>
+                        ) : autoDetectState === "detected" ? (
+                          <>
+                            <FaCheckCircle /> Face Detected! Hold Still...
+                          </>
+                        ) : (
+                          <>
+                            <FaCrosshairs className="fa-spin" style={{ animationDuration: "4s" }} /> Autodetecting Face...
+                          </>
+                        )}
+                      </div>
+
+                      {/* Dynamic Biometric Oval Reticle */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "50%",
+                          left: "50%",
+                          transform: "translate(-50%, -50%)",
+                          width: "165px",
+                          height: "215px",
+                          border:
+                            autoDetectState === "locked" || autoDetectState === "verifying"
+                              ? "3px solid #10b981"
+                              : autoDetectState === "detected"
+                              ? "2.5px solid #f59e0b"
+                              : "2px dashed #38bdf8",
+                          borderRadius: "50%",
+                          boxShadow:
+                            autoDetectState === "locked" || autoDetectState === "verifying"
+                              ? "0 0 35px rgba(16, 185, 129, 0.85)"
+                              : autoDetectState === "detected"
+                              ? "0 0 25px rgba(245, 158, 11, 0.7)"
+                              : "0 0 20px rgba(56, 189, 248, 0.4)",
+                          pointerEvents: "none",
+                          transition: "all 0.25s ease-in-out",
+                        }}
+                      />
+
+                      {/* Animated Scanning Beam Line */}
+                      <div
+                        className="face-scan-beam"
+                        style={{
+                          background:
+                            autoDetectState === "locked" || autoDetectState === "verifying"
+                              ? "linear-gradient(90deg, transparent, #10b981, #34d399, transparent)"
+                              : autoDetectState === "detected"
+                              ? "linear-gradient(90deg, transparent, #f59e0b, #fbbf24, transparent)"
+                              : "linear-gradient(90deg, transparent, #38bdf8, #60a5fa, transparent)",
+                          boxShadow:
+                            autoDetectState === "locked"
+                              ? "0 0 12px #10b981"
+                              : autoDetectState === "detected"
+                              ? "0 0 12px #f59e0b"
+                              : "0 0 10px #38bdf8",
+                        }}
+                      />
+                      <style>{`
+                        @keyframes scanBeam {
+                          0% { top: 25px; opacity: 0.8; }
+                          50% { top: 235px; opacity: 1; }
+                          100% { top: 25px; opacity: 0.8; }
+                        }
+                        .face-scan-beam {
+                          position: absolute;
+                          left: 15%;
+                          width: 70%;
+                          height: 2px;
+                          animation: scanBeam 2.2s ease-in-out infinite;
+                          pointer-events: none;
+                        }
+                      `}</style>
+
+                      {/* Bottom Instruction */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: "10px",
+                          left: 0,
+                          right: 0,
+                          textAlign: "center",
+                          color: "#f8fafc",
+                          fontSize: "11px",
+                          textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                          fontWeight: 600,
+                          pointerEvents: "none",
+                        }}
+                      >
+                        Autonomous Check-In: Center face inside frame to verify
+                      </div>
+
+                      {/* Lock-in Progress Bar at Bottom of Video */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          height: "4px",
+                          background: "rgba(255,255,255,0.15)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${lockProgress}%`,
+                            background:
+                              autoDetectState === "locked" || autoDetectState === "verifying"
+                                ? "#10b981"
+                                : "#f59e0b",
+                            transition: "width 0.3s ease",
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    /* Captured Snapshot Preview */
+                    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+                      <img
+                        src={capturedPhoto}
+                        alt="Captured Face"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          background: "rgba(15, 23, 42, 0.55)",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "8px",
+                          color: "#fff",
+                        }}
+                      >
+                        <FaSync className="fa-spin" style={{ fontSize: "28px", color: "#34d399" }} />
+                        <span style={{ fontWeight: 700, fontSize: "14px" }}>
+                          Verifying Face Biometrics...
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Camera Error Message */}
+                {cameraError && (
+                  <div style={{ color: "#ef4444", fontSize: "12px", marginTop: "8px" }}>
+                    {cameraError}
+                  </div>
+                )}
+
+                {/* Autonomous Verification Progress Banner */}
+                {isSubmitting || autoDetectState === "verifying" ? (
+                  <div
+                    style={{
+                      background: "linear-gradient(135deg, #064e3b 0%, #065f46 100%)",
+                      border: "1px solid #10b981",
+                      borderRadius: "14px",
+                      padding: "16px",
+                      marginTop: "14px",
+                      textAlign: "center",
+                      color: "#ecfdf5",
+                      boxShadow: "0 6px 20px rgba(16, 185, 129, 0.2)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "10px",
+                        fontSize: "15px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <FaSync className="fa-spin" style={{ color: "#34d399", fontSize: "18px" }} />
+                      <span>Verifying Biometric Signature & Geofence...</span>
+                    </div>
+                    <p style={{ margin: "6px 0 0 0", fontSize: "12px", color: "#a7f3d0" }}>
+                      Autonomous check-in in progress. Matching face against registered student profile.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "12px",
+                      padding: "12px 16px",
+                      marginTop: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <FaShieldAlt style={{ color: "#2563eb", fontSize: "18px" }} />
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#1e293b" }}>
+                          Autonomous Face Auto-Detection
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>
+                          No clicks needed: Face detection, snapshot, and verification happen automatically.
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        background: autoDetectState === "detected" ? "#fef3c7" : "#e0f2fe",
+                        color: autoDetectState === "detected" ? "#b45309" : "#0284c7",
+                        padding: "4px 8px",
+                        borderRadius: "6px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {autoDetectState === "detected" ? "Locking..." : "Active"}
+                    </span>
+                  </div>
+                )}
+
+                {/* Secondary Fallback Controls (Discrete) */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: "14px",
+                    marginTop: "12px",
+                  }}
+                >
+                  {capturedPhoto ? (
+                    <button
+                      type="button"
+                      onClick={retakePhoto}
+                      disabled={isSubmitting}
+                      style={{
+                        padding: "8px 16px",
+                        background: "#f1f5f9",
+                        color: "#334155",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <FaRedo /> Retake Face Scan
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={captureSnapshot}
+                      disabled={isCapturing || isSubmitting}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#94a3b8",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        padding: "4px 8px",
+                      }}
+                    >
+                      Taking long? Tap to capture & verify manually
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* If session does NOT require face verification */}
+            {!sessionInfo?.require_face && (
+              <button
+                type="button"
+                disabled={isSubmitting || (sessionInfo?.require_geo && !userCoords)}
+                onClick={() => handleConfirmAttendance(null)}
                 style={{
-                  position: "relative",
                   width: "100%",
-                  height: "260px",
-                  background: "#0f172a",
-                  borderRadius: "16px",
-                  overflow: "hidden",
-                  boxShadow: "inset 0 0 20px rgba(0,0,0,0.6)",
+                  marginTop: "16px",
+                  padding: "15px",
+                  background:
+                    isSubmitting || (sessionInfo?.require_geo && !userCoords)
+                      ? "#94a3b8"
+                      : "#10b981",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "12px",
+                  fontWeight: 700,
+                  fontSize: "15px",
+                  cursor:
+                    isSubmitting || (sessionInfo?.require_geo && !userCoords)
+                      ? "not-allowed"
+                      : "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  gap: "8px",
+                  boxShadow: "0 4px 14px rgba(16, 185, 129, 0.25)",
                 }}
               >
-                {/* Live Video Feed */}
-                {!capturedPhoto ? (
+                {isSubmitting ? (
                   <>
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        transform: "scaleX(-1)", // Mirror selfie
-                      }}
-                    />
-
-                    {/* Biometric Oval Reticle & Scanner Line */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "50%",
-                        left: "50%",
-                        transform: "translate(-50%, -50%)",
-                        width: "160px",
-                        height: "210px",
-                        border: "2px dashed #38bdf8",
-                        borderRadius: "50%",
-                        boxShadow: "0 0 25px rgba(56, 189, 248, 0.4)",
-                        pointerEvents: "none",
-                      }}
-                    />
-
-                    {/* Animated Scanning Beam Line */}
-                    <div className="face-scan-beam" />
-                    <style>{`
-                      @keyframes scanBeam {
-                        0% { top: 20px; opacity: 0.8; }
-                        50% { top: 230px; opacity: 1; }
-                        100% { top: 20px; opacity: 0.8; }
-                      }
-                      .face-scan-beam {
-                        position: absolute;
-                        left: 15%;
-                        width: 70%;
-                        height: 2px;
-                        background: linear-gradient(90deg, transparent, #38bdf8, #60a5fa, transparent);
-                        box-shadow: 0 0 10px #38bdf8;
-                        animation: scanBeam 2.5s ease-in-out infinite;
-                        pointer-events: none;
-                      }
-                    `}</style>
-
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: "10px",
-                        left: 0,
-                        right: 0,
-                        textAlign: "center",
-                        color: "#f8fafc",
-                        fontSize: "11px",
-                        textShadow: "0 1px 3px rgba(0,0,0,0.8)",
-                        fontWeight: 600,
-                        pointerEvents: "none",
-                      }}
-                    >
-                      Align face within oval frame
-                    </div>
+                    <FaSync className="fa-spin" /> Recording Attendance...
                   </>
                 ) : (
-                  /* Captured Snapshot Preview */
-                  <div style={{ position: "relative", width: "100%", height: "100%" }}>
-                    <img
-                      src={capturedPhoto}
-                      alt="Captured Face"
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "10px",
-                        right: "10px",
-                        background: "rgba(15, 23, 42, 0.75)",
-                        color: "#38bdf8",
-                        padding: "4px 8px",
-                        borderRadius: "6px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                      }}
-                    >
-                      <FaCheck /> Frame Captured
-                    </div>
-                  </div>
+                  <>
+                    <FaCheckCircle /> Confirm & Mark Attendance
+                  </>
                 )}
-              </div>
-
-              {/* Camera Error Message */}
-              {cameraError && (
-                <div style={{ color: "#ef4444", fontSize: "12px", marginTop: "8px" }}>
-                  {cameraError}
-                </div>
-              )}
-
-              {/* Face Quality Feedback */}
-              {faceCheckFeedback && (
-                <div
-                  style={{
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    color: faceCheckFeedback.valid ? "#059669" : "#e11d48",
-                    marginTop: "6px",
-                  }}
-                >
-                  {faceCheckFeedback.text}
-                </div>
-              )}
-
-              {/* Camera Action Buttons */}
-              <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
-                {!capturedPhoto ? (
-                  <button
-                    type="button"
-                    onClick={captureSnapshot}
-                    disabled={isCapturing}
-                    style={{
-                      flex: 1,
-                      padding: "12px",
-                      background: "#2563eb",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "10px",
-                      fontWeight: 700,
-                      fontSize: "14px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "8px",
-                      boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)",
-                    }}
-                  >
-                    <FaCamera /> {isCapturing ? "Capturing..." : "Capture Face"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={retakePhoto}
-                    style={{
-                      flex: 1,
-                      padding: "10px",
-                      background: "#f1f5f9",
-                      color: "#334155",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "10px",
-                      fontWeight: 600,
-                      fontSize: "13px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <FaRedo /> Retake Photo
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Final Check-In Submission Button */}
-            <button
-              type="button"
-              disabled={
-                isSubmitting ||
-                !token ||
-                (sessionInfo?.require_face && !capturedPhoto) ||
-                (sessionInfo?.require_geo && !userCoords)
-              }
-              onClick={handleConfirmAttendance}
-              style={{
-                width: "100%",
-                padding: "15px",
-                background:
-                  isSubmitting || !token || (sessionInfo?.require_face && !capturedPhoto)
-                    ? "#94a3b8"
-                    : "#10b981",
-                color: "#fff",
-                border: "none",
-                borderRadius: "12px",
-                fontWeight: 700,
-                fontSize: "15px",
-                cursor:
-                  isSubmitting || !token || (sessionInfo?.require_face && !capturedPhoto)
-                    ? "not-allowed"
-                    : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                boxShadow: "0 4px 14px rgba(16, 185, 129, 0.25)",
-              }}
-            >
-              {isSubmitting ? (
-                <>
-                  <FaSync className="fa-spin" /> Verifying Face & Coordinates...
-                </>
-              ) : (
-                <>
-                  <FaCheckCircle /> Verify Face & Mark Attendance
-                </>
-              )}
-            </button>
+              </button>
+            )}
           </div>
         )}
 

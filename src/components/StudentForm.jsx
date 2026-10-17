@@ -51,6 +51,14 @@ const StudentForm = () => {
   const [isDetecting, setIsDetecting] = useState(false);
   const [faceStatus, setFaceStatus] = useState(null); // { valid: bool, message: str, confidence: num }
 
+  // Face auto-detection while camera is live
+  const [autoDetectState, setAutoDetectState] = useState("scanning"); // 'scanning' | 'detected' | 'capturing'
+  const autoDetectHitsRef = useRef(0);
+  const autoDetectTimerRef = useRef(null);
+  const isDetectingTickRef = useRef(false);
+  const detectorRef = useRef(null);
+  const isCapturingRef = useRef(false);
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -81,6 +89,10 @@ const StudentForm = () => {
 
   const startCamera = async () => {
     setCameraError(null);
+    setAutoDetectState("scanning");
+    autoDetectHitsRef.current = 0;
+    isDetectingTickRef.current = false;
+    isCapturingRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -106,6 +118,10 @@ const StudentForm = () => {
   };
 
   const stopCamera = () => {
+    if (autoDetectTimerRef.current) {
+      clearInterval(autoDetectTimerRef.current);
+      autoDetectTimerRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -114,7 +130,103 @@ const StudentForm = () => {
       videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
+    setAutoDetectState("scanning");
   };
+
+  // Continuous auto-detection loop when camera is active
+  useEffect(() => {
+    if (!isCameraActive || facePhoto) {
+      if (autoDetectTimerRef.current) {
+        clearInterval(autoDetectTimerRef.current);
+        autoDetectTimerRef.current = null;
+      }
+      return;
+    }
+
+    autoDetectHitsRef.current = 0;
+    isDetectingTickRef.current = false;
+    isCapturingRef.current = false;
+    setAutoDetectState("scanning");
+
+    const runDetection = async () => {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || isDetectingTickRef.current || isCapturingRef.current) return;
+
+      isDetectingTickRef.current = true;
+      try {
+        let hasFace = false;
+
+        // 1. Native FaceDetector API (fastest)
+        if (typeof window !== "undefined" && "FaceDetector" in window) {
+          try {
+            if (!detectorRef.current) {
+              detectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+            }
+            const faces = await detectorRef.current.detect(video);
+            if (faces && faces.length > 0) {
+              hasFace = true;
+            }
+          } catch {
+            detectorRef.current = null;
+          }
+        }
+
+        // 2. Server detector fallback
+        if (!hasFace && !detectorRef.current && video.videoWidth > 0) {
+          const vw = video.videoWidth || 640;
+          const vh = video.videoHeight || 480;
+          const sample = document.createElement("canvas");
+          sample.width = 240;
+          sample.height = Math.round((240 * vh) / vw) || 180;
+          const sCtx = sample.getContext("2d");
+          sCtx.drawImage(video, 0, 0, sample.width, sample.height);
+          const sData = sample.toDataURL("image/jpeg", 0.6);
+
+          const res = await detectFaceInImage(sData);
+          if (res.data?.face_detected) {
+            hasFace = true;
+          }
+        }
+
+        if (hasFace) {
+          autoDetectHitsRef.current += 1;
+          if (autoDetectHitsRef.current === 1) {
+            setAutoDetectState("detected");
+          } else if (autoDetectHitsRef.current >= 2) {
+            setAutoDetectState("capturing");
+            isCapturingRef.current = true;
+            if (autoDetectTimerRef.current) {
+              clearInterval(autoDetectTimerRef.current);
+              autoDetectTimerRef.current = null;
+            }
+            capturePhoto();
+          }
+        } else {
+          if (autoDetectHitsRef.current > 0) {
+            autoDetectHitsRef.current = 0;
+            setAutoDetectState("scanning");
+          }
+        }
+      } catch (e) {
+        console.debug("StudentForm face detect tick error:", e);
+      } finally {
+        isDetectingTickRef.current = false;
+      }
+    };
+
+    const timer = setTimeout(() => {
+      runDetection();
+      autoDetectTimerRef.current = setInterval(runDetection, 500);
+    }, 450);
+
+    return () => {
+      clearTimeout(timer);
+      if (autoDetectTimerRef.current) {
+        clearInterval(autoDetectTimerRef.current);
+        autoDetectTimerRef.current = null;
+      }
+    };
+  }, [isCameraActive, facePhoto]);
 
   const verifyFaceOnline = async (photoBase64) => {
     setIsDetecting(true);
@@ -451,13 +563,19 @@ const StudentForm = () => {
                       className="camera-live-feed"
                     />
                     {/* Face Guide Oval Overlay */}
-                    <div className="face-oval-guide">
+                    <div className={`face-oval-guide ${autoDetectState === "detected" || autoDetectState === "capturing" ? "detected" : ""}`}>
                       <div className="guide-corner top-left"></div>
                       <div className="guide-corner top-right"></div>
                       <div className="guide-corner bottom-left"></div>
                       <div className="guide-corner bottom-right"></div>
                       <div className="face-scan-line"></div>
-                      <span className="face-guide-text">Position Student's Face Inside Frame</span>
+                      <span className="face-guide-text">
+                        {autoDetectState === "capturing"
+                          ? "✓ Face Locked! Capturing..."
+                          : autoDetectState === "detected"
+                          ? "✓ Face Detected! Hold still..."
+                          : "Auto-detecting face... Position inside oval"}
+                      </span>
                     </div>
                   </div>
 
@@ -467,7 +585,7 @@ const StudentForm = () => {
                       className="btn-capture-snapshot"
                       onClick={capturePhoto}
                     >
-                      <FaCamera /> Capture Student Photo
+                      <FaCamera /> {autoDetectState === "capturing" ? "Capturing..." : "Capture Photo (or wait for auto-capture)"}
                     </button>
                     <button
                       type="button"
