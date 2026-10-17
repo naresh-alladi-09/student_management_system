@@ -107,6 +107,7 @@ export const AuthProvider = ({ children }) => {
         success: false,
         message: errMsg,
         needsActivation: Boolean(err.response?.data?.needs_activation),
+        needsPasswordSetup: Boolean(err.response?.data?.needs_password_setup || err.response?.data?.needs_activation),
         identifier: err.response?.data?.identifier || trimmedId,
         studentId: err.response?.data?.student_id,
         rollNo: err.response?.data?.roll_no,

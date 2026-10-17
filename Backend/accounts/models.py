@@ -34,6 +34,8 @@ class UserProfile(models.Model):
         default=False,
         help_text="Requires user to change password on next authenticated session."
     )
+    reset_otp = models.CharField(max_length=10, blank=True, null=True, help_text="6-digit OTP for password reset")
+    reset_otp_expires_at = models.DateTimeField(null=True, blank=True)
 
     def generate_activation_token(self, hours=168):
         """
@@ -53,6 +55,29 @@ class UserProfile(models.Model):
         if self.activation_token_expires_at and timezone.now() > self.activation_token_expires_at:
             return False
         return True
+
+    def generate_reset_otp(self, minutes=15):
+        """
+        Generate a 6-digit numeric OTP for password reset (valid for 15 minutes by default).
+        """
+        self.reset_otp = f"{secrets.randbelow(900000) + 100000}"
+        self.reset_otp_expires_at = timezone.now() + timedelta(minutes=minutes)
+        self.save(update_fields=['reset_otp', 'reset_otp_expires_at'])
+        return self.reset_otp
+
+    def is_reset_otp_valid(self, otp):
+        if not self.reset_otp or not otp:
+            return False
+        if not secrets.compare_digest(str(self.reset_otp).strip(), str(otp).strip()):
+            return False
+        if self.reset_otp_expires_at and timezone.now() > self.reset_otp_expires_at:
+            return False
+        return True
+
+    def clear_reset_otp(self):
+        self.reset_otp = None
+        self.reset_otp_expires_at = None
+        self.save(update_fields=['reset_otp', 'reset_otp_expires_at'])
 
     @property
     def user_id_code(self):

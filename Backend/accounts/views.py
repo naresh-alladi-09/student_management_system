@@ -3,6 +3,8 @@ from rest_framework.decorators import api_view, permission_classes, authenticati
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
+from django.conf import settings
+from django.core.mail import send_mail
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -180,8 +182,9 @@ def login_view(request):
         s = profile.student
         return Response(
             {
-                "detail": "Your student account is not activated yet. Please activate your account with your activation token and create your secure password.",
+                "detail": "Your student account password is not set yet. Please set your password using your Student ID to activate your account.",
                 "needs_activation": True,
+                "needs_password_setup": True,
                 "identifier": user.username,
                 "student_id": s.student_id if s else user.username,
                 "roll_no": s.roll_no if s else user.username,
@@ -250,28 +253,613 @@ def login_view(request):
     return Response(response_data, status=status.HTTP_200_OK)
 
 
+def mask_email(email_str):
+    if not email_str or '@' not in email_str:
+        return 'your registered email'
+    name_part, domain = email_str.split('@', 1)
+    if len(name_part) <= 2:
+        masked_name = name_part[0] + '*'
+    else:
+        masked_name = name_part[0] + ('*' * max(1, len(name_part) - 2)) + name_part[-1]
+    return f"{masked_name}@{domain}"
+
+
+def send_student_onboarding_email(student):
+    """
+    Dispatches official onboarding email containing Student ID, Roll Number, and login instructions.
+    """
+    if not student or not student.email:
+        return False, "No student email address available."
+
+    student_name = student.name
+    student_id = student.student_id or student.roll_no or f"STU{student.id}"
+    roll_no = student.roll_no or student_id
+    dept_branch = f"{student.branch} ({student.department or 'Engineering'})"
+    cohort = f"Year {student.year}, Semester {student.semester} - Section {student.section}"
+
+    subject = f"🎓 Welcome to Smart Campus: Your Student ID Details ({student_id})"
+    plain_msg = (
+        f"SMART CAMPUS ACADEMIC SUITE\n"
+        f"STUDENT ENROLLMENT & CREDENTIAL NOTICE\n\n"
+        f"Dear {student_name},\n\n"
+        f"Welcome to the institution! Your student profile has been officially enrolled into the system.\n\n"
+        f"YOUR ACADEMIC CREDENTIAL DETAILS:\n"
+        f"--------------------------------------------------\n"
+        f"• Student ID:       {student_id}\n"
+        f"• Roll Number:      {roll_no}\n"
+        f"• Branch:           {dept_branch}\n"
+        f"• Cohort:           {cohort}\n"
+        f"• Registered Email: {student.email}\n"
+        f"--------------------------------------------------\n\n"
+        f"HOW TO LOG IN TO THE STUDENT PORTAL:\n"
+        f"1. Open the Student Portal Login page.\n"
+        f"2. Click 'Set Initial Password' (or First time login).\n"
+        f"3. Enter your Student ID: {student_id}\n"
+        f"4. Choose your secure password and submit.\n"
+        f"5. Once saved, log in anytime using your Student ID and chosen password.\n\n"
+        f"FORGOT PASSWORD:\n"
+        f"If you ever forget your password, click 'Forgot Password' on the login screen to receive a verification code at this email.\n\n"
+        f"Office of Academic Affairs & Admissions\n"
+        f"Smart Campus Management System"
+    )
+
+    html_msg = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0; padding:20px; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#0f172a; color:#f8fafc;">
+      <div style="max-width:580px; margin:0 auto; background:#1e293b; border-radius:14px; border:1px solid #334155; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.4);">
+        <div style="background:linear-gradient(135deg, #059669 0%, #0d9488 100%); padding:28px 32px; text-align:center;">
+          <h2 style="margin:0; color:#ffffff; font-size:22px; font-weight:700;">🎓 Welcome to Smart Campus</h2>
+          <p style="margin:6px 0 0; color:#d1fae5; font-size:13px;">Official Student Enrollment & Login Details</p>
+        </div>
+        <div style="padding:32px;">
+          <p style="font-size:15px; color:#cbd5e1; margin:0 0 16px;">Dear <strong>{student_name}</strong>,</p>
+          <p style="font-size:14px; color:#94a3b8; line-height:1.6; margin:0 0 20px;">
+            Your academic student profile has been registered in the institution's system. Please use the following details to set your password and access the Student Academic Portal:
+          </p>
+          <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:20px; margin-bottom:24px;">
+            <table width="100%" cellpadding="6" cellspacing="0" style="font-size:14px; color:#cbd5e1;">
+              <tr>
+                <td width="38%" style="color:#94a3b8; font-weight:600;">Student ID:</td>
+                <td><code style="background:#1e293b; color:#38bdf8; font-size:16px; font-weight:700; padding:3px 8px; border-radius:4px;">{student_id}</code></td>
+              </tr>
+              <tr>
+                <td style="color:#94a3b8; font-weight:600;">Roll Number:</td>
+                <td><strong style="color:#f8fafc;">{roll_no}</strong></td>
+              </tr>
+              <tr>
+                <td style="color:#94a3b8; font-weight:600;">Branch / Dept:</td>
+                <td>{dept_branch}</td>
+              </tr>
+              <tr>
+                <td style="color:#94a3b8; font-weight:600;">Cohort:</td>
+                <td>{cohort}</td>
+              </tr>
+            </table>
+          </div>
+          <h3 style="font-size:15px; color:#f8fafc; margin:0 0 12px;">Next Steps to Sign In:</h3>
+          <ol style="font-size:13.5px; color:#94a3b8; line-height:1.7; margin:0 0 24px; padding-left:20px;">
+            <li>Go to the <strong style="color:#f8fafc;">Student Portal</strong> login page.</li>
+            <li>Click <strong style="color:#34d399;">"Set Password with Student ID"</strong>.</li>
+            <li>Enter your Student ID: <strong style="color:#38bdf8;">{student_id}</strong>.</li>
+            <li>Create your new password and submit.</li>
+            <li>Log in anytime using your Student ID and password!</li>
+          </ol>
+          <p style="font-size:12.5px; color:#64748b; line-height:1.5; margin:0;">
+            Note: If you ever forget your password, click "Forgot Password" on the login screen to receive a reset code at this email address.
+          </p>
+          <div style="border-top:1px solid #334155; margin-top:24px; padding-top:18px; font-size:12px; color:#64748b; text-align:center;">
+            Office of the Registrar & Academic Affairs • Smart Campus System
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    try:
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Smart Campus <noreply@eduportal.edu>')
+        send_mail(
+            subject=subject,
+            message=plain_msg,
+            from_email=from_email,
+            recipient_list=[student.email.strip()],
+            html_message=html_msg,
+            fail_silently=False
+        )
+        return True, f"Student ID details sent to {student.email}."
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not send onboarding email to {student.email}: {e}")
+        return False, str(e)
+
+
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
-def activate_student_account(request):
+def set_student_password_view(request):
     """
-    Securely activate a student account using an activation token and a user-chosen strong password.
+    Allow students to set their password directly using their Student ID (or Roll Number).
+    Stores user's password securely in database and activates the student account.
     Accepts: {
-        "identifier": "...", # Roll number, Student ID, username, or email
-        "activation_token": "...",
+        "student_id": "STU20240001",
+        "new_password": "...",
+        "confirm_password": "...",
+        "email": "..." (optional)
+    }
+    """
+    ip = get_client_ip(request)
+    raw_ident = (
+        request.data.get('student_id') or
+        request.data.get('identifier') or
+        request.data.get('roll_no') or
+        ''
+    ).strip()
+    new_password = (request.data.get('new_password') or '').strip()
+    confirm_password = (request.data.get('confirm_password') or '').strip()
+    email = (request.data.get('email') or '').strip().lower()
+
+    if not raw_ident:
+        return Response(
+            {"detail": "Student ID is required to set your password."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not new_password or not confirm_password:
+        return Response(
+            {"detail": "Both new password and confirm password are required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    is_locked, rem_mins = LoginAttempt.is_locked_out(raw_ident, ip)
+    if is_locked:
+        return Response(
+            {"detail": f"Too many attempts. Please try again in {rem_mins} minute(s)."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+
+    if new_password != confirm_password:
+        return Response(
+            {"detail": "Passwords do not match."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 1. Resolve student by student_id, roll_no, or email
+    student = (
+        Student.objects.filter(student_id__iexact=raw_ident).first() or
+        Student.objects.filter(roll_no__iexact=raw_ident).first()
+    )
+    if not student:
+        clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+        for s in Student.objects.all():
+            s_roll_clean = (s.roll_no or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+            s_id_clean = (s.student_id or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+            if clean_ident in (s_roll_clean, s_id_clean) or s_roll_clean == clean_ident or s_id_clean == clean_ident:
+                student = s
+                break
+
+    profile = None
+    user = None
+    if student:
+        if email and student.email and student.email.lower() != email:
+            LoginAttempt.record_failure(raw_ident, ip)
+            return Response(
+                {"detail": "Provided email does not match institutional student record."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if hasattr(student, 'user_profile') and student.user_profile:
+            profile = student.user_profile
+            user = profile.user
+        else:
+            ident = (student.student_id or student.roll_no or f"STU{student.id}").strip()
+            user, _ = User.objects.get_or_create(
+                username=ident,
+                defaults={"email": student.email or '', "first_name": student.name or ''}
+            )
+            profile, _ = UserProfile.objects.update_or_create(
+                user=user,
+                defaults={"role": "student", "student": student, "is_activated": False}
+            )
+    else:
+        user_obj = User.objects.filter(username__iexact=raw_ident).first()
+        if user_obj and hasattr(user_obj, 'profile') and user_obj.profile.role == 'student':
+            user = user_obj
+            profile = user_obj.profile
+            student = profile.student
+
+    if not student or not profile:
+        LoginAttempt.record_failure(raw_ident, ip)
+        return Response(
+            {"detail": f"No student account found with Student ID '{raw_ident}'. Please check your ID or contact your administrator."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Prevent using student ID or roll number as password
+    ident_clean = raw_ident.lower().replace('-', '').replace('_', '').replace(' ', '')
+    pw_clean = new_password.lower().replace('-', '').replace('_', '').replace(' ', '')
+    if ident_clean and (ident_clean in pw_clean or (len(pw_clean) >= 4 and pw_clean in ident_clean)):
+        return Response(
+            {"detail": "For security, your password cannot match or contain your Student ID or Roll Number."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Validate strong password requirements
+    pw_errors = validate_strong_password(new_password, user=user)
+    if pw_errors:
+        return Response(
+            {"detail": "Password does not meet security requirements: " + "; ".join(pw_errors), "errors": pw_errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Store hashed password in database and activate account
+    user.set_password(new_password)
+    user.is_active = True
+    user.save()
+
+    profile.is_activated = True
+    profile.activation_token = None
+    profile.activation_token_expires_at = None
+    profile.must_change_password = False
+    profile.clear_reset_otp()
+    profile.save(update_fields=['is_activated', 'activation_token', 'activation_token_expires_at', 'must_change_password', 'reset_otp', 'reset_otp_expires_at'])
+
+    LoginAttempt.record_success(raw_ident, ip)
+    auth_token, _ = Token.objects.get_or_create(user=user)
+
+    AuditLog.log(
+        action='STUDENT_ACCOUNT_ACTIVATE',
+        entity='Student',
+        entity_id=str(user.id),
+        description=f"Student '{user.username}' successfully set password with Student ID '{student.student_id}'.",
+        user=user,
+        request=request
+    )
+
+    return Response({
+        "detail": "Password set successfully! Your account is now active and stored in the database.",
+        "token": auth_token.key,
+        "user_id": user.id,
+        "user_id_code": profile.user_id_code,
+        "username": user.username,
+        "email": user.email,
+        "role": profile.role,
+        "name": user.get_full_name() or (student.name if student else user.username),
+        "department": profile.department,
+        "profile_pic": profile.profile_pic or (student.profile_photo if student else ""),
+        "student": {
+            "id": student.id,
+            "name": student.name,
+            "rollNo": student.roll_no or f"STU-2024-{student.id:03d}",
+            "student_id": student.student_id or student.roll_no,
+            "email": student.email,
+            "phone": student.phone,
+            "branch": student.branch,
+            "year": student.year,
+            "semester": student.semester,
+            "profile_photo": student.profile_photo or profile.profile_pic,
+        } if student else None
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def forgot_password_view(request):
+    """
+    Initiate password reset: Look up student by Student ID or registered email,
+    generate a 6-digit OTP code, and send it to their respective email.
+    Accepts: { "identifier": "STU20240001" | "student@gmail.com" }
+    """
+    ip = get_client_ip(request)
+    raw_ident = (request.data.get('identifier') or request.data.get('email') or request.data.get('student_id') or '').strip()
+
+    if not raw_ident:
+        return Response(
+            {"detail": "Please enter your Student ID, Roll Number, or registered Email address."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    is_locked, rem_mins = LoginAttempt.is_locked_out(raw_ident, ip)
+    if is_locked:
+        return Response(
+            {"detail": f"Too many requests. Please wait {rem_mins} minute(s) before trying again."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+
+    # 1. Resolve student and user
+    student = (
+        Student.objects.filter(student_id__iexact=raw_ident).first() or
+        Student.objects.filter(roll_no__iexact=raw_ident).first() or
+        Student.objects.filter(email__iexact=raw_ident).first()
+    )
+    if not student:
+        clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+        for s in Student.objects.all():
+            s_roll_clean = (s.roll_no or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+            s_id_clean = (s.student_id or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+            if clean_ident in (s_roll_clean, s_id_clean) or s_roll_clean == clean_ident or s_id_clean == clean_ident:
+                student = s
+                break
+
+    user = None
+    profile = None
+    if student:
+        if hasattr(student, 'user_profile') and student.user_profile:
+            profile = student.user_profile
+            user = profile.user
+        else:
+            ident = (student.student_id or student.roll_no or f"STU{student.id}").strip()
+            user, _ = User.objects.get_or_create(
+                username=ident,
+                defaults={"email": student.email or '', "first_name": student.name or ''}
+            )
+            profile, _ = UserProfile.objects.update_or_create(
+                user=user,
+                defaults={"role": "student", "student": student, "is_activated": False}
+            )
+    else:
+        user_match = User.objects.filter(username__iexact=raw_ident).first() or User.objects.filter(email__iexact=raw_ident).first()
+        if user_match:
+            user = user_match
+            profile = getattr(user, 'profile', None)
+            student = getattr(profile, 'student', None) if profile else None
+
+    if not profile or not user:
+        LoginAttempt.record_failure(raw_ident, ip)
+        return Response(
+            {"detail": "No account found matching this Student ID or email. Please verify and try again."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    recipient_email = (student.email if student and student.email else user.email or '').strip()
+    if not recipient_email:
+        return Response(
+            {"detail": "No email address is registered on file for this account. Please contact the administrator."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 2. Generate 6-digit OTP
+    otp = profile.generate_reset_otp(minutes=15)
+    masked = mask_email(recipient_email)
+    student_name = student.name if student else (user.get_full_name() or user.username)
+    student_id_disp = (student.student_id or student.roll_no) if student else user.username
+
+    # 3. Send official password reset email
+    subject = f"🔐 Password Reset Verification Code: {otp} - Smart Campus"
+    plain_msg = (
+        f"Smart Campus Academic Portal - Password Reset Request\n\n"
+        f"Dear {student_name},\n\n"
+        f"We received a request to reset your password for Student ID: {student_id_disp}.\n\n"
+        f"Your 6-digit verification code is:\n"
+        f"-----------------------------------------\n"
+        f"   {otp}\n"
+        f"-----------------------------------------\n\n"
+        f"This code will expire in 15 minutes.\n"
+        f"Enter this code on the password reset screen to create your new password.\n\n"
+        f"If you did not request this, please ignore this email or contact support.\n\n"
+        f"Office of Academic Affairs\n"
+        f"Smart Campus Portal"
+    )
+
+    html_msg = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0; padding:20px; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#0f172a; color:#f8fafc;">
+      <div style="max-width:540px; margin:0 auto; background:#1e293b; border-radius:14px; border:1px solid #334155; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.4);">
+        <div style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding:28px 32px; text-align:center;">
+          <h2 style="margin:0; color:#ffffff; font-size:22px; font-weight:700;">🔐 Password Reset Request</h2>
+          <p style="margin:6px 0 0; color:#e0e7ff; font-size:13px;">Smart Campus Student Management Portal</p>
+        </div>
+        <div style="padding:32px;">
+          <p style="font-size:15px; color:#cbd5e1; margin:0 0 16px;">Hello <strong>{student_name}</strong>,</p>
+          <p style="font-size:14px; color:#94a3b8; line-height:1.6; margin:0 0 24px;">
+            We received a request to reset the password for your account associated with Student ID <strong style="color:#f8fafc;">{student_id_disp}</strong>.
+            Use the 6-digit verification code below to reset your password:
+          </p>
+          <div style="background:#0f172a; border:2px dashed #6366f1; border-radius:12px; padding:20px; text-align:center; margin-bottom:24px;">
+            <span style="font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:6px;">Your 6-Digit Verification Code</span>
+            <span style="font-size:36px; font-weight:800; color:#38bdf8; letter-spacing:8px; font-family:monospace;">{otp}</span>
+            <div style="font-size:12px; color:#a5b4fc; margin-top:8px;">⏱ Valid for 15 minutes</div>
+          </div>
+          <p style="font-size:13px; color:#64748b; line-height:1.5; margin:0 0 20px;">
+            If you did not initiate this request, you can safely ignore this email. Your current password remains active and secure.
+          </p>
+          <div style="border-top:1px solid #334155; padding-top:18px; font-size:12px; color:#64748b; text-align:center;">
+            Office of Academic Affairs • Smart Campus System
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    email_sent = False
+    try:
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Smart Campus <noreply@eduportal.edu>')
+        send_mail(
+            subject=subject,
+            message=plain_msg,
+            from_email=from_email,
+            recipient_list=[recipient_email],
+            html_message=html_msg,
+            fail_silently=False
+        )
+        email_sent = True
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not send reset email to {recipient_email}: {e}")
+
+    AuditLog.log(
+        action='PASSWORD_RESET_REQUEST',
+        entity='Student',
+        entity_id=str(user.id),
+        description=f"Password reset OTP generated for student '{user.username}' and sent to '{recipient_email}'.",
+        request=request
+    )
+
+    return Response({
+        "detail": f"Password reset verification code has been sent to your registered email ({masked}).",
+        "email_masked": masked,
+        "identifier": student_id_disp,
+        "student_id": student_id_disp,
+        "email_sent": email_sent,
+        "dev_otp": otp if (settings.DEBUG or not getattr(settings, 'EMAIL_HOST_USER', '')) else None
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def reset_password_view(request):
+    """
+    Complete password reset: Verify 6-digit OTP code and set user's new password.
+    Accepts: {
+        "identifier": "STU20240001",
+        "otp": "482915",
         "new_password": "...",
         "confirm_password": "..."
     }
     """
     ip = get_client_ip(request)
-    identifier = (request.data.get('identifier') or '').strip()
+    raw_ident = (request.data.get('identifier') or request.data.get('student_id') or request.data.get('email') or '').strip()
+    otp = (request.data.get('otp') or request.data.get('code') or '').strip()
+    new_password = (request.data.get('new_password') or '').strip()
+    confirm_password = (request.data.get('confirm_password') or '').strip()
+
+    if not raw_ident or not otp or not new_password or not confirm_password:
+        return Response(
+            {"detail": "Identifier (Student ID/Email), 6-digit OTP, new password, and confirmation are all required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    is_locked, rem_mins = LoginAttempt.is_locked_out(raw_ident, ip)
+    if is_locked:
+        return Response(
+            {"detail": f"Too many attempts. Please try again in {rem_mins} minute(s)."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+
+    if new_password != confirm_password:
+        return Response(
+            {"detail": "New passwords do not match."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Locate student & user
+    student = (
+        Student.objects.filter(student_id__iexact=raw_ident).first() or
+        Student.objects.filter(roll_no__iexact=raw_ident).first() or
+        Student.objects.filter(email__iexact=raw_ident).first()
+    )
+    if not student:
+        clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+        for s in Student.objects.all():
+            s_roll_clean = (s.roll_no or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+            s_id_clean = (s.student_id or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+            if clean_ident in (s_roll_clean, s_id_clean) or s_roll_clean == clean_ident or s_id_clean == clean_ident:
+                student = s
+                break
+
+    user = None
+    profile = None
+    if student and hasattr(student, 'user_profile') and student.user_profile:
+        profile = student.user_profile
+        user = profile.user
+    else:
+        user_match = User.objects.filter(username__iexact=raw_ident).first() or User.objects.filter(email__iexact=raw_ident).first()
+        if user_match:
+            user = user_match
+            profile = getattr(user, 'profile', None)
+            student = getattr(profile, 'student', None) if profile else None
+
+    if not profile or not user:
+        LoginAttempt.record_failure(raw_ident, ip)
+        return Response(
+            {"detail": "No account found matching this identifier."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Verify OTP
+    if not profile.is_reset_otp_valid(otp):
+        LoginAttempt.record_failure(raw_ident, ip)
+        return Response(
+            {"detail": "Invalid or expired 6-digit verification code. Please request a new code."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Disallow student ID / username as password
+    ident_clean = raw_ident.lower().replace('-', '').replace('_', '').replace(' ', '')
+    pw_clean = new_password.lower().replace('-', '').replace('_', '').replace(' ', '')
+    if ident_clean and (ident_clean in pw_clean or (len(pw_clean) >= 4 and pw_clean in ident_clean)):
+        return Response(
+            {"detail": "Password cannot match or contain your Student ID or username."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Validate strong password
+    pw_errors = validate_strong_password(new_password, user=user)
+    if pw_errors:
+        return Response(
+            {"detail": "Password does not meet security requirements: " + "; ".join(pw_errors), "errors": pw_errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Set password & clear reset OTP
+    user.set_password(new_password)
+    user.is_active = True
+    user.save()
+
+    profile.is_activated = True
+    profile.must_change_password = False
+    profile.clear_reset_otp()
+    profile.save(update_fields=['is_activated', 'must_change_password', 'reset_otp', 'reset_otp_expires_at'])
+
+    LoginAttempt.record_success(raw_ident, ip)
+    auth_token, _ = Token.objects.get_or_create(user=user)
+
+    AuditLog.log(
+        action='PASSWORD_RESET_SUCCESS',
+        entity='User',
+        entity_id=str(user.id),
+        description=f"User '{user.username}' successfully reset password via email OTP verification.",
+        user=user,
+        request=request
+    )
+
+    return Response({
+        "detail": "Password reset successfully! You can now log in with your Student ID and new password.",
+        "token": auth_token.key,
+        "user_id": user.id,
+        "username": user.username,
+        "role": profile.role,
+        "student_id": (student.student_id or student.roll_no) if student else user.username,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def activate_student_account(request):
+    """
+    Activate a student account using student ID and password, or token.
+    Accepts: {
+        "identifier": "...", # Roll number, Student ID, username, or email
+        "activation_token": "..." (optional),
+        "new_password": "...",
+        "confirm_password": "..."
+    }
+    """
+    ip = get_client_ip(request)
+    identifier = (request.data.get('identifier') or request.data.get('student_id') or '').strip()
     token = (request.data.get('activation_token') or '').strip()
     new_password = (request.data.get('new_password') or '').strip()
     confirm_password = (request.data.get('confirm_password') or '').strip()
 
-    if not identifier or not token or not new_password or not confirm_password:
+    if not identifier or not new_password or not confirm_password:
         return Response(
-            {"detail": "Student identifier, activation token, new password, and confirm password are all required."},
+            {"detail": "Student identifier, new password, and confirm password are all required."},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -309,20 +897,21 @@ def activate_student_account(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Validate token
-    if not profile.is_activation_token_valid(token):
-        LoginAttempt.record_failure(identifier, ip)
-        AuditLog.log(
-            action='LOGIN_FAILED',
-            entity='Student',
-            entity_id=identifier,
-            description=f"Invalid or expired activation token attempt for '{identifier}' from IP {ip}.",
-            request=request
-        )
-        return Response(
-            {"detail": "Invalid or expired activation token. Please verify or request a new token from your administrator."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    # Validate token if token was supplied
+    if token:
+        if not profile.is_activation_token_valid(token):
+            LoginAttempt.record_failure(identifier, ip)
+            AuditLog.log(
+                action='LOGIN_FAILED',
+                entity='Student',
+                entity_id=identifier,
+                description=f"Invalid or expired activation token attempt for '{identifier}' from IP {ip}.",
+                request=request
+            )
+            return Response(
+                {"detail": "Invalid or expired activation token. Please verify or request a new token from your administrator."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     # Prevent using roll number or student ID as password
     ident_clean = identifier.lower().replace('-', '').replace('_', '').replace(' ', '')
@@ -351,10 +940,10 @@ def activate_student_account(request):
     profile.activation_token = None
     profile.activation_token_expires_at = None
     profile.must_change_password = False
-    profile.save(update_fields=['is_activated', 'activation_token', 'activation_token_expires_at', 'must_change_password'])
+    profile.clear_reset_otp()
+    profile.save(update_fields=['is_activated', 'activation_token', 'activation_token_expires_at', 'must_change_password', 'reset_otp', 'reset_otp_expires_at'])
 
     LoginAttempt.record_success(identifier, ip)
-
     auth_token, _ = Token.objects.get_or_create(user=user)
 
     AuditLog.log(
@@ -382,6 +971,7 @@ def activate_student_account(request):
             "id": s.id,
             "name": s.name,
             "rollNo": s.roll_no or f"STU-2024-{s.id:03d}",
+            "student_id": s.student_id or s.roll_no,
             "email": s.email,
             "phone": s.phone,
             "branch": s.branch,

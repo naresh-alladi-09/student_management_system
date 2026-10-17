@@ -6,6 +6,7 @@ import {
   deactivateStudent,
   activateStudent,
   registerStudentFace,
+  sendStudentCredentials,
 } from "../services/studentservice";
 
 import Navbar from "../components/Navbar";
@@ -346,6 +347,26 @@ const Students = () => {
     }
   };
 
+  // Send Student ID & Credentials via Email
+  const handleSendCredentials = async (student) => {
+    if (!student.email) {
+      setErrorMessage(`Student "${student.name}" has no registered email address.`);
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+    try {
+      setStatusMessage(`Sending Student ID details to ${student.email}...`);
+      const res = await sendStudentCredentials(student.id);
+      setStatusMessage(`✓ Student ID (${student.student_id || student.roll_no}) & login instructions sent to ${student.email}!`);
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (error) {
+      console.error("Send credentials error:", error);
+      const detail = error.response?.data?.detail || `Failed to send email to ${student.email}.`;
+      setErrorMessage(detail);
+      setTimeout(() => setErrorMessage(null), 5000);
+    }
+  };
+
   return (
     <div className="sideandmain">
       <div className="Sidebarindashboard">
@@ -502,6 +523,7 @@ const Students = () => {
                 onDeactivate={handleDeactivateClick}
                 onActivate={handleActivate}
                 onRegisterFace={handleOpenFaceModal}
+                onSendCredentials={handleSendCredentials}
               />
 
               {/* Server-Side Pagination Bar */}

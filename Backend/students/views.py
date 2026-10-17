@@ -139,6 +139,14 @@ class StudentViewSet(viewsets.ModelViewSet):
             request=self.request
         )
 
+        # Automatically send welcome email with Student ID details
+        if student.email:
+            try:
+                from accounts.views import send_student_onboarding_email
+                send_student_onboarding_email(student)
+            except Exception as e:
+                print(f"[StudentViewSet] Onboarding email dispatch note: {e}")
+
     def perform_update(self, serializer):
         instance = serializer.instance
         user = self.request.user
@@ -286,6 +294,31 @@ class StudentViewSet(viewsets.ModelViewSet):
         return Response({
             "detail": f"Student '{student.name}' ({student.roll_no}) restored successfully.",
             "is_active": True
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='send-credentials', permission_classes=[IsTeacherOrAdmin])
+    def send_credentials(self, request, pk=None):
+        student = self.get_object()
+        if not student.email:
+            return Response(
+                {"detail": "This student does not have an email address on file."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        from accounts.views import send_student_onboarding_email
+        ok, msg = send_student_onboarding_email(student)
+        AuditLog.log(
+            action='STUDENT_CREDENTIALS_DISPATCH',
+            entity='Student',
+            entity_id=str(student.id),
+            description=f"User '{request.user.username}' sent Student ID details email to '{student.email}'.",
+            user=request.user,
+            request=request
+        )
+        return Response({
+            "detail": f"Student ID details successfully sent to {student.email}." if ok else f"Notice: {msg}",
+            "student_id": student.student_id or student.roll_no,
+            "email": student.email,
+            "sent": ok
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], permission_classes=[IsTeacherOrAdmin])

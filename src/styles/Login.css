@@ -799,3 +799,126 @@
     transform: rotate(360deg);
   }
 }
+
+/* ==========================================================================
+   STUDENT ONBOARDING & PASSWORD RESET STYLES
+   ========================================================================== */
+
+.student-first-time-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-top: -2px;
+  transition: all 0.2s ease;
+}
+
+.student-first-time-box:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.first-time-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #10b981;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.first-time-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: #166534;
+}
+
+.first-time-text span {
+  font-weight: 500;
+  color: #15803d;
+}
+
+.btn-first-time-action {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #047857;
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  transition: color 0.15s;
+}
+
+.btn-first-time-action:hover {
+  color: #065f46;
+}
+
+.field-hint-text {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.otp-email-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.otp-email-banner .banner-icon {
+  font-size: 18px;
+  color: #2563eb;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.otp-email-banner span {
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.dev-otp-tag {
+  margin-top: 6px;
+  display: inline-block;
+  background: #dbeafe;
+  color: #1e3a8a;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dev-otp-tag code {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0369a1;
+}
+
+.otp-code-input {
+  letter-spacing: 6px !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  text-align: center;
+  font-family: monospace !important;
+  color: #0f172a;
+}

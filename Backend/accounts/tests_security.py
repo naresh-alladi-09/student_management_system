@@ -347,3 +347,68 @@ class SecurityTestSuite(TestCase):
             'qr_token': session.qr_token
         })
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # =========================================================================
+    # STUDENT ID CREDENTIALS & FORGOT PASSWORD WORKFLOW TESTS
+    # =========================================================================
+
+    def test_student_can_set_password_using_student_id(self):
+        """Student can set password using their Student ID and subsequently log in."""
+        # Student 1 is unactivated initially
+        self.student_1_profile.is_activated = False
+        self.student_1_profile.save()
+
+        # Set password with student ID
+        res = self.client.post('/api/auth/set-student-password/', {
+            'student_id': self.student_1.student_id,
+            'new_password': 'StudentSecretPass123!',
+            'confirm_password': 'StudentSecretPass123!'
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('token', res.data)
+
+        # Verify student can now log in using studentId and new password
+        login_res = self.client.post('/api/auth/login/', {
+            'username': self.student_1.student_id,
+            'password': 'StudentSecretPass123!',
+            'role': 'student'
+        })
+        self.assertEqual(login_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(login_res.data['role'], 'student')
+
+    def test_forgot_password_and_reset_via_email_otp(self):
+        """Student requests OTP via email and successfully resets password."""
+        # 1. Request forgot password OTP
+        res = self.client.post('/api/auth/forgot-password/', {
+            'identifier': self.student_1.student_id
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.student_1_profile.refresh_from_db()
+        self.assertTrue(bool(self.student_1_profile.reset_otp))
+
+        otp = self.student_1_profile.reset_otp
+
+        # 2. Reset password using OTP
+        reset_res = self.client.post('/api/auth/reset-password/', {
+            'identifier': self.student_1.student_id,
+            'otp': otp,
+            'new_password': 'NewBrandPassword456!',
+            'confirm_password': 'NewBrandPassword456!'
+        })
+        self.assertEqual(reset_res.status_code, status.HTTP_200_OK)
+
+        # 3. Log in with the newly reset password
+        login_res = self.client.post('/api/auth/login/', {
+            'username': self.student_1.student_id,
+            'password': 'NewBrandPassword456!',
+            'role': 'student'
+        })
+        self.assertEqual(login_res.status_code, status.HTTP_200_OK)
+
+    def test_admin_can_send_student_id_credentials_email(self):
+        """Admin can trigger dispatch of student ID details to student's email."""
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.post(f'/api/students/{self.student_1.id}/send-credentials/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data.get('sent'))
+        self.assertEqual(res.data.get('student_id'), self.student_1.student_id)

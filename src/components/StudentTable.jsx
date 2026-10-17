@@ -1,6 +1,13 @@
 import "../styles/studenttable.css";
 
-const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
+const StudentTable = ({
+  students,
+  onEdit,
+  onDeactivate,
+  onActivate,
+  onRegisterFace,
+  onSendCredentials,
+}) => {
   const getBranchClass = (branch) => {
     const b = (branch || "").toLowerCase();
     if (b.includes("cse")) return "cse";
@@ -124,6 +131,18 @@ const StudentTable = ({ students, onEdit, onDeactivate, onActivate }) => {
                             style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
                           >
                             <i className="fa-solid fa-camera"></i> Face
+                          </button>
+                        )}
+
+                        {onSendCredentials && (
+                          <button
+                            type="button"
+                            className="action-btn"
+                            onClick={() => onSendCredentials(student)}
+                            title={`Send Student ID (${student.student_id || student.roll_no}) & login instructions to ${student.email}`}
+                            style={{ background: "#f0fdf4", color: "#047857", border: "1px solid #a7f3d0" }}
+                          >
+                            <i className="fa-solid fa-paper-plane"></i> Send ID
                           </button>
                         )}
 

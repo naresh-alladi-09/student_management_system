@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../styles/Login.css";
 import {
@@ -20,12 +20,16 @@ import {
   FaShieldAlt,
   FaUniversity,
   FaMagic,
+  FaPaperPlane,
 } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL, pingBackend } from "../services/apiClient";
 import {
   activateStudentAccount,
   requestActivationToken,
+  setStudentPassword,
+  forgotPassword,
+  resetPassword,
 } from "../services/studentservice";
 
 const Login = ({ initialRole }) => {
@@ -51,7 +55,7 @@ const Login = ({ initialRole }) => {
     if (qRole && ["admin", "teacher", "student"].includes(qRole.toLowerCase())) {
       return qRole.toLowerCase();
     }
-    return "teacher";
+    return "student";
   };
 
   const activeRole = getRoleFromLocation();
@@ -60,33 +64,58 @@ const Login = ({ initialRole }) => {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Student Account Activation States
-  const [showActivation, setShowActivation] = useState(false);
-  const [activationIdentifier, setActivationIdentifier] = useState("");
-  const [activationToken, setActivationToken] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [activationMsg, setActivationMsg] = useState({ type: "", text: "" });
-  const [isActivating, setIsActivating] = useState(false);
+  // Active Screen Mode: 'login' | 'set_password' | 'forgot_password' | 'token_activate' | 'request_token'
+  const [mode, setMode] = useState("login");
 
-  // Request Token Sub-mode
-  const [showRequestToken, setShowRequestToken] = useState(false);
+  // 1. Set Initial Password State (Student ID based)
+  const [setId, setSetId] = useState("");
+  const [setNewPw, setSetNewPw] = useState("");
+  const [setConfirmPw, setSetConfirmPw] = useState("");
+  const [setPasswordMsg, setSetPasswordMsg] = useState({ type: "", text: "" });
+  const [isSettingPassword, setIsSettingPassword] = useState(false);
+
+  // 2. Forgot Password State (Email OTP based)
+  const [forgotStep, setForgotStep] = useState(1); // 1 = enter identifier & request OTP, 2 = enter OTP & new password
+  const [forgotIdent, setForgotIdent] = useState("");
+  const [maskedEmail, setMaskedEmail] = useState("");
+  const [devOtp, setDevOtp] = useState(null);
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [forgotNewPw, setForgotNewPw] = useState("");
+  const [forgotConfirmPw, setForgotConfirmPw] = useState("");
+  const [forgotMsg, setForgotMsg] = useState({ type: "", text: "" });
+  const [isForgotLoading, setIsForgotLoading] = useState(false);
+
+  // 3. Token Activation (Legacy Fallback)
+  const [activationToken, setActivationToken] = useState("");
+  const [legacyIdent, setLegacyIdent] = useState("");
+  const [legacyPw, setLegacyPw] = useState("");
+  const [legacyConfirmPw, setLegacyConfirmPw] = useState("");
+  const [legacyMsg, setLegacyMsg] = useState({ type: "", text: "" });
+  const [isLegacyActivating, setIsLegacyActivating] = useState(false);
+
+  // 4. Request Token Sub-mode
   const [reqIdentifier, setReqIdentifier] = useState("");
   const [reqEmail, setReqEmail] = useState("");
   const [isRequestingToken, setIsRequestingToken] = useState(false);
 
-  const switchRole = (newRole) => {
+  const resetAllFeedback = () => {
     setError("");
+    setSetPasswordMsg({ type: "", text: "" });
+    setForgotMsg({ type: "", text: "" });
+    setLegacyMsg({ type: "", text: "" });
+  };
+
+  const switchRole = (newRole) => {
+    resetAllFeedback();
     setUsername("");
     setPassword("");
-    setShowActivation(false);
-    setShowRequestToken(false);
+    setMode("login");
     navigate(`/login/${newRole}`, { replace: true });
   };
 
   // Quick Demo Auto-fill Helper
   const handleQuickFill = () => {
-    setError("");
+    resetAllFeedback();
     if (activeRole === "student") {
       setUsername("STU20240001");
       setPassword("student123");
@@ -120,9 +149,12 @@ const Login = ({ initialRole }) => {
     }
   };
 
+  // ==============================================================
+  // 1. STANDARD LOGIN HANDLER
+  // ==============================================================
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    setError("");
+    resetAllFeedback();
     setIsSubmitting(true);
     setWakeUpNotice(false);
 
@@ -144,12 +176,13 @@ const Login = ({ initialRole }) => {
         navigate("/dashboard");
       }
     } else {
-      if (res.needsActivation) {
-        setShowActivation(true);
-        setActivationIdentifier(res.identifier || username);
-        setActivationMsg({
+      // If student account needs activation / password has not been created yet
+      if (res.needsPasswordSetup || res.needsActivation) {
+        setMode("set_password");
+        setSetId(res.studentId || res.identifier || username);
+        setSetPasswordMsg({
           type: "info",
-          text: "Student account requires activation: Enter your activation token and set a password.",
+          text: "Student account requires initial setup: Please enter your Student ID and create your secure password.",
         });
       } else {
         setError(res.message || "Invalid credentials. Please verify your details.");
@@ -157,37 +190,196 @@ const Login = ({ initialRole }) => {
     }
   };
 
-  const handleActivateSubmit = async (e) => {
+  // ==============================================================
+  // 2. SET PASSWORD (STUDENT ID FLOW)
+  // ==============================================================
+  const handleSetPasswordSubmit = async (e) => {
     e.preventDefault();
-    setActivationMsg({ type: "", text: "" });
+    setSetPasswordMsg({ type: "", text: "" });
 
-    if (!activationIdentifier || !activationToken || !newPassword || !confirmPassword) {
-      setActivationMsg({ type: "error", text: "All fields are required to activate your account." });
+    const trimmedId = setId.trim();
+    if (!trimmedId) {
+      setSetPasswordMsg({ type: "error", text: "Please enter your Student ID or Roll Number." });
       return;
     }
 
-    if (newPassword !== confirmPassword) {
-      setActivationMsg({ type: "error", text: "New passwords do not match." });
+    if (!setNewPw || !setConfirmPw) {
+      setSetPasswordMsg({ type: "error", text: "Please enter and confirm your new password." });
       return;
     }
 
-    if (newPassword.length < 8) {
-      setActivationMsg({ type: "error", text: "Password must be at least 8 characters long." });
+    if (setNewPw !== setConfirmPw) {
+      setSetPasswordMsg({ type: "error", text: "Passwords do not match." });
       return;
     }
 
-    setIsActivating(true);
+    if (setNewPw.length < 8) {
+      setSetPasswordMsg({ type: "error", text: "Password must be at least 8 characters long." });
+      return;
+    }
+
+    setIsSettingPassword(true);
     try {
-      const res = await activateStudentAccount({
-        identifier: activationIdentifier.trim(),
-        activation_token: activationToken.trim(),
-        new_password: newPassword,
-        confirm_password: confirmPassword,
+      const res = await setStudentPassword({
+        student_id: trimmedId,
+        new_password: setNewPw,
+        confirm_password: setConfirmPw,
       });
 
-      setIsActivating(false);
+      setIsSettingPassword(false);
       if (res.data?.token) {
-        setActivationMsg({
+        setSetPasswordMsg({
+          type: "success",
+          text: "Password set and saved to database successfully! Signing you in...",
+        });
+        setAuthenticatedUser(res.data);
+        setTimeout(() => {
+          navigate("/student/dashboard");
+        }, 1200);
+      } else {
+        setSetPasswordMsg({
+          type: "success",
+          text: res.data?.detail || "Password set successfully! You can now log in.",
+        });
+        setTimeout(() => {
+          setMode("login");
+          setUsername(trimmedId);
+        }, 1500);
+      }
+    } catch (err) {
+      setIsSettingPassword(false);
+      const detail = err.response?.data?.detail || "Could not set password. Please check your Student ID.";
+      setSetPasswordMsg({ type: "error", text: detail });
+    }
+  };
+
+  // ==============================================================
+  // 3. FORGOT PASSWORD FLOW (EMAIL OTP)
+  // ==============================================================
+  const handleForgotRequestOtp = async (e) => {
+    e.preventDefault();
+    setForgotMsg({ type: "", text: "" });
+
+    const trimmedIdent = forgotIdent.trim();
+    if (!trimmedIdent) {
+      setForgotMsg({ type: "error", text: "Please enter your Student ID, Roll Number, or registered email." });
+      return;
+    }
+
+    setIsForgotLoading(true);
+    try {
+      const res = await forgotPassword({ identifier: trimmedIdent });
+      setIsForgotLoading(false);
+
+      setMaskedEmail(res.data.email_masked || "your email");
+      setDevOtp(res.data.dev_otp || null);
+      setForgotStep(2);
+      setForgotMsg({
+        type: "success",
+        text: res.data.detail || `Verification code sent to ${res.data.email_masked}!`,
+      });
+    } catch (err) {
+      setIsForgotLoading(false);
+      const detail = err.response?.data?.detail || "No account found matching this Student ID or email.";
+      setForgotMsg({ type: "error", text: detail });
+    }
+  };
+
+  const handleForgotResetSubmit = async (e) => {
+    e.preventDefault();
+    setForgotMsg({ type: "", text: "" });
+
+    const trimmedIdent = forgotIdent.trim();
+    const trimmedOtp = forgotOtp.trim();
+
+    if (!trimmedOtp || trimmedOtp.length < 4) {
+      setForgotMsg({ type: "error", text: "Please enter the 6-digit verification code sent to your email." });
+      return;
+    }
+
+    if (!forgotNewPw || !forgotConfirmPw) {
+      setForgotMsg({ type: "error", text: "Please enter and confirm your new password." });
+      return;
+    }
+
+    if (forgotNewPw !== forgotConfirmPw) {
+      setForgotMsg({ type: "error", text: "Passwords do not match." });
+      return;
+    }
+
+    if (forgotNewPw.length < 8) {
+      setForgotMsg({ type: "error", text: "New password must be at least 8 characters long." });
+      return;
+    }
+
+    setIsForgotLoading(true);
+    try {
+      const res = await resetPassword({
+        identifier: trimmedIdent,
+        otp: trimmedOtp,
+        new_password: forgotNewPw,
+        confirm_password: forgotConfirmPw,
+      });
+
+      setIsForgotLoading(false);
+      setForgotMsg({
+        type: "success",
+        text: "Password updated successfully in database! Redirecting to sign in...",
+      });
+
+      if (res.data?.token) {
+        setAuthenticatedUser(res.data);
+        setTimeout(() => {
+          navigate(res.data.role === "student" ? "/student/dashboard" : "/dashboard");
+        }, 1200);
+      } else {
+        setTimeout(() => {
+          setMode("login");
+          setUsername(trimmedIdent);
+          setError("");
+        }, 1500);
+      }
+    } catch (err) {
+      setIsForgotLoading(false);
+      const detail = err.response?.data?.detail || "Password reset failed. Please verify your OTP code.";
+      setForgotMsg({ type: "error", text: detail });
+    }
+  };
+
+  // ==============================================================
+  // 4. LEGACY TOKEN ACTIVATION (OPTIONAL FALLBACK)
+  // ==============================================================
+  const handleLegacyActivateSubmit = async (e) => {
+    e.preventDefault();
+    setLegacyMsg({ type: "", text: "" });
+
+    if (!legacyIdent || !activationToken || !legacyPw || !legacyConfirmPw) {
+      setLegacyMsg({ type: "error", text: "All fields are required to activate your account." });
+      return;
+    }
+
+    if (legacyPw !== legacyConfirmPw) {
+      setLegacyMsg({ type: "error", text: "New passwords do not match." });
+      return;
+    }
+
+    if (legacyPw.length < 8) {
+      setLegacyMsg({ type: "error", text: "Password must be at least 8 characters long." });
+      return;
+    }
+
+    setIsLegacyActivating(true);
+    try {
+      const res = await activateStudentAccount({
+        identifier: legacyIdent.trim(),
+        activation_token: activationToken.trim(),
+        new_password: legacyPw,
+        confirm_password: legacyConfirmPw,
+      });
+
+      setIsLegacyActivating(false);
+      if (res.data?.token) {
+        setLegacyMsg({
           type: "success",
           text: "Account successfully activated! Signing you in...",
         });
@@ -197,18 +389,18 @@ const Login = ({ initialRole }) => {
         }, 1200);
       }
     } catch (err) {
-      setIsActivating(false);
+      setIsLegacyActivating(false);
       const detail = err.response?.data?.detail || "Account activation failed. Please check your token.";
-      setActivationMsg({ type: "error", text: detail });
+      setLegacyMsg({ type: "error", text: detail });
     }
   };
 
   const handleRequestToken = async (e) => {
     e.preventDefault();
-    setActivationMsg({ type: "", text: "" });
+    setLegacyMsg({ type: "", text: "" });
 
     if (!reqIdentifier) {
-      setActivationMsg({ type: "error", text: "Student ID or Roll Number is required." });
+      setLegacyMsg({ type: "error", text: "Student ID or Roll Number is required." });
       return;
     }
 
@@ -222,22 +414,22 @@ const Login = ({ initialRole }) => {
 
       if (res.data?.activation_token) {
         setActivationToken(res.data.activation_token);
-        setActivationIdentifier(reqIdentifier.trim());
-        setShowRequestToken(false);
-        setActivationMsg({
+        setLegacyIdent(reqIdentifier.trim());
+        setMode("token_activate");
+        setLegacyMsg({
           type: "success",
           text: `Activation token generated: ${res.data.activation_token}. Copied to form!`,
         });
       } else {
-        setActivationMsg({
+        setLegacyMsg({
           type: "success",
-          text: res.data?.detail || "Token request submitted to department administrator.",
+          text: res.data?.detail || "Token request submitted.",
         });
-        setShowRequestToken(false);
+        setMode("token_activate");
       }
     } catch (err) {
       setIsRequestingToken(false);
-      setActivationMsg({
+      setLegacyMsg({
         type: "error",
         text: err.response?.data?.detail || "Could not generate activation token.",
       });
@@ -360,17 +552,17 @@ const Login = ({ initialRole }) => {
               <span>
                 User:{" "}
                 <code>
-                  {isAdminMode ? "ADMIN01" : isStudentMode ? "STU001" : "FAC001"}
+                  {isAdminMode ? "admin" : isStudentMode ? "STU20240001" : "madam"}
                 </code>
               </span>
               <span>
                 Pass:{" "}
                 <code>
                   {isAdminMode
-                    ? "Admin@123"
+                    ? "admin123"
                     : isStudentMode
-                    ? "Student@123"
-                    : "Teacher@123"}
+                    ? "student123"
+                    : "123456"}
                 </code>
               </span>
             </div>
@@ -378,7 +570,7 @@ const Login = ({ initialRole }) => {
         </div>
 
         {/* ============================================================== */}
-        {/* RIGHT LOGIN / ACTIVATION FORM CARD                             */}
+        {/* RIGHT LOGIN / PASSWORD MANAGEMENT FORM CARD                    */}
         {/* ============================================================== */}
         <div className="login-right">
           {/* Role Navigation Segmented Tabs */}
@@ -412,9 +604,15 @@ const Login = ({ initialRole }) => {
           {/* Form Header Info */}
           <div className="login-header-group">
             <h3 className="login-form-title">
-              {showActivation
-                ? "Activate Student Account"
-                : showRequestToken
+              {mode === "set_password"
+                ? "Set Student Account Password"
+                : mode === "forgot_password"
+                ? forgotStep === 1
+                  ? "Forgot Your Password?"
+                  : "Verify OTP & Reset Password"
+                : mode === "token_activate"
+                ? "Activate with Token"
+                : mode === "request_token"
                 ? "Request Activation Token"
                 : isAdminMode
                 ? "Administrator Sign In"
@@ -423,91 +621,119 @@ const Login = ({ initialRole }) => {
                 : "Faculty Portal Sign In"}
             </h3>
             <p className="login-form-subtitle">
-              {showActivation
-                ? "Enter your identifier and activation token to set your secure password."
-                : showRequestToken
-                ? "Enter your student ID to generate or receive your activation token."
+              {mode === "set_password"
+                ? "Enter your Student ID sent by the administrator to set your password and activate your account."
+                : mode === "forgot_password"
+                ? forgotStep === 1
+                  ? "Enter your Student ID or registered email. We will send a 6-digit password reset code to your email."
+                  : `Enter the 6-digit verification code sent to ${maskedEmail} and choose your new password.`
+                : mode === "token_activate"
+                ? "Activate account with administrative security token."
+                : mode === "request_token"
+                ? "Generate or request a token from the department."
+                : isStudentMode
+                ? "Sign in with your Student ID and password to access your academic dashboard."
                 : "Sign in with your verified institutional account to continue."}
             </p>
           </div>
 
           {/* Error & Feedback Alerts */}
-          {error && (
+          {error && mode === "login" && (
             <div className="login-alert-box alert-error">
               <FaExclamationCircle className="alert-icon" />
               <span>{error}</span>
             </div>
           )}
 
-          {activationMsg.text && (
+          {setPasswordMsg.text && mode === "set_password" && (
             <div
               className={`login-alert-box ${
-                activationMsg.type === "success"
+                setPasswordMsg.type === "success"
                   ? "alert-success"
-                  : activationMsg.type === "info"
+                  : setPasswordMsg.type === "info"
                   ? "alert-info"
                   : "alert-error"
               }`}
             >
-              {activationMsg.type === "success" ? (
+              {setPasswordMsg.type === "success" ? (
                 <FaCheckCircle className="alert-icon" />
               ) : (
                 <FaExclamationCircle className="alert-icon" />
               )}
-              <span>{activationMsg.text}</span>
+              <span>{setPasswordMsg.text}</span>
+            </div>
+          )}
+
+          {forgotMsg.text && mode === "forgot_password" && (
+            <div
+              className={`login-alert-box ${
+                forgotMsg.type === "success" ? "alert-success" : "alert-error"
+              }`}
+            >
+              {forgotMsg.type === "success" ? (
+                <FaCheckCircle className="alert-icon" />
+              ) : (
+                <FaExclamationCircle className="alert-icon" />
+              )}
+              <span>{forgotMsg.text}</span>
+            </div>
+          )}
+
+          {legacyMsg.text && (mode === "token_activate" || mode === "request_token") && (
+            <div
+              className={`login-alert-box ${
+                legacyMsg.type === "success" ? "alert-success" : "alert-error"
+              }`}
+            >
+              {legacyMsg.type === "success" ? (
+                <FaCheckCircle className="alert-icon" />
+              ) : (
+                <FaExclamationCircle className="alert-icon" />
+              )}
+              <span>{legacyMsg.text}</span>
             </div>
           )}
 
           {/* ============================================================== */}
-          {/* SUB-FLOW: ACCOUNT ACTIVATION                                  */}
+          {/* MODE 1: SET INITIAL PASSWORD WITH STUDENT ID                   */}
           {/* ============================================================== */}
-          {showActivation ? (
-            <form onSubmit={handleActivateSubmit} className="login-form-body" autoComplete="off">
+          {mode === "set_password" ? (
+            <form onSubmit={handleSetPasswordSubmit} className="login-form-body" autoComplete="off">
               <div className="form-group">
                 <label className="input-field-label">Student ID or Roll Number</label>
                 <div className="input-control-wrap student-theme">
                   <FaIdCard className="field-adornment-icon" />
                   <input
                     type="text"
-                    placeholder="e.g. STU001 or STU-2024-001"
-                    value={activationIdentifier}
+                    placeholder="e.g. STU20240001 or STU-2024-001"
+                    value={setId}
                     required
-                    onChange={(e) => setActivationIdentifier(e.target.value)}
+                    onChange={(e) => setSetId(e.target.value)}
                   />
                 </div>
+                <span className="field-hint-text">
+                  Student ID provided to you by your Administrator or institution.
+                </span>
               </div>
 
               <div className="form-group">
-                <label className="input-field-label">Security Activation Token</label>
-                <div className="input-control-wrap student-theme">
-                  <FaKey className="field-adornment-icon" />
-                  <input
-                    type="text"
-                    placeholder="Enter 32+ character activation token"
-                    value={activationToken}
-                    required
-                    onChange={(e) => setActivationToken(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="input-field-label">New Secure Password</label>
+                <label className="input-field-label">Create Your Password</label>
                 <div className="input-control-wrap student-theme">
                   <FaLock className="field-adornment-icon" />
                   <input
                     type={showPassword ? "text" : "password"}
-                    placeholder="Minimum 8 characters"
-                    value={newPassword}
+                    placeholder="Minimum 8 characters (at least 1 digit)"
+                    value={setNewPw}
                     required
                     autoComplete="new-password"
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    onChange={(e) => setNewPw(e.target.value)}
                   />
                   <button
                     type="button"
                     className="btn-toggle-eye"
                     onClick={() => setShowPassword(!showPassword)}
                     tabIndex={-1}
+                    title={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <FaEyeSlash /> : <FaEye />}
                   </button>
@@ -515,16 +741,16 @@ const Login = ({ initialRole }) => {
               </div>
 
               <div className="form-group">
-                <label className="input-field-label">Confirm New Password</label>
+                <label className="input-field-label">Confirm Password</label>
                 <div className="input-control-wrap student-theme">
                   <FaLock className="field-adornment-icon" />
                   <input
                     type={showPassword ? "text" : "password"}
-                    placeholder="Re-enter your new password"
-                    value={confirmPassword}
+                    placeholder="Re-enter your password to confirm"
+                    value={setConfirmPw}
                     required
                     autoComplete="new-password"
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onChange={(e) => setConfirmPw(e.target.value)}
                   />
                 </div>
               </div>
@@ -532,15 +758,15 @@ const Login = ({ initialRole }) => {
               <button
                 type="submit"
                 className="btn-submit-login student-theme-btn"
-                disabled={isActivating}
+                disabled={isSettingPassword}
               >
-                {isActivating ? (
+                {isSettingPassword ? (
                   <>
-                    <FaSyncAlt className="spin-icon" /> Activating Account...
+                    <FaSyncAlt className="spin-icon" /> Saving Password to Database...
                   </>
                 ) : (
                   <>
-                    <span>Activate Account & Sign In</span>
+                    <span>Set Password & Sign In</span>
                     <FaArrowRight />
                   </>
                 )}
@@ -551,50 +777,269 @@ const Login = ({ initialRole }) => {
                   type="button"
                   className="link-btn-text"
                   onClick={() => {
-                    setShowRequestToken(true);
-                    setShowActivation(false);
-                    setReqIdentifier(activationIdentifier);
+                    resetAllFeedback();
+                    setMode("login");
+                    if (setId) setUsername(setId);
                   }}
                 >
-                  Need an activation token?
+                  ← Return to Sign In
                 </button>
                 <button
                   type="button"
                   className="link-btn-muted"
-                  onClick={() => setShowActivation(false)}
+                  onClick={() => {
+                    resetAllFeedback();
+                    setMode("forgot_password");
+                    setForgotStep(1);
+                    if (setId) setForgotIdent(setId);
+                  }}
                 >
-                  ← Return to Sign In
+                  Forgot Password?
                 </button>
               </div>
             </form>
-          ) : showRequestToken ? (
+          ) : mode === "forgot_password" ? (
             /* ============================================================== */
-            /* SUB-FLOW: REQUEST TOKEN                                        */
+            /* MODE 2: FORGOT PASSWORD (EMAIL OTP WORKFLOW)                   */
             /* ============================================================== */
-            <form onSubmit={handleRequestToken} className="login-form-body" autoComplete="off">
+            forgotStep === 1 ? (
+              // Step 1: Enter Student ID or Registered Email to send OTP
+              <form onSubmit={handleForgotRequestOtp} className="login-form-body" autoComplete="off">
+                <div className="form-group">
+                  <label className="input-field-label">
+                    {isStudentMode ? "Student ID or Registered Email" : "Username or Registered Email"}
+                  </label>
+                  <div
+                    className={`input-control-wrap ${
+                      isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
+                    }`}
+                  >
+                    <FaEnvelope className="field-adornment-icon" />
+                    <input
+                      type="text"
+                      placeholder="e.g. STU20240001 or student@gmail.com"
+                      value={forgotIdent}
+                      required
+                      onChange={(e) => setForgotIdent(e.target.value)}
+                    />
+                  </div>
+                  <span className="field-hint-text">
+                    We will look up your account and send a 6-digit verification code to your registered email address.
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  className={`btn-submit-login ${
+                    isStudentMode ? "student-theme-btn" : isAdminMode ? "admin-theme-btn" : "teacher-theme-btn"
+                  }`}
+                  disabled={isForgotLoading}
+                >
+                  {isForgotLoading ? (
+                    <>
+                      <FaSyncAlt className="spin-icon" /> Sending Code to Email...
+                    </>
+                  ) : (
+                    <>
+                      <FaPaperPlane />
+                      <span>Send 6-Digit Code to Email</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="auth-helper-links centered">
+                  <button
+                    type="button"
+                    className="link-btn-muted"
+                    onClick={() => {
+                      resetAllFeedback();
+                      setMode("login");
+                    }}
+                  >
+                    ← Return to Sign In
+                  </button>
+                </div>
+              </form>
+            ) : (
+              // Step 2: Enter 6-digit OTP code & new password
+              <form onSubmit={handleForgotResetSubmit} className="login-form-body" autoComplete="off">
+                <div className="otp-email-banner">
+                  <FaEnvelope className="banner-icon" />
+                  <div>
+                    <strong>Verification code sent!</strong>
+                    <div>Check your inbox at <span>{maskedEmail}</span>. Code expires in 15 minutes.</div>
+                    {devOtp && (
+                      <div className="dev-otp-tag">
+                        Demo Mode Hint: OTP is <code>{devOtp}</code>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="input-field-label">6-Digit Verification Code</label>
+                  <div
+                    className={`input-control-wrap ${
+                      isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
+                    }`}
+                  >
+                    <FaKey className="field-adornment-icon" />
+                    <input
+                      type="text"
+                      placeholder="e.g. 482915"
+                      value={forgotOtp}
+                      maxLength={6}
+                      required
+                      className="otp-code-input"
+                      onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, ""))}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="input-field-label">New Password</label>
+                  <div
+                    className={`input-control-wrap ${
+                      isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
+                    }`}
+                  >
+                    <FaLock className="field-adornment-icon" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Minimum 8 characters (at least 1 digit)"
+                      value={forgotNewPw}
+                      required
+                      autoComplete="new-password"
+                      onChange={(e) => setForgotNewPw(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn-toggle-eye"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <FaEyeSlash /> : <FaEye />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="input-field-label">Confirm New Password</label>
+                  <div
+                    className={`input-control-wrap ${
+                      isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
+                    }`}
+                  >
+                    <FaLock className="field-adornment-icon" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Re-enter your new password"
+                      value={forgotConfirmPw}
+                      required
+                      autoComplete="new-password"
+                      onChange={(e) => setForgotConfirmPw(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className={`btn-submit-login ${
+                    isStudentMode ? "student-theme-btn" : isAdminMode ? "admin-theme-btn" : "teacher-theme-btn"
+                  }`}
+                  disabled={isForgotLoading}
+                >
+                  {isForgotLoading ? (
+                    <>
+                      <FaSyncAlt className="spin-icon" /> Updating Password in Database...
+                    </>
+                  ) : (
+                    <>
+                      <span>Reset Password & Sign In</span>
+                      <FaArrowRight />
+                    </>
+                  )}
+                </button>
+
+                <div className="auth-helper-links">
+                  <button
+                    type="button"
+                    className="link-btn-text"
+                    disabled={isForgotLoading}
+                    onClick={handleForgotRequestOtp}
+                  >
+                    Resend Code
+                  </button>
+                  <button
+                    type="button"
+                    className="link-btn-muted"
+                    onClick={() => {
+                      resetAllFeedback();
+                      setMode("login");
+                    }}
+                  >
+                    ← Return to Sign In
+                  </button>
+                </div>
+              </form>
+            )
+          ) : mode === "token_activate" ? (
+            /* ============================================================== */
+            /* MODE 3: LEGACY TOKEN ACTIVATION                                */
+            /* ============================================================== */
+            <form onSubmit={handleLegacyActivateSubmit} className="login-form-body" autoComplete="off">
               <div className="form-group">
                 <label className="input-field-label">Student ID or Roll Number</label>
                 <div className="input-control-wrap student-theme">
                   <FaIdCard className="field-adornment-icon" />
                   <input
                     type="text"
-                    placeholder="e.g. STU001 or STU-2024-001"
-                    value={reqIdentifier}
+                    placeholder="e.g. STU20240001 or STU-2024-001"
+                    value={legacyIdent}
                     required
-                    onChange={(e) => setReqIdentifier(e.target.value)}
+                    onChange={(e) => setLegacyIdent(e.target.value)}
                   />
                 </div>
               </div>
 
               <div className="form-group">
-                <label className="input-field-label">Institutional Email (Optional)</label>
+                <label className="input-field-label">Activation Token</label>
                 <div className="input-control-wrap student-theme">
-                  <FaEnvelope className="field-adornment-icon" />
+                  <FaKey className="field-adornment-icon" />
                   <input
-                    type="email"
-                    placeholder="e.g. student@college.edu"
-                    value={reqEmail}
-                    onChange={(e) => setReqEmail(e.target.value)}
+                    type="text"
+                    placeholder="Enter security token"
+                    value={activationToken}
+                    required
+                    onChange={(e) => setActivationToken(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="input-field-label">New Password</label>
+                <div className="input-control-wrap student-theme">
+                  <FaLock className="field-adornment-icon" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Minimum 8 characters"
+                    value={legacyPw}
+                    required
+                    onChange={(e) => setLegacyPw(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="input-field-label">Confirm Password</label>
+                <div className="input-control-wrap student-theme">
+                  <FaLock className="field-adornment-icon" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Confirm password"
+                    value={legacyConfirmPw}
+                    required
+                    onChange={(e) => setLegacyConfirmPw(e.target.value)}
                   />
                 </div>
               </div>
@@ -602,36 +1047,40 @@ const Login = ({ initialRole }) => {
               <button
                 type="submit"
                 className="btn-submit-login student-theme-btn"
-                disabled={isRequestingToken}
+                disabled={isLegacyActivating}
               >
-                {isRequestingToken ? (
+                {isLegacyActivating ? (
                   <>
-                    <FaSyncAlt className="spin-icon" /> Generating Token...
+                    <FaSyncAlt className="spin-icon" /> Activating...
                   </>
                 ) : (
                   <>
-                    <span>Request Activation Token</span>
+                    <span>Activate Account</span>
                     <FaArrowRight />
                   </>
                 )}
               </button>
 
-              <div className="auth-helper-links centered">
+              <div className="auth-helper-links">
                 <button
                   type="button"
                   className="link-btn-text"
-                  onClick={() => {
-                    setShowRequestToken(false);
-                    setShowActivation(true);
-                  }}
+                  onClick={() => setMode("set_password")}
                 >
-                  Already have a token? Activate Account
+                  Set password with Student ID directly
+                </button>
+                <button
+                  type="button"
+                  className="link-btn-muted"
+                  onClick={() => setMode("login")}
+                >
+                  ← Return to Sign In
                 </button>
               </div>
             </form>
           ) : (
             /* ============================================================== */
-            /* STANDARD ROLE SIGN IN FORM                                    */
+            /* MODE 0: STANDARD ROLE SIGN IN FORM (DEFAULT)                   */
             /* ============================================================== */
             <form onSubmit={handleSubmit} className="login-form-body" autoComplete="off">
               <div className="form-group">
@@ -664,12 +1113,12 @@ const Login = ({ initialRole }) => {
                       isAdminMode
                         ? "Enter admin username"
                         : isStudentMode
-                        ? "e.g. STU001 or roll number"
+                        ? "e.g. STU20240001 or roll number"
                         : "e.g. FAC001 or faculty email"
                     }
                     value={username}
                     required
-                    autoComplete="off"
+                    autoComplete="username"
                     onChange={(e) => {
                       setUsername(e.target.value);
                       setError("");
@@ -681,18 +1130,18 @@ const Login = ({ initialRole }) => {
               <div className="form-group">
                 <div className="label-with-action">
                   <label className="input-field-label">Password</label>
-                  {isStudentMode && (
-                    <button
-                      type="button"
-                      className="inline-action-link"
-                      onClick={() => {
-                        setShowActivation(true);
-                        setActivationIdentifier(username);
-                      }}
-                    >
-                      First time? Activate Account
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="inline-action-link"
+                    onClick={() => {
+                      resetAllFeedback();
+                      setMode("forgot_password");
+                      setForgotStep(1);
+                      if (username) setForgotIdent(username);
+                    }}
+                  >
+                    Forgot Password?
+                  </button>
                 </div>
                 <div
                   className={`input-control-wrap ${
@@ -726,6 +1175,29 @@ const Login = ({ initialRole }) => {
                   </button>
                 </div>
               </div>
+
+              {/* Student Onboarding Quick Action Banner */}
+              {isStudentMode && (
+                <div className="student-first-time-box">
+                  <div className="first-time-icon">
+                    <FaKey />
+                  </div>
+                  <div className="first-time-text">
+                    <span>First time logging in with your Student ID?</span>
+                    <button
+                      type="button"
+                      className="btn-first-time-action"
+                      onClick={() => {
+                        resetAllFeedback();
+                        setMode("set_password");
+                        setSetId(username);
+                      }}
+                    >
+                      Set Your Password with Student ID →
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="form-meta-row">
                 <label className="checkbox-wrap">

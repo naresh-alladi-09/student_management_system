@@ -333,11 +333,7 @@ const StudentForm = () => {
       setCreatedStudentId(assignedId);
 
       setSuccessMessage(
-        `✓ Student "${trimmedName}" registered successfully! Assigned Student ID: ${assignedId}. ${
-          faceRegistered
-            ? "Biometric Facial Features have been recorded into the database for Anti-Proxy Attendance."
-            : "Note: Face registration is pending (you can register it anytime from the student roster)."
-        }`
+        `✓ Student "${trimmedName}" registered successfully! Assigned Student ID: ${assignedId}. Student ID details and password setup instructions sent to ${trimmedEmail}.`
       );
 
       // Clear form inputs
@@ -355,7 +351,7 @@ const StudentForm = () => {
       // Auto redirect after delay
       setTimeout(() => {
         navigate("/students");
-      }, 3500);
+      }, 4000);
     } catch (error) {
       console.error("Failed to add student:", error);
       if (error.response && error.response.data) {
@@ -410,9 +406,8 @@ const StudentForm = () => {
           <div className="form-success-alert">
             <div>{successMessage}</div>
             {createdStudentId && (
-              <div style={{ marginTop: "8px", fontSize: "13px" }}>
-                Credentials saved in backend: <strong>Username:</strong> <code>{createdStudentId}</code> |{" "}
-                <strong>Password:</strong> <code>{createdStudentId}</code>
+              <div style={{ marginTop: "8px", fontSize: "13px", color: "#166534" }}>
+                <strong>Assigned Student ID:</strong> <code>{createdStudentId}</code> • Welcome details and onboarding instructions sent to student's email. Student will use this Student ID to set their initial password and log in.
               </div>
             )}
           </div>

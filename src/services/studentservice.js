@@ -437,6 +437,22 @@ export const activateStudentAccount = (payload) => {
   return apiClient.post("/api/auth/activate/", payload);
 };
 
+export const setStudentPassword = (payload) => {
+  return apiClient.post("/api/auth/set-student-password/", payload);
+};
+
+export const forgotPassword = (payload) => {
+  return apiClient.post("/api/auth/forgot-password/", payload);
+};
+
+export const resetPassword = (payload) => {
+  return apiClient.post("/api/auth/reset-password/", payload);
+};
+
+export const sendStudentCredentials = (studentId) => {
+  return apiClient.post(`/api/students/${studentId}/send-credentials/`);
+};
+
 export const requestActivationToken = (payload) => {
   return apiClient.post("/api/auth/request-activation/", payload);
 };
