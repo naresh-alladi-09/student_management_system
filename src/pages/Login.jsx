@@ -726,7 +726,7 @@ const Login = ({ initialRole }) => {
                     value={setNewPw}
                     required
                     autoComplete="new-password"
-                    onChange={(e) => setNewPw(e.target.value)}
+                    onChange={(e) => setSetNewPw(e.target.value)}
                   />
                   <button
                     type="button"
@@ -750,7 +750,7 @@ const Login = ({ initialRole }) => {
                     value={setConfirmPw}
                     required
                     autoComplete="new-password"
-                    onChange={(e) => setConfirmPw(e.target.value)}
+                    onChange={(e) => setSetConfirmPw(e.target.value)}
                   />
                 </div>
               </div>
