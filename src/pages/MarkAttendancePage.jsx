@@ -122,10 +122,11 @@ const MarkAttendancePage = () => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [faceCheckFeedback, setFaceCheckFeedback] = useState(null);
 
-  // Autonomous Face Auto-Detection states & refs
+  // Autonomous Face & Iris Auto-Detection states & refs
   const [autoDetectState, setAutoDetectState] = useState("scanning"); // 'scanning' | 'detected' | 'locked' | 'verifying'
   const [detectConfidence, setDetectConfidence] = useState(0);
   const [lockProgress, setLockProgress] = useState(0);
+  const [detectedLandmarks, setDetectedLandmarks] = useState(null);
 
   // Check-in submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -398,8 +399,8 @@ const MarkAttendancePage = () => {
           }
         }
 
-        // 2. If face not detected natively, ALWAYS query fast thumbnail server detector
-        if (!hasFace && video.videoWidth > 0) {
+        // 2. Query server detector for deep facial and iris/ocular landmarks
+        if (video.videoWidth > 0) {
           const vw = video.videoWidth || 640;
           const vh = video.videoHeight || 480;
           const sampleCanvas = document.createElement("canvas");
@@ -413,6 +414,9 @@ const MarkAttendancePage = () => {
           if (res.data?.face_detected) {
             hasFace = true;
             confidenceScore = res.data.confidence || 0.85;
+            setDetectedLandmarks(res.data?.landmarks || null);
+          } else {
+            setDetectedLandmarks(null);
           }
         }
 
@@ -426,7 +430,7 @@ const MarkAttendancePage = () => {
             setLockProgress(50);
             playBiometricChime("detected");
           } else if (hits >= 2) {
-            // Biometric face locked! Auto-capture and auto-verify immediately!
+            // Biometric face & iris locked! Auto-capture and auto-verify immediately!
             setAutoDetectState("locked");
             setLockProgress(100);
             isVerifyingRef.current = true;
@@ -437,11 +441,13 @@ const MarkAttendancePage = () => {
               autoDetectTimerRef.current = null;
             }
 
-            // Capture high resolution photo from video
+            // Capture high resolution photo with mirror orientation matching preview
             const fullCanvas = document.createElement("canvas");
             fullCanvas.width = video.videoWidth || 640;
             fullCanvas.height = video.videoHeight || 480;
             const fCtx = fullCanvas.getContext("2d");
+            fCtx.translate(fullCanvas.width, 0);
+            fCtx.scale(-1, 1);
             fCtx.drawImage(video, 0, 0, fullCanvas.width, fullCanvas.height);
             const fullPhoto = fullCanvas.toDataURL("image/jpeg", 0.92);
 
@@ -453,6 +459,7 @@ const MarkAttendancePage = () => {
             await handleConfirmAttendance(fullPhoto);
           }
         } else {
+          setDetectedLandmarks(null);
           // If no face in current frame, step down gracefully rather than instant drop
           if (consecutiveHitsRef.current > 0) {
             consecutiveHitsRef.current = Math.max(0, consecutiveHitsRef.current - 1);
@@ -471,7 +478,7 @@ const MarkAttendancePage = () => {
 
     const initDelay = setTimeout(() => {
       runDetectionStep();
-      autoDetectTimerRef.current = setInterval(runDetectionStep, 450);
+      autoDetectTimerRef.current = setInterval(runDetectionStep, 400);
     }, 350);
 
     return () => {
@@ -494,6 +501,8 @@ const MarkAttendancePage = () => {
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
       const ctx = canvas.getContext("2d");
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
@@ -1360,15 +1369,15 @@ const MarkAttendancePage = () => {
                       >
                         {autoDetectState === "locked" || autoDetectState === "verifying" ? (
                           <>
-                            <FaLock /> Face Locked — Auto-Verifying...
+                            <FaLock /> 🎯 Iris & Face Locked — Auto-Verifying...
                           </>
                         ) : autoDetectState === "detected" ? (
                           <>
-                            <FaCheckCircle /> Face Detected! Hold Still...
+                            <FaCheckCircle /> 👁️ Iris Detected! Gaze directly at camera...
                           </>
                         ) : (
                           <>
-                            <FaCrosshairs className="fa-spin" style={{ animationDuration: "4s" }} /> Autodetecting Face...
+                            <FaCrosshairs className="fa-spin" style={{ animationDuration: "4s" }} /> 👁️ Auto-detecting Iris & Face...
                           </>
                         )}
                       </div>
@@ -1399,6 +1408,93 @@ const MarkAttendancePage = () => {
                           transition: "all 0.25s ease-in-out",
                         }}
                       />
+
+                      {/* Real-time Iris Targeting Reticles */}
+                      {detectedLandmarks?.left_eye_rel && detectedLandmarks?.right_eye_rel && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            height: "100%",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {/* Inter-pupillary caliper line */}
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: `${Math.min((1 - detectedLandmarks.right_eye_rel[0]) * 100, (1 - detectedLandmarks.left_eye_rel[0]) * 100)}%`,
+                              top: `${((detectedLandmarks.left_eye_rel[1] + detectedLandmarks.right_eye_rel[1]) / 2) * 100}%`,
+                              width: `${Math.abs(detectedLandmarks.left_eye_rel[0] - detectedLandmarks.right_eye_rel[0]) * 100}%`,
+                              height: "2px",
+                              background: "linear-gradient(90deg, #38bdf8, #10b981, #38bdf8)",
+                              boxShadow: "0 0 8px rgba(56, 189, 248, 0.8)",
+                              transform: "translateY(-50%)",
+                              display: "flex",
+                              justifyContent: "center",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: "-18px",
+                                background: "rgba(15, 23, 42, 0.9)",
+                                color: "#38bdf8",
+                                border: "1px solid rgba(56, 189, 248, 0.4)",
+                                padding: "1px 6px",
+                                borderRadius: "8px",
+                                fontSize: "9px",
+                                fontWeight: 700,
+                              }}
+                            >
+                              IPD: {detectedLandmarks.inter_pupillary_distance}px
+                            </span>
+                          </div>
+
+                          {/* Left Iris ring */}
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: `${(1 - detectedLandmarks.left_eye_rel[0]) * 100}%`,
+                              top: `${detectedLandmarks.left_eye_rel[1] * 100}%`,
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "50%",
+                              border: autoDetectState === "locked" ? "2px solid #10b981" : "2px dashed #38bdf8",
+                              boxShadow: autoDetectState === "locked" ? "0 0 20px #10b981" : "0 0 12px #38bdf8",
+                              transform: "translate(-50%, -50%)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: autoDetectState === "locked" ? "#10b981" : "#38bdf8" }} />
+                          </div>
+
+                          {/* Right Iris ring */}
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: `${(1 - detectedLandmarks.right_eye_rel[0]) * 100}%`,
+                              top: `${detectedLandmarks.right_eye_rel[1] * 100}%`,
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "50%",
+                              border: autoDetectState === "locked" ? "2px solid #10b981" : "2px dashed #38bdf8",
+                              boxShadow: autoDetectState === "locked" ? "0 0 20px #10b981" : "0 0 12px #38bdf8",
+                              transform: "translate(-50%, -50%)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: autoDetectState === "locked" ? "#10b981" : "#38bdf8" }} />
+                          </div>
+                        </div>
+                      )}
 
                       {/* Animated Scanning Beam Line */}
                       <div
@@ -1449,7 +1545,11 @@ const MarkAttendancePage = () => {
                           pointerEvents: "none",
                         }}
                       >
-                        Autonomous Check-In: Center face inside frame to verify
+                        {autoDetectState === "locked"
+                          ? "✓ 🎯 Iris & Face Biometrics Locked! Auto-checking attendance..."
+                          : autoDetectState === "detected"
+                          ? "👁️ Iris Detected! Gaze into camera lens..."
+                          : "Align face inside oval & gaze at camera for automatic iris lock"}
                       </div>
 
                       {/* Lock-in Progress Bar at Bottom of Video */}

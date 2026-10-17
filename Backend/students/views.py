@@ -33,9 +33,11 @@ class StudentViewSet(viewsets.ModelViewSet):
         elif self.action in ['destroy', 'deactivate', 'activate']:
             # Deleting or changing student lifecycle status requires Admin privileges
             return [IsAuthenticated(), IsAdmin()]
-        elif self.action in ['create', 'update', 'partial_update', 'stats', 'register_face', 'detect_face']:
+        elif self.action in ['create', 'update', 'partial_update', 'stats', 'register_face']:
             # Permitted teachers or admins can enroll students and register their faces
             return [IsAuthenticated(), IsTeacherOrAdmin()]
+        elif self.action in ['detect_face']:
+            return [AllowAny()]
         else:
             return [IsAuthenticated()]
 
@@ -251,8 +253,10 @@ class StudentViewSet(viewsets.ModelViewSet):
         ok, embedding, details = extract_face_embedding(photo)
         return Response({
             "face_detected": ok,
+            "iris_detected": details.get("iris_detected", False),
             "confidence": details.get("confidence", 0.0),
             "box": details.get("box", None),
+            "landmarks": details.get("landmarks", None),
             "error": details.get("error", None) if not ok else None
         }, status=status.HTTP_200_OK)
 

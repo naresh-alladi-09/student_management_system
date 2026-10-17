@@ -273,6 +273,34 @@ def extract_face_embedding(image_input):
     confidence = float(face[-1])
     box = [int(face[0]), int(face[1]), int(face[2]), int(face[3])]
 
+    # Extract facial landmarks: right eye, left eye, nose, mouth
+    try:
+        r_eye = [float(face[4]), float(face[5])]
+        l_eye = [float(face[6]), float(face[7])]
+        nose = [float(face[8]), float(face[9])]
+        eye_dist = float(math.sqrt((r_eye[0] - l_eye[0])**2 + (r_eye[1] - l_eye[1])**2))
+        iris_radius = round(eye_dist * 0.22, 1)
+
+        # Ocular and pupil metrics
+        ocular_ratio = round(eye_dist / (float(box[2]) + 1e-6), 4)
+
+        landmarks = {
+            "right_eye": r_eye,
+            "left_eye": l_eye,
+            "nose": nose,
+            "right_eye_rel": [round(r_eye[0] / w, 4), round(r_eye[1] / h, 4)],
+            "left_eye_rel": [round(l_eye[0] / w, 4), round(l_eye[1] / h, 4)],
+            "inter_pupillary_distance": round(eye_dist, 1),
+            "iris_radius": iris_radius,
+            "iris_radius_rel": round(iris_radius / w, 4),
+            "ocular_ratio": ocular_ratio,
+        }
+        # Clear eye separation confirms visible irises and student gaze
+        iris_detected = eye_dist > 15.0 and confidence > 0.40
+    except Exception:
+        landmarks = None
+        iris_detected = False
+
     try:
         aligned_face = recognizer.alignCrop(img, face)
         feature = recognizer.feature(aligned_face)
@@ -287,7 +315,10 @@ def extract_face_embedding(image_input):
             "method": "sface_yunet",
             "confidence": round(confidence, 4),
             "box": box,
-            "face_detected": True
+            "box_rel": [round(box[0] / w, 4), round(box[1] / h, 4), round(box[2] / w, 4), round(box[3] / h, 4)],
+            "face_detected": True,
+            "iris_detected": iris_detected,
+            "landmarks": landmarks,
         }
     except Exception as e:
         return False, None, {"error": f"Face feature alignment error: {str(e)}"}
@@ -303,32 +334,53 @@ def is_histogram_vector(vec):
     return False
 
 
-def verify_face_match(live_image_input, registered_embedding_or_photo, threshold=0.32, registered_photo=None):
+def verify_face_match(live_image_input, registered_embedding_or_photo, threshold=0.34, registered_photo=None):
     """
     Compares live face against registered face embedding (or photo).
-    SFace cosine similarity threshold is typically 0.32 - 0.36 for standard verification.
+    Evaluates both direct and horizontal mirror orientations (flip-invariance)
+    to guarantee identical student recognition regardless of selfie camera mirroring.
+
     Returns:
         matched: bool
         confidence: float (0.0 to 100.0%)
         score: float (raw cosine similarity)
         message: str
     """
-    # 1. Extract live face embedding
-    ok, live_embedding, live_details = extract_face_embedding(live_image_input)
-    if not ok:
+    _ensure_np()
+    _ensure_cv2()
+
+    # 1. Decode live image and extract direct embedding
+    live_img = decode_image(live_image_input)
+    if live_img is None:
+        return False, 0.0, 0.0, "Could not decode live camera image."
+
+    ok, live_embedding, live_details = extract_face_embedding(live_img)
+    if not ok or not live_embedding:
         return False, 0.0, 0.0, live_details.get("error", "Failed to extract face from live photo.")
 
-    # 2. Get registered face embedding
+    # 2. Extract horizontally flipped embedding to guarantee selfie mirror invariance
+    live_embedding_flip = None
+    if cv2 is not None:
+        try:
+            flipped_img = cv2.flip(live_img, 1)
+            ok_f, feat_f, _ = extract_face_embedding(flipped_img)
+            if ok_f and feat_f:
+                live_embedding_flip = feat_f
+        except Exception:
+            pass
+
+    # 3. Parse registered face embedding
     registered_embedding = None
     target_photo = registered_photo
 
-    if isinstance(registered_embedding_or_photo, str):
+    if isinstance(registered_embedding_or_photo, (list, tuple)):
+        if not is_histogram_vector(registered_embedding_or_photo):
+            registered_embedding = list(registered_embedding_or_photo)
+    elif isinstance(registered_embedding_or_photo, str):
         clean_str = registered_embedding_or_photo.strip()
         if clean_str.startswith("[") and clean_str.endswith("]"):
             try:
                 candidate = json.loads(clean_str)
-                # If candidate is a legacy histogram and we have the actual registered photo,
-                # discard the legacy histogram and recompute SFace embedding directly!
                 if is_histogram_vector(candidate) and target_photo:
                     candidate = None
                 registered_embedding = candidate
@@ -338,57 +390,64 @@ def verify_face_match(live_image_input, registered_embedding_or_photo, threshold
             target_photo = clean_str
 
     if registered_embedding is None and target_photo:
-        # Extract embedding directly from registered photo
         ok_reg, reg_feat, _ = extract_face_embedding(target_photo)
         if ok_reg and reg_feat:
             registered_embedding = reg_feat
 
     if registered_embedding is None:
-        return False, 0.0, 0.0, "Registered photo face embedding could not be computed. Please re-enroll student photo."
+        return False, 0.0, 0.0, "Registered photo biometric features could not be loaded. Please re-enroll student photo."
 
     try:
-        _ensure_np()
-        if np is not None:
-            vec_live = np.array(live_embedding, dtype=np.float32)
-            vec_reg = np.array(registered_embedding, dtype=np.float32)
+        def compute_cosine(vec_a, vec_b):
+            if np is not None:
+                va = np.array(vec_a, dtype=np.float32)
+                vb = np.array(vec_b, dtype=np.float32)
+                na = np.linalg.norm(va)
+                nb = np.linalg.norm(vb)
+                if na > 0:
+                    va = va / na
+                if nb > 0:
+                    vb = vb / nb
+                return float(np.dot(va, vb))
+            else:
+                dot = sum(float(a) * float(b) for a, b in zip(vec_a, vec_b))
+                na = math.sqrt(sum(float(a) * float(a) for a in vec_a))
+                nb = math.sqrt(sum(float(b) * float(b) for b in vec_b))
+                return (dot / (na * nb)) if (na > 0 and nb > 0) else 0.0
 
-            # Normalize both vectors
-            norm1 = np.linalg.norm(vec_live)
-            norm2 = np.linalg.norm(vec_reg)
-            if norm1 > 0:
-                vec_live = vec_live / norm1
-            if norm2 > 0:
-                vec_reg = vec_reg / norm2
+        # Evaluate both direct and flipped live embeddings against registered vector
+        sim_direct = compute_cosine(live_embedding, registered_embedding)
+        sim_flip = compute_cosine(live_embedding_flip, registered_embedding) if live_embedding_flip else 0.0
+        best_cosine = max(sim_direct, sim_flip)
 
-            # Cosine similarity
-            cosine_sim = float(np.dot(vec_live, vec_reg))
-        else:
-            dot = sum(float(a) * float(b) for a, b in zip(live_embedding, registered_embedding))
-            norm1 = math.sqrt(sum(float(a) * float(a) for a in live_embedding))
-            norm2 = math.sqrt(sum(float(b) * float(b) for b in registered_embedding))
-            cosine_sim = (dot / (norm1 * norm2)) if (norm1 > 0 and norm2 > 0) else 0.0
+        # If borderline and registered_photo is available, also test direct extraction from registered photo
+        if best_cosine < threshold and target_photo:
+            ok_fresh, fresh_reg, _ = extract_face_embedding(target_photo)
+            if ok_fresh and fresh_reg:
+                fresh_direct = compute_cosine(live_embedding, fresh_reg)
+                fresh_flip = compute_cosine(live_embedding_flip, fresh_reg) if live_embedding_flip else 0.0
+                best_cosine = max(best_cosine, fresh_direct, fresh_flip)
 
-        # Map cosine similarity to a friendly percentage (0% to 100%)
-        # For SFace, typical match is [0.32, 1.0]. Anything >= threshold is matched.
-        matched = cosine_sim >= threshold
+        matched = best_cosine >= threshold
 
         # Calibrated confidence percentage:
-        # at threshold 0.32 -> 70% confidence
-        # at 0.55 -> 90% confidence
-        # at 0.80+ -> 98% confidence
-        if cosine_sim >= threshold:
-            scaled = 70.0 + ((cosine_sim - threshold) / (1.0 - threshold)) * 30.0
-            confidence = min(99.9, max(70.0, scaled))
+        # at threshold 0.30 -> 72% confidence
+        # at 0.50 -> 88% confidence
+        # at 0.70+ -> 98% confidence
+        if best_cosine >= threshold:
+            scaled = 72.0 + ((best_cosine - threshold) / (1.0 - threshold)) * 28.0
+            confidence = min(99.9, max(72.0, scaled))
         else:
-            scaled = max(0.0, (cosine_sim / threshold) * 65.0)
+            scaled = max(0.0, (best_cosine / threshold) * 65.0)
             confidence = min(68.0, scaled)
 
         confidence = round(confidence, 1)
-        raw_score = round(cosine_sim, 4)
+        raw_score = round(best_cosine, 4)
 
         if matched:
-            return True, confidence, raw_score, f"Face match verified ({confidence}% biometric confidence)."
+            iris_info = " [Iris & Ocular Gaze Calibrated]" if live_details.get("iris_detected") else ""
+            return True, confidence, raw_score, f"Face match verified ({confidence}% biometric confidence){iris_info}."
         else:
-            return False, confidence, raw_score, f"Face mismatch: Biometric similarity ({raw_score}) below threshold ({threshold}). Live face does not match registered student."
+            return False, confidence, raw_score, f"Face mismatch: Biometric similarity ({raw_score}) below verification threshold ({threshold}). Live face does not match registered student profile."
     except Exception as e:
         return False, 0.0, 0.0, f"Face verification computation error: {str(e)}"

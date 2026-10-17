@@ -727,7 +727,7 @@ def mark_qr_attendance(request):
             live_image_input=face_image,
             registered_embedding_or_photo=student.face_embedding or student.profile_photo,
             registered_photo=student.profile_photo,
-            threshold=0.32
+            threshold=0.34
         )
 
         if matched and student.profile_photo:

@@ -534,3 +534,158 @@
 .btn-remove-photo:hover {
   background: #fecaca;
 }
+
+/* ========================================================
+   DYNAMIC IRIS & OCULAR TARGETING HUD
+   ======================================================== */
+.iris-dynamic-hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.iris-caliper-line {
+  position: absolute;
+  height: 2px;
+  background: linear-gradient(90deg, #38bdf8, #10b981, #38bdf8);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+  transform: translateY(-50%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 5;
+}
+
+.iris-caliper-badge {
+  position: absolute;
+  top: -20px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.iris-target-ring {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px dashed #38bdf8;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.6);
+  transition: all 0.2s ease-out;
+  animation: irisSpin 6s linear infinite;
+  z-index: 6;
+}
+
+.iris-target-ring.locked {
+  border: 2px solid #10b981;
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.95);
+  animation: irisPulseLock 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes irisSpin {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes irisPulseLock {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  100% { transform: translate(-50%, -50%) scale(1.15); }
+}
+
+.iris-crosshair-h {
+  position: absolute;
+  width: 140%;
+  height: 1px;
+  background: rgba(56, 189, 248, 0.7);
+}
+
+.iris-crosshair-v {
+  position: absolute;
+  height: 140%;
+  width: 1px;
+  background: rgba(56, 189, 248, 0.7);
+}
+
+.iris-pupil-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  z-index: 7;
+}
+
+.iris-target-ring.locked .iris-pupil-dot {
+  background: #10b981;
+  box-shadow: 0 0 10px #10b981;
+}
+
+.iris-label {
+  position: absolute;
+  bottom: -18px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #38bdf8;
+  background: rgba(15, 23, 42, 0.85);
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.iris-target-ring.locked .iris-label {
+  color: #10b981;
+}
+
+.iris-placeholder-zones {
+  position: absolute;
+  top: 36%;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+.iris-zone-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(56, 189, 248, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: zoneFloat 2s ease-in-out infinite alternate;
+}
+
+.zone-hint {
+  font-size: 9px;
+  color: rgba(56, 189, 248, 0.7);
+  font-weight: 600;
+}
+
+@keyframes zoneFloat {
+  0% { transform: scale(0.96); opacity: 0.5; }
+  100% { transform: scale(1.04); opacity: 0.9; }
+}
+
+.photo-badge.iris-badge {
+  background: linear-gradient(135deg, #059669, #047857) !important;
+  color: white !important;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
