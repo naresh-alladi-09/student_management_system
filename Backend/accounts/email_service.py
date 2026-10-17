@@ -43,11 +43,24 @@ def send_smart_email(subject, plain_msg, recipient_list, html_msg=None, from_ema
     # -------------------------------------------------------------------------
     # 1. LIVE CLOUD / RENDER: BREVO REST API (HTTPS Port 443 - No custom domain needed)
     # -------------------------------------------------------------------------
-    brevo_api_key = os.environ.get('BREVO_API_KEY', '').strip()
+    brevo_api_key = os.environ.get('BREVO_API_KEY', '').strip().strip('\'"').replace(' ', '')
     if brevo_api_key:
+        # Detect if user accidentally copied an SMTP key instead of an API key
+        if brevo_api_key.startswith('xsmtpsib-'):
+            err_msg = (
+                "You pasted a Brevo SMTP key (starts with 'xsmtpsib-'). "
+                "The REST API requires an API Key (starts with 'xkeysib-'). "
+                "In Brevo, go to SMTP & API -> click the 'API Keys' tab (not SMTP tab) -> Generate a new API key."
+            )
+            return False, {
+                "provider": "brevo_https",
+                "message": err_msg,
+                "error": err_msg
+            }
+
         try:
             sender_email = (
-                os.environ.get('BREVO_SENDER_EMAIL', '').strip()
+                os.environ.get('BREVO_SENDER_EMAIL', '').strip().strip('\'"')
                 or getattr(settings, 'EMAIL_HOST_USER', '')
                 or 'nareshalladi09@gmail.com'
             )
@@ -89,6 +102,21 @@ def send_smart_email(subject, plain_msg, recipient_list, html_msg=None, from_ema
                 err_msg = err_json.get("message", raw_body)
             except Exception:
                 err_msg = raw_body
+
+            if "key not found" in err_msg.lower() or e.code == 401:
+                friendly = (
+                    "Brevo Error: 'Key not found'. Please ensure: "
+                    "(1) You created a key under the 'API Keys' tab (starts with xkeysib-..., NOT xsmtpsib-...), "
+                    "(2) Your Brevo account email is confirmed via the link sent to your Gmail, and "
+                    "(3) There are no extra spaces or quotes around BREVO_API_KEY in Render."
+                )
+                return False, {
+                    "provider": "brevo_https",
+                    "message": friendly,
+                    "error": friendly,
+                    "raw_error": raw_body
+                }
+
             return False, {
                 "provider": "brevo_https",
                 "message": f"Brevo API Error ({e.code}): {err_msg}",
