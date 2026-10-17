@@ -269,13 +269,20 @@ def send_student_onboarding_email(student):
     Dispatches official onboarding email containing Student ID, Roll Number, and login instructions.
     """
     if not student or not student.email:
-        return False, "No student email address available."
+        return False, {
+            "message": "No student email address available.",
+            "error": "No student email address available.",
+            "sent": False
+        }
 
     student_name = student.name
     student_id = student.student_id or student.roll_no or f"STU{student.id}"
     roll_no = student.roll_no or student_id
     dept_branch = f"{student.branch} ({student.department or 'Engineering'})"
     cohort = f"Year {student.year}, Semester {student.semester} - Section {student.section}"
+
+    is_live_smtp = bool(getattr(settings, 'EMAIL_HOST_USER', '') and getattr(settings, 'EMAIL_HOST_PASSWORD', ''))
+    backend_name = getattr(settings, 'EMAIL_BACKEND', '')
 
     subject = f"🎓 Welcome to Smart Campus: Your Student ID Details ({student_id})"
     plain_msg = (
@@ -359,7 +366,10 @@ def send_student_onboarding_email(student):
     """
 
     try:
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Smart Campus <noreply@eduportal.edu>')
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None)
+        if not from_email:
+            from_email = f"Academic Affairs <{settings.EMAIL_HOST_USER}>" if getattr(settings, 'EMAIL_HOST_USER', '') else 'Academic Affairs <noreply@eduportal.edu>'
+
         send_mail(
             subject=subject,
             message=plain_msg,
@@ -368,11 +378,30 @@ def send_student_onboarding_email(student):
             html_message=html_msg,
             fail_silently=False
         )
-        return True, f"Student ID details sent to {student.email}."
+        return True, {
+            "message": f"Student ID details successfully sent to {student.email}." if is_live_smtp else f"Student ID details logged to console for {student.email} (Live SMTP not configured).",
+            "student_id": student_id,
+            "student_name": student_name,
+            "email": student.email,
+            "roll_no": roll_no,
+            "is_live_smtp": is_live_smtp,
+            "backend": backend_name,
+            "subject": subject,
+            "html_content": html_msg,
+            "plain_text": plain_msg,
+        }
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Could not send onboarding email to {student.email}: {e}")
-        return False, str(e)
+        return False, {
+            "message": str(e),
+            "error": str(e),
+            "student_id": student_id,
+            "student_name": student_name,
+            "email": student.email,
+            "is_live_smtp": is_live_smtp,
+            "backend": backend_name,
+        }
 
 
 @api_view(['POST'])

@@ -75,6 +75,12 @@ const Students = () => {
   const faceVideoRef = useRef(null);
   const faceStreamRef = useRef(null);
 
+  // Email Dispatch Modal State
+  const [sendingStudentId, setSendingStudentId] = useState(null);
+  const [emailSentModalData, setEmailSentModalData] = useState(null);
+  const [copiedId, setCopiedId] = useState(false);
+  const [copiedInstructions, setCopiedInstructions] = useState(false);
+
   // Bind video element to media stream whenever the face registration camera opens
   useEffect(() => {
     if (faceCameraActive && faceStreamRef.current && faceVideoRef.current) {
@@ -354,16 +360,27 @@ const Students = () => {
       setTimeout(() => setErrorMessage(null), 4000);
       return;
     }
+    setSendingStudentId(student.id);
     try {
-      setStatusMessage(`Sending Student ID details to ${student.email}...`);
+      setStatusMessage(`Dispatching Student ID details to ${student.email}...`);
       const res = await sendStudentCredentials(student.id);
-      setStatusMessage(`✓ Student ID (${student.student_id || student.roll_no}) & login instructions sent to ${student.email}!`);
+      const data = res.data;
+      setEmailSentModalData({
+        student,
+        student_id: data.student_id || student.student_id || student.roll_no,
+        email: data.email || student.email,
+        detail: data.detail,
+        info: data.info || {},
+      });
+      setStatusMessage(`✓ Student ID (${data.student_id || student.student_id || student.roll_no}) dispatched to ${student.email}!`);
       setTimeout(() => setStatusMessage(null), 5000);
     } catch (error) {
       console.error("Send credentials error:", error);
-      const detail = error.response?.data?.detail || `Failed to send email to ${student.email}.`;
+      const detail = error.response?.data?.detail || error.response?.data?.info?.message || `Failed to send email to ${student.email}.`;
       setErrorMessage(detail);
-      setTimeout(() => setErrorMessage(null), 5000);
+      setTimeout(() => setErrorMessage(null), 6000);
+    } finally {
+      setSendingStudentId(null);
     }
   };
 
@@ -524,6 +541,7 @@ const Students = () => {
                 onActivate={handleActivate}
                 onRegisterFace={handleOpenFaceModal}
                 onSendCredentials={handleSendCredentials}
+                sendingStudentId={sendingStudentId}
               />
 
               {/* Server-Side Pagination Bar */}
@@ -956,6 +974,177 @@ const Students = () => {
                       <span><i className="fa-solid fa-shield-halved"></i> Save Biometric Face</span>
                     )}
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* ========================================================= */}
+          {/* EMAIL CREDENTIALS DISPATCH CONFIRMATION MODAL             */}
+          {/* ========================================================= */}
+          {emailSentModalData && (
+            <div className="modal-overlay" onClick={() => setEmailSentModalData(null)}>
+              <div
+                className="modal-card"
+                style={{ maxWidth: "620px" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-header" style={{ background: "#f0fdf4", borderBottom: "1px solid #bbf7d0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", color: "#16a34a", fontSize: "18px" }}>
+                      <i className="fa-solid fa-paper-plane"></i>
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, color: "#166534", fontSize: "17px" }}>Student ID Details Dispatched</h3>
+                      <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#15803d" }}>
+                        Sent to {emailSentModalData.email}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="modal-close-btn"
+                    onClick={() => setEmailSentModalData(null)}
+                  >
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+
+                <div className="modal-body" style={{ padding: "20px" }}>
+                  {/* Delivery Status Badge */}
+                  {emailSentModalData.info?.is_live_smtp ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", background: "#f0fdf4", border: "1px solid #86efac", padding: "12px 14px", borderRadius: "10px", marginBottom: "16px", color: "#166534", fontSize: "13px" }}>
+                      <i className="fa-solid fa-circle-check" style={{ fontSize: "18px", color: "#16a34a" }}></i>
+                      <div>
+                        <strong>Live Email Sent:</strong> Delivered to student's inbox via institutional Gmail SMTP server.
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ background: "#fffbeb", border: "1px solid #fde68a", padding: "12px 14px", borderRadius: "10px", marginBottom: "16px", color: "#92400e", fontSize: "12.5px", lineHeight: "1.5" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, marginBottom: "4px" }}>
+                        <i className="fa-solid fa-triangle-exclamation" style={{ color: "#d97706" }}></i>
+                        Local Console Mode (SMTP Not Configured)
+                      </div>
+                      The email text was generated and logged to the Django console. To deliver real emails directly into Gmail inboxes, set <code style={{ background: "#fef3c7", padding: "2px 5px", borderRadius: "4px", fontWeight: 700 }}>EMAIL_HOST_USER</code> and <code style={{ background: "#fef3c7", padding: "2px 5px", borderRadius: "4px", fontWeight: 700 }}>EMAIL_HOST_PASSWORD</code> in <code style={{ background: "#fef3c7", padding: "2px 5px", borderRadius: "4px", fontWeight: 700 }}>Backend/.env</code>.
+                    </div>
+                  )}
+
+                  {/* Summary Details Card */}
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px", marginBottom: "16px" }}>
+                    <table width="100%" cellPadding="6" cellSpacing="0" style={{ fontSize: "13.5px" }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ color: "#64748b", fontWeight: 600, width: "35%" }}>Student Name:</td>
+                          <td><strong style={{ color: "#0f172a" }}>{emailSentModalData.student.name}</strong></td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: "#64748b", fontWeight: 600 }}>Student ID:</td>
+                          <td>
+                            <span style={{ background: "#0ea5e9", color: "white", padding: "3px 8px", borderRadius: "6px", fontFamily: "monospace", fontWeight: 700, fontSize: "14px" }}>
+                              {emailSentModalData.student_id}
+                            </span>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: "#64748b", fontWeight: 600 }}>Recipient Email:</td>
+                          <td>
+                            <a href={`mailto:${emailSentModalData.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>
+                              {emailSentModalData.email}
+                            </a>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Quick Copy Action Buttons */}
+                  <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(emailSentModalData.student_id);
+                        setCopiedId(true);
+                        setTimeout(() => setCopiedId(false), 2500);
+                      }}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        padding: "9px 14px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        background: copiedId ? "#f0fdf4" : "#ffffff",
+                        color: copiedId ? "#16a34a" : "#334155",
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <i className={copiedId ? "fa-solid fa-check" : "fa-solid fa-copy"}></i>
+                      {copiedId ? "ID Copied!" : "Copy Student ID"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const instructions = `🎓 SMART CAMPUS CREDENTIAL DETAILS\nStudent: ${emailSentModalData.student.name}\nStudent ID: ${emailSentModalData.student_id}\nEmail: ${emailSentModalData.email}\n\nHow to Login:\n1. Open Portal Login page\n2. Click "Set Password with Student ID"\n3. Enter Student ID: ${emailSentModalData.student_id}\n4. Set your password and login!`;
+                        navigator.clipboard.writeText(instructions);
+                        setCopiedInstructions(true);
+                        setTimeout(() => setCopiedInstructions(false), 2500);
+                      }}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        padding: "9px 14px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        background: copiedInstructions ? "#f0fdf4" : "#ffffff",
+                        color: copiedInstructions ? "#16a34a" : "#334155",
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <i className={copiedInstructions ? "fa-solid fa-check" : "fa-solid fa-share-nodes"}></i>
+                      {copiedInstructions ? "Instructions Copied!" : "Copy Full Message"}
+                    </button>
+                  </div>
+
+                  {/* Dispatched Email Preview */}
+                  {emailSentModalData.info?.html_content && (
+                    <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px" }}>
+                      <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "13px", color: "#475569" }}>
+                        👁 Preview Dispatched Email Template
+                      </summary>
+                      <div
+                        style={{ marginTop: "12px", maxHeight: "220px", overflowY: "auto", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#0f172a", padding: "10px" }}
+                        dangerouslySetInnerHTML={{ __html: emailSentModalData.info.html_content }}
+                      />
+                    </details>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "18px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setEmailSentModalData(null)}
+                      style={{
+                        background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                        color: "white",
+                        border: "none",
+                        padding: "8px 22px",
+                        borderRadius: "8px",
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

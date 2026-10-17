@@ -301,24 +301,37 @@ class StudentViewSet(viewsets.ModelViewSet):
         student = self.get_object()
         if not student.email:
             return Response(
-                {"detail": "This student does not have an email address on file."},
+                {"detail": "This student does not have an email address on file.", "sent": False},
                 status=status.HTTP_400_BAD_REQUEST
             )
         from accounts.views import send_student_onboarding_email
-        ok, msg = send_student_onboarding_email(student)
+        ok, res_data = send_student_onboarding_email(student)
+        info = res_data if isinstance(res_data, dict) else {"message": str(res_data)}
+
         AuditLog.log(
             action='STUDENT_CREDENTIALS_DISPATCH',
             entity='Student',
             entity_id=str(student.id),
-            description=f"User '{request.user.username}' sent Student ID details email to '{student.email}'.",
+            description=f"User '{request.user.username}' sent Student ID details email to '{student.email}' (Success: {ok}).",
             user=request.user,
             request=request
         )
+
+        if not ok:
+            return Response({
+                "detail": f"Failed to send email: {info.get('message', 'Unknown error')}",
+                "student_id": student.student_id or student.roll_no or f"STU{student.id}",
+                "email": student.email,
+                "sent": False,
+                "info": info
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         return Response({
-            "detail": f"Student ID details successfully sent to {student.email}." if ok else f"Notice: {msg}",
-            "student_id": student.student_id or student.roll_no,
+            "detail": info.get("message", f"Student ID details successfully sent to {student.email}."),
+            "student_id": student.student_id or student.roll_no or f"STU{student.id}",
             "email": student.email,
-            "sent": ok
+            "sent": True,
+            "info": info
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], permission_classes=[IsTeacherOrAdmin])

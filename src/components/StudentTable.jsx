@@ -7,6 +7,7 @@ const StudentTable = ({
   onActivate,
   onRegisterFace,
   onSendCredentials,
+  sendingStudentId,
 }) => {
   const getBranchClass = (branch) => {
     const b = (branch || "").toLowerCase();
@@ -138,11 +139,30 @@ const StudentTable = ({
                           <button
                             type="button"
                             className="action-btn"
+                            disabled={sendingStudentId === student.id}
                             onClick={() => onSendCredentials(student)}
-                            title={`Send Student ID (${student.student_id || student.roll_no}) & login instructions to ${student.email}`}
-                            style={{ background: "#f0fdf4", color: "#047857", border: "1px solid #a7f3d0" }}
+                            title={
+                              student.email
+                                ? `Send Student ID (${student.student_id || student.roll_no}) & login instructions to ${student.email}`
+                                : "No email address registered for this student"
+                            }
+                            style={{
+                              background: sendingStudentId === student.id ? "#f1f5f9" : "#f0fdf4",
+                              color: sendingStudentId === student.id ? "#64748b" : "#047857",
+                              border: "1px solid " + (sendingStudentId === student.id ? "#cbd5e1" : "#a7f3d0"),
+                              cursor: sendingStudentId === student.id ? "wait" : "pointer",
+                              opacity: student.email ? 1 : 0.6,
+                            }}
                           >
-                            <i className="fa-solid fa-paper-plane"></i> Send ID
+                            {sendingStudentId === student.id ? (
+                              <>
+                                <i className="fa-solid fa-spinner fa-spin"></i> Sending...
+                              </>
+                            ) : (
+                              <>
+                                <i className="fa-solid fa-paper-plane"></i> Send ID
+                              </>
+                            )}
                           </button>
                         )}
 
