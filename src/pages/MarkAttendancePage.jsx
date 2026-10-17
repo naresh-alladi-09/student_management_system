@@ -44,7 +44,8 @@ const calculateDistanceMeters = (lat1, lon1, lat2, lon2) => {
 const MarkAttendancePage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, login } = useAuth();
+  const { currentUser, user, loginUser, logout } = useAuth();
+  const studentUser = (currentUser?.role === "student" ? currentUser : null) || (user?.role === "student" ? user : null);
 
   const tokenParam = searchParams.get("token") || "";
   const [token, setToken] = useState(tokenParam);
@@ -74,9 +75,10 @@ const MarkAttendancePage = () => {
   const [resultData, setResultData] = useState(null);
 
   // Fallback Login states if student not logged in
-  const [loginUsername, setLoginUsername] = useState("STU001");
-  const [loginPassword, setLoginPassword] = useState("Student@123");
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const videoRef = useRef(null);
@@ -251,14 +253,14 @@ const MarkAttendancePage = () => {
 
   useEffect(() => {
     // If student is logged in and session is verified, auto-start camera
-    if (user && user.role === "student" && sessionInfo && !capturedPhoto && resultStatus === "idle") {
+    if (studentUser && sessionInfo && !capturedPhoto && resultStatus === "idle") {
       startCamera();
     }
 
     return () => {
       stopCamera();
     };
-  }, [user, sessionInfo]);
+  }, [studentUser, sessionInfo, capturedPhoto, resultStatus]);
 
   // 4. Capture Face Snapshot
   const captureSnapshot = async () => {
@@ -392,19 +394,51 @@ const MarkAttendancePage = () => {
   const handleStudentLogin = async (e) => {
     e?.preventDefault();
     setLoginError("");
+    setNeedsPasswordSetup(false);
+
+    const cleanIdent = (loginUsername || "").trim();
+    const cleanPw = (loginPassword || "").trim();
+
+    if (!cleanIdent || !cleanPw) {
+      setLoginError("Please enter both your Student ID and your password.");
+      return;
+    }
+
     setIsLoggingIn(true);
     try {
-      await login(loginUsername, loginPassword);
-      // Once logged in, refresh session data
-      if (token) {
-        setTimeout(() => {
-          fetchSessionData(token);
-        }, 300);
+      const res = await loginUser(cleanIdent, cleanPw, "student");
+      if (res.success) {
+        setLoginError("");
+        setNeedsPasswordSetup(false);
+        // Once logged in, refresh session data & activate camera
+        if (token) {
+          setTimeout(() => {
+            fetchSessionData(token);
+          }, 300);
+        }
+      } else {
+        if (res.needsPasswordSetup || res.needsActivation) {
+          setNeedsPasswordSetup(true);
+          setLoginError(
+            res.message ||
+              "Your student password is not set yet. Please set your password using your Student ID to activate your account."
+          );
+        } else {
+          setLoginError(
+            res.message ||
+              "Invalid credentials. Please verify your Student ID and password."
+          );
+        }
       }
     } catch (err) {
+      const isActivation = Boolean(
+        err.response?.data?.needs_password_setup || err.response?.data?.needs_activation
+      );
+      setNeedsPasswordSetup(isActivation);
       setLoginError(
         err.response?.data?.detail ||
-          "Invalid credentials. Please enter your student username & password."
+          err.message ||
+          "Invalid credentials. Please verify your Student ID and password."
       );
     } finally {
       setIsLoggingIn(false);
@@ -784,8 +818,56 @@ const MarkAttendancePage = () => {
         {/* ============================================================== */}
         {/* ACTIVE FLOW: IDLE & STUDENT LOGGED IN */}
         {/* ============================================================== */}
-        {resultStatus === "idle" && user && user.role === "student" && (
+        {resultStatus === "idle" && studentUser && (
           <div>
+            {/* Authenticated Student Identity Banner */}
+            <div
+              style={{
+                background: "#eff6ff",
+                borderRadius: "12px",
+                padding: "10px 14px",
+                marginBottom: "14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: "13px",
+                color: "#1e40af",
+                border: "1px solid #bfdbfe",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", textAlign: "left" }}>
+                <span style={{ fontSize: "16px" }}>🎓</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#1e3a8a" }}>
+                    {studentUser.name}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#3b82f6" }}>
+                    ID / Roll: {studentUser.rollNo || studentUser.username}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  await logout();
+                  setCapturedPhoto(null);
+                  setFaceCheckFeedback(null);
+                }}
+                style={{
+                  background: "#dbeafe",
+                  border: "none",
+                  color: "#1d4ed8",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Switch Account
+              </button>
+            </div>
+
             {/* Session Card Info */}
             {sessionInfo ? (
               <div
@@ -1228,7 +1310,7 @@ const MarkAttendancePage = () => {
         {/* ============================================================== */}
         {/* LOGIN FORM IF STUDENT IS NOT AUTHENTICATED */}
         {/* ============================================================== */}
-        {(!user || user.role !== "student") && resultStatus === "idle" && (
+        {!studentUser && resultStatus === "idle" && (
           <div>
             <div
               style={{
@@ -1244,7 +1326,7 @@ const MarkAttendancePage = () => {
             >
               <strong>Session Scanned Successfully!</strong>
               <div style={{ marginTop: "4px" }}>
-                Please sign in to verify your identity and activate your camera for attendance check-in.
+                Please sign in with your student credentials to verify your identity and launch anti-proxy biometrics.
               </div>
             </div>
 
@@ -1255,12 +1337,29 @@ const MarkAttendancePage = () => {
                   color: "#991b1b",
                   border: "1px solid #fecaca",
                   borderRadius: "8px",
-                  padding: "10px",
+                  padding: "12px",
                   fontSize: "13px",
-                  marginBottom: "14px",
+                  marginBottom: "16px",
+                  textAlign: "left",
+                  lineHeight: 1.5,
                 }}
               >
-                {loginError}
+                <div>{loginError}</div>
+                {needsPasswordSetup && (
+                  <div style={{ marginTop: "8px" }}>
+                    <Link
+                      to={`/login?role=student&mode=set_password&student_id=${encodeURIComponent(loginUsername || "")}`}
+                      style={{
+                        display: "inline-block",
+                        color: "#2563eb",
+                        fontWeight: 700,
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Set your Student Password now →
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1275,12 +1374,13 @@ const MarkAttendancePage = () => {
                     marginBottom: "4px",
                   }}
                 >
-                  Student Username / ID:
+                  Student ID or Roll Number:
                 </label>
                 <input
                   type="text"
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="e.g. STU20240001 or 2024-CSE-001"
                   style={{
                     width: "100%",
                     padding: "11px 12px",
@@ -1309,6 +1409,7 @@ const MarkAttendancePage = () => {
                   type="password"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Enter the password you set"
                   style={{
                     width: "100%",
                     padding: "11px 12px",
@@ -1338,6 +1439,7 @@ const MarkAttendancePage = () => {
                   alignItems: "center",
                   justifyContent: "center",
                   gap: "8px",
+                  boxShadow: "0 4px 12px rgba(37, 99, 235, 0.2)",
                 }}
               >
                 <FaLock /> {isLoggingIn ? "Authenticating..." : "Sign In & Launch Biometric Check-In"}
@@ -1345,7 +1447,7 @@ const MarkAttendancePage = () => {
             </form>
 
             <div style={{ marginTop: "16px", fontSize: "12px", color: "#64748b" }}>
-              Default Student Demo: <code>STU001</code> / <code>Student@123</code>
+              Enter your Student ID / Roll Number and the password stored in your account record.
             </div>
           </div>
         )}

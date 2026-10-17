@@ -79,7 +79,49 @@ def login_view(request):
 
     # 3. If direct auth failed, resolve User by username, email, Teacher/Admin ID (employee_id), or Student (student_id / roll_no / email)
     if user is None:
-        user_obj = User.objects.filter(username__iexact=raw_ident).first()
+        user_obj = None
+
+        # If role requested is student or raw_ident starts with STU / contains roll delimiter, check Student first
+        if role_requested == 'student' or raw_ident.upper().startswith('STU') or '-' in raw_ident:
+            student = (
+                Student.objects.filter(student_id__iexact=raw_ident).first() or
+                Student.objects.filter(roll_no__iexact=raw_ident).first() or
+                Student.objects.filter(email__iexact=raw_ident).first() or
+                Student.objects.filter(phone=raw_ident).first()
+            )
+            if not student:
+                clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+                for s in Student.objects.all():
+                    s_roll_clean = (s.roll_no or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+                    s_id_clean = (s.student_id or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+                    if clean_ident in (s_roll_clean, s_id_clean) or s_roll_clean == clean_ident or s_id_clean == clean_ident:
+                        student = s
+                        break
+            if student:
+                if hasattr(student, 'user_profile') and student.user_profile and student.user_profile.user:
+                    user_obj = student.user_profile.user
+                else:
+                    ident = (student.student_id or student.roll_no or f"STU{student.id}").strip()
+                    user_obj, _ = User.objects.get_or_create(
+                        username=ident,
+                        defaults={"email": student.email or '', "first_name": student.name or ''}
+                    )
+                    user_obj.set_unusable_password()
+                    user_obj.save()
+                    prof, _ = UserProfile.objects.update_or_create(
+                        user=user_obj,
+                        defaults={
+                            "role": "student",
+                            "student": student,
+                            "phone": (student.phone or '')[:30],
+                            "department": student.department or '',
+                            "is_activated": False,
+                        }
+                    )
+                    prof.generate_activation_token()
+
+        if not user_obj:
+            user_obj = User.objects.filter(username__iexact=raw_ident).first()
         if not user_obj:
             user_obj = User.objects.filter(email__iexact=raw_ident).first()
 
@@ -139,8 +181,30 @@ def login_view(request):
                     prof.generate_activation_token()
 
         if user_obj:
+            # Check if student password has not been set yet
+            user_prof = getattr(user_obj, 'profile', None)
+            if (not user_obj.has_usable_password() or (user_prof and not user_prof.is_activated)) and (user_prof and user_prof.role == 'student'):
+                s = user_prof.student
+                return Response(
+                    {
+                        "detail": "Your student account password is not set yet. Please set your password using your Student ID to activate your account.",
+                        "needs_activation": True,
+                        "needs_password_setup": True,
+                        "identifier": user_obj.username,
+                        "student_id": s.student_id if s else user_obj.username,
+                        "roll_no": s.roll_no if s else user_obj.username,
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
             # Standard authentication against Django's secure hashed password
             user = authenticate(username=user_obj.username, password=password)
+
+            if not user and user_obj.check_password(password) and not user_obj.is_active:
+                return Response(
+                    {"detail": "This student account is currently deactivated. Please contact your college administrator."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
     # 4. Handle authentication failure
     if not user:
@@ -176,6 +240,28 @@ def login_view(request):
     if user.is_superuser and profile.role != 'admin':
         profile.role = 'admin'
         profile.save()
+
+    # Link Student record if profile.student is None
+    if profile.student is None and not user.is_superuser and not user.is_staff:
+        from django.db.models import Q
+        st = Student.objects.filter(
+            Q(user_profile__user=user) |
+            Q(student_id__iexact=user.username) |
+            Q(roll_no__iexact=user.username) |
+            Q(email__iexact=user.email)
+        ).first()
+        if not st:
+            clean_ident = user.username.replace('-', '').replace('_', '').replace(' ', '').upper()
+            for s in Student.objects.all():
+                s_roll_clean = (s.roll_no or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+                s_id_clean = (s.student_id or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+                if clean_ident in (s_roll_clean, s_id_clean):
+                    st = s
+                    break
+        if st:
+            profile.student = st
+            profile.role = 'student'
+            profile.save(update_fields=['student', 'role'])
 
     # 6. Check student account activation status
     if profile.role == 'student' and not profile.is_activated:

@@ -207,10 +207,12 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         currentUser,
+        user: currentUser,
         role,
         isAdmin,
         isTeacher,
         isStudent,
+        login: loginUser,
         loginUser,
         loginTeacher,
         loginStudent,
