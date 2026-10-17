@@ -139,11 +139,16 @@ class StudentViewSet(viewsets.ModelViewSet):
             request=self.request
         )
 
-        # Automatically send welcome email with Student ID details
+        # Automatically send welcome email with Student ID details asynchronously
         if student.email:
             try:
+                import threading
                 from accounts.views import send_student_onboarding_email
-                send_student_onboarding_email(student)
+                threading.Thread(
+                    target=send_student_onboarding_email,
+                    args=(student,),
+                    daemon=True
+                ).start()
             except Exception as e:
                 print(f"[StudentViewSet] Onboarding email dispatch note: {e}")
 

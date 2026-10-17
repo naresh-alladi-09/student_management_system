@@ -284,7 +284,7 @@ def send_student_onboarding_email(student):
     is_live_smtp = bool(getattr(settings, 'EMAIL_HOST_USER', '') and getattr(settings, 'EMAIL_HOST_PASSWORD', ''))
     backend_name = getattr(settings, 'EMAIL_BACKEND', '')
 
-    subject = f"🎓 Welcome to Smart Campus: Your Student ID Details ({student_id})"
+    subject = f"Welcome to Smart Campus: Your Student ID Details ({student_id})"
     plain_msg = (
         f"SMART CAMPUS ACADEMIC SUITE\n"
         f"STUDENT ENROLLMENT & CREDENTIAL NOTICE\n\n"
