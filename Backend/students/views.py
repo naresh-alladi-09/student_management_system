@@ -237,7 +237,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             "registered_at": student.face_registered_at.isoformat()
         }, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def detect_face(self, request):
         """
         Real-time camera helper: checks if a captured frame contains a valid face.

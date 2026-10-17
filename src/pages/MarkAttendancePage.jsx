@@ -398,8 +398,8 @@ const MarkAttendancePage = () => {
           }
         }
 
-        // 2. Fallback to fast thumbnail sampling sent to server detector
-        if (!hasFace && !detectorRef.current && video.videoWidth > 0) {
+        // 2. If face not detected natively, ALWAYS query fast thumbnail server detector
+        if (!hasFace && video.videoWidth > 0) {
           const vw = video.videoWidth || 640;
           const vh = video.videoHeight || 480;
           const sampleCanvas = document.createElement("canvas");
@@ -407,7 +407,7 @@ const MarkAttendancePage = () => {
           sampleCanvas.height = Math.round((240 * vh) / vw) || 180;
           const sCtx = sampleCanvas.getContext("2d");
           sCtx.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
-          const sampleData = sampleCanvas.toDataURL("image/jpeg", 0.6);
+          const sampleData = sampleCanvas.toDataURL("image/jpeg", 0.65);
 
           const res = await detectFaceInImage(sampleData);
           if (res.data?.face_detected) {
@@ -453,11 +453,13 @@ const MarkAttendancePage = () => {
             await handleConfirmAttendance(fullPhoto);
           }
         } else {
-          // No face detected in this frame, reset stability counter
+          // If no face in current frame, step down gracefully rather than instant drop
           if (consecutiveHitsRef.current > 0) {
-            consecutiveHitsRef.current = 0;
-            setAutoDetectState("scanning");
-            setLockProgress(0);
+            consecutiveHitsRef.current = Math.max(0, consecutiveHitsRef.current - 1);
+            if (consecutiveHitsRef.current === 0) {
+              setAutoDetectState("scanning");
+              setLockProgress(0);
+            }
           }
         }
       } catch (err) {
@@ -469,8 +471,8 @@ const MarkAttendancePage = () => {
 
     const initDelay = setTimeout(() => {
       runDetectionStep();
-      autoDetectTimerRef.current = setInterval(runDetectionStep, 500);
-    }, 450);
+      autoDetectTimerRef.current = setInterval(runDetectionStep, 450);
+    }, 350);
 
     return () => {
       clearTimeout(initDelay);

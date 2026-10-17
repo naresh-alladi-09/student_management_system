@@ -723,12 +723,23 @@ def mark_qr_attendance(request):
                 "error_type": "MISSING_LIVE_PHOTO"
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        registered_target = student.face_embedding or student.profile_photo
         matched, confidence, raw_score, face_msg = verify_face_match(
             live_image_input=face_image,
-            registered_embedding_or_photo=registered_target,
-            threshold=0.36
+            registered_embedding_or_photo=student.face_embedding or student.profile_photo,
+            registered_photo=student.profile_photo,
+            threshold=0.32
         )
+
+        if matched and student.profile_photo:
+            try:
+                if not student.face_registered or not student.face_embedding or student.face_embedding.startswith("[0.0, 0.0"):
+                    ok_emb, new_emb, _ = extract_face_embedding(student.profile_photo)
+                    if ok_emb and new_emb:
+                        student.face_embedding = json.dumps(new_emb)
+                        student.face_registered = True
+                        student.save(update_fields=['face_embedding', 'face_registered'])
+            except Exception:
+                pass
 
         if not matched:
             AuditLog.log(

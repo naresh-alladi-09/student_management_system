@@ -172,7 +172,7 @@ const StudentForm = () => {
         }
 
         // 2. Server detector fallback
-        if (!hasFace && !detectorRef.current && video.videoWidth > 0) {
+        if (!hasFace && video.videoWidth > 0) {
           const vw = video.videoWidth || 640;
           const vh = video.videoHeight || 480;
           const sample = document.createElement("canvas");
@@ -180,7 +180,7 @@ const StudentForm = () => {
           sample.height = Math.round((240 * vh) / vw) || 180;
           const sCtx = sample.getContext("2d");
           sCtx.drawImage(video, 0, 0, sample.width, sample.height);
-          const sData = sample.toDataURL("image/jpeg", 0.6);
+          const sData = sample.toDataURL("image/jpeg", 0.65);
 
           const res = await detectFaceInImage(sData);
           if (res.data?.face_detected) {
@@ -203,8 +203,10 @@ const StudentForm = () => {
           }
         } else {
           if (autoDetectHitsRef.current > 0) {
-            autoDetectHitsRef.current = 0;
-            setAutoDetectState("scanning");
+            autoDetectHitsRef.current = Math.max(0, autoDetectHitsRef.current - 1);
+            if (autoDetectHitsRef.current === 0) {
+              setAutoDetectState("scanning");
+            }
           }
         }
       } catch (e) {
@@ -216,8 +218,8 @@ const StudentForm = () => {
 
     const timer = setTimeout(() => {
       runDetection();
-      autoDetectTimerRef.current = setInterval(runDetection, 500);
-    }, 450);
+      autoDetectTimerRef.current = setInterval(runDetection, 450);
+    }, 350);
 
     return () => {
       clearTimeout(timer);
