@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   getStudents,
@@ -71,8 +71,19 @@ const Students = () => {
   const [facePhotoSnap, setFacePhotoSnap] = useState(null);
   const [savingFace, setSavingFace] = useState(false);
   const [faceModalError, setFaceModalError] = useState(null);
-  const faceVideoRef = useState(null)[0] || { current: null };
-  const faceStreamRef = { current: null };
+  const faceVideoRef = useRef(null);
+  const faceStreamRef = useRef(null);
+
+  // Bind video element to media stream whenever the face registration camera opens
+  useEffect(() => {
+    if (faceCameraActive && faceStreamRef.current && faceVideoRef.current) {
+      const vid = faceVideoRef.current;
+      if (vid.srcObject !== faceStreamRef.current) {
+        vid.srcObject = faceStreamRef.current;
+      }
+      vid.play().catch((e) => console.warn("Face modal video error:", e));
+    }
+  }, [faceCameraActive]);
 
   const handleOpenFaceModal = (student) => {
     setFaceModalStudent(student);
@@ -85,6 +96,9 @@ const Students = () => {
     if (faceStreamRef.current) {
       faceStreamRef.current.getTracks().forEach((t) => t.stop());
       faceStreamRef.current = null;
+    }
+    if (faceVideoRef.current) {
+      faceVideoRef.current.srcObject = null;
     }
     setFaceModalStudent(null);
     setFaceCameraActive(false);
@@ -100,13 +114,10 @@ const Students = () => {
       });
       faceStreamRef.current = stream;
       setFaceCameraActive(true);
-      setTimeout(() => {
-        const vid = document.getElementById("face-modal-video");
-        if (vid) {
-          vid.srcObject = stream;
-          vid.play();
-        }
-      }, 100);
+      if (faceVideoRef.current) {
+        faceVideoRef.current.srcObject = stream;
+        faceVideoRef.current.play().catch(() => {});
+      }
     } catch (err) {
       console.error("Camera error:", err);
       setFaceModalError("Camera permission denied. You can upload an image file instead.");
@@ -119,21 +130,33 @@ const Students = () => {
       faceStreamRef.current.getTracks().forEach((t) => t.stop());
       faceStreamRef.current = null;
     }
+    if (faceVideoRef.current) {
+      faceVideoRef.current.srcObject = null;
+    }
     setFaceCameraActive(false);
   };
 
   const captureFaceSnapshot = () => {
-    const vid = document.getElementById("face-modal-video");
-    if (!vid) return;
+    const vid = faceVideoRef.current || document.getElementById("face-modal-video");
+    if (!vid || !faceStreamRef.current) return;
+    const vw = vid.videoWidth;
+    const vh = vid.videoHeight;
+    if (!vw || !vh) {
+      setFaceModalError("Camera is initializing. Please wait a moment for the feed to display.");
+      return;
+    }
     const canvas = document.createElement("canvas");
     canvas.width = 480;
     canvas.height = 480;
     const ctx = canvas.getContext("2d");
-    const minDim = Math.min(vid.videoWidth || 480, vid.videoHeight || 480);
-    const sx = ((vid.videoWidth || 480) - minDim) / 2;
-    const sy = ((vid.videoHeight || 480) - minDim) / 2;
+    const minDim = Math.min(vw, vh);
+    const sx = (vw - minDim) / 2;
+    const sy = (vh - minDim) / 2;
+    // Flip horizontally to match the mirrored live viewfinder
+    ctx.translate(480, 0);
+    ctx.scale(-1, 1);
     ctx.drawImage(vid, sx, sy, minDim, minDim, 0, 0, 480, 480);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
     setFacePhotoSnap(dataUrl);
     stopFaceCamera();
   };
@@ -790,7 +813,20 @@ const Students = () => {
                 {faceCameraActive ? (
                   <div style={{ background: "#0f172a", borderRadius: "12px", padding: "16px", textAlign: "center", position: "relative" }}>
                     <div style={{ position: "relative", width: "100%", maxWidth: "340px", aspectRatio: "1/1", margin: "0 auto", borderRadius: "10px", overflow: "hidden", background: "#000" }}>
-                      <video id="face-modal-video" autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+                      <video
+                        ref={(el) => {
+                          faceVideoRef.current = el;
+                          if (el && faceStreamRef.current && el.srcObject !== faceStreamRef.current) {
+                            el.srcObject = faceStreamRef.current;
+                            el.play().catch(() => {});
+                          }
+                        }}
+                        id="face-modal-video"
+                        autoPlay
+                        playsInline
+                        muted
+                        style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }}
+                      />
                       <div style={{ position: "absolute", top: "15%", left: "20%", width: "60%", height: "70%", border: "2px dashed #38bdf8", borderRadius: "50%", pointerEvents: "none", boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.4)" }}>
                         <div style={{ position: "absolute", bottom: "-28px", left: "50%", transform: "translateX(-50%)", background: "rgba(15,23,42,0.9)", color: "#38bdf8", padding: "3px 8px", borderRadius: "10px", fontSize: "11px", whiteSpace: "nowrap" }}>
                           Center Face in Frame

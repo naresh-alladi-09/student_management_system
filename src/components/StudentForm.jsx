@@ -68,6 +68,17 @@ const StudentForm = () => {
     };
   }, []);
 
+  // Ensure video element receives the active media stream whenever camera is active
+  useEffect(() => {
+    if (isCameraActive && streamRef.current && videoRef.current) {
+      const video = videoRef.current;
+      if (video.srcObject !== streamRef.current) {
+        video.srcObject = streamRef.current;
+      }
+      video.play().catch((err) => console.warn("Video auto-play error:", err));
+    }
+  }, [isCameraActive]);
+
   const startCamera = async () => {
     setCameraError(null);
     try {
@@ -80,11 +91,13 @@ const StudentForm = () => {
         audio: false,
       });
       streamRef.current = stream;
+      setIsCameraActive(true);
+
+      // If video element is already mounted, attach stream immediately
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        videoRef.current.play().catch(() => {});
       }
-      setIsCameraActive(true);
     } catch (err) {
       console.error("Camera access error:", err);
       setCameraError("Camera permission denied or camera not available. You can use photo upload instead.");
@@ -96,6 +109,9 @@ const StudentForm = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
   };
@@ -131,20 +147,33 @@ const StudentForm = () => {
   };
 
   const capturePhoto = () => {
-    if (!videoRef.current) return;
     const video = videoRef.current;
+    if (!video || !streamRef.current) return;
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    // Guard against capturing before camera frames are ready
+    if (!vw || !vh) {
+      setCameraError("Camera feed is initializing. Please wait a moment for the video to load before taking the photo.");
+      return;
+    }
+
     const canvas = canvasRef.current || document.createElement("canvas");
     canvas.width = 480;
     canvas.height = 480;
 
     const ctx = canvas.getContext("2d");
     // Center crop to square
-    const minDim = Math.min(video.videoWidth, video.videoHeight);
-    const startX = (video.videoWidth - minDim) / 2;
-    const startY = (video.videoHeight - minDim) / 2;
+    const minDim = Math.min(vw, vh);
+    const startX = (vw - minDim) / 2;
+    const startY = (vh - minDim) / 2;
+
+    // Flip horizontally so the saved snapshot matches the mirrored user preview
+    ctx.translate(480, 0);
+    ctx.scale(-1, 1);
     ctx.drawImage(video, startX, startY, minDim, minDim, 0, 0, 480, 480);
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
     setFacePhoto(dataUrl);
     stopCamera();
     verifyFaceOnline(dataUrl);
@@ -413,7 +442,19 @@ const StudentForm = () => {
               {isCameraActive ? (
                 <div className="camera-viewport-container">
                   <div className="camera-video-wrapper">
-                    <video ref={videoRef} autoPlay playsInline muted className="camera-live-feed" />
+                    <video
+                      ref={(el) => {
+                        videoRef.current = el;
+                        if (el && streamRef.current && el.srcObject !== streamRef.current) {
+                          el.srcObject = streamRef.current;
+                          el.play().catch(() => {});
+                        }
+                      }}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="camera-live-feed"
+                    />
                     {/* Face Guide Oval Overlay */}
                     <div className="face-oval-guide">
                       <div className="guide-corner top-left"></div>
