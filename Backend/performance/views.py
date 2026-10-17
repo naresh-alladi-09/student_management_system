@@ -60,14 +60,6 @@ def list_student_scores(request):
         assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
         if assigned_class_ids.exists():
             students = students.filter(academic_class_id__in=assigned_class_ids)
-        elif profile.department:
-            from django.db.models import Q
-            students = students.filter(
-                Q(department__iexact=profile.department) |
-                Q(academic_class__branch__department__name__iexact=profile.department)
-            )
-        else:
-            students = students.none()
 
     if branch_param and branch_param.upper() != 'ALL':
         students = students.filter(branch__iexact=branch_param)

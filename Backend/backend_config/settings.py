@@ -220,7 +220,7 @@ if not use_local_sqlite and db_engine == "django.db.backends.mysql":
         use_local_sqlite = True
     else:
         try:
-            s = socket.create_connection((db_host, db_port), timeout=3)
+            s = socket.create_connection((db_host, db_port), timeout=10)
             s.close()
         except Exception as exc:
             print(f"[WARNING] MySQL database '{db_host}:{db_port}' is unreachable ({exc}). Falling back to local SQLite database.")

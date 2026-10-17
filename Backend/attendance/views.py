@@ -886,13 +886,6 @@ def get_daily_attendance(request):
         assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
         if assigned_class_ids.exists():
             students_qs = students_qs.filter(academic_class_id__in=assigned_class_ids)
-        elif profile.department:
-            students_qs = students_qs.filter(
-                Q(department__iexact=profile.department) |
-                Q(academic_class__branch__department__name__iexact=profile.department)
-            )
-        else:
-            students_qs = students_qs.none()
     if branch and branch.upper() != 'ALL':
         students_qs = students_qs.filter(branch__iexact=branch)
     if year and year.upper() != 'ALL':

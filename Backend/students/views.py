@@ -54,13 +54,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
             if assigned_class_ids.exists():
                 queryset = Student.objects.filter(academic_class_id__in=assigned_class_ids).select_related('academic_class', 'academic_class__branch').order_by('-id')
-            elif profile and profile.department:
-                queryset = Student.objects.filter(
-                    Q(department__iexact=profile.department) |
-                    Q(academic_class__branch__department__name__iexact=profile.department)
-                ).select_related('academic_class', 'academic_class__branch').order_by('-id')
             else:
-                queryset = Student.objects.none()
+                queryset = Student.objects.all().select_related('academic_class', 'academic_class__branch').order_by('-id')
         elif role == 'student':
             if profile and profile.student:
                 # Student can ONLY ever access their own profile
