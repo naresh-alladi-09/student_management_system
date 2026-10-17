@@ -365,37 +365,31 @@ def send_student_onboarding_email(student):
     </html>
     """
 
-    try:
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None)
-        if not from_email:
-            from_email = f"Academic Affairs <{settings.EMAIL_HOST_USER}>" if getattr(settings, 'EMAIL_HOST_USER', '') else 'Academic Affairs <noreply@eduportal.edu>'
+    from accounts.email_service import send_smart_email
+    ok, mail_info = send_smart_email(
+        subject=subject,
+        plain_msg=plain_msg,
+        recipient_list=[student.email.strip()],
+        html_msg=html_msg
+    )
 
-        send_mail(
-            subject=subject,
-            message=plain_msg,
-            from_email=from_email,
-            recipient_list=[student.email.strip()],
-            html_message=html_msg,
-            fail_silently=False
-        )
+    if ok:
         return True, {
-            "message": f"Student ID details successfully sent to {student.email}." if is_live_smtp else f"Student ID details logged to console for {student.email} (Live SMTP not configured).",
+            "message": mail_info.get("message", f"Student ID details successfully sent to {student.email}."),
             "student_id": student_id,
             "student_name": student_name,
             "email": student.email,
             "roll_no": roll_no,
-            "is_live_smtp": is_live_smtp,
-            "backend": backend_name,
+            "is_live_smtp": is_live_smtp or mail_info.get("is_live_smtp", False),
+            "backend": mail_info.get("provider", backend_name),
             "subject": subject,
             "html_content": html_msg,
             "plain_text": plain_msg,
         }
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not send onboarding email to {student.email}: {e}")
+    else:
         return False, {
-            "message": str(e),
-            "error": str(e),
+            "message": mail_info.get("message", "Could not send onboarding email."),
+            "error": mail_info.get("error", "Failed to dispatch email."),
             "student_id": student_id,
             "student_name": student_name,
             "email": student.email,
@@ -704,21 +698,13 @@ def forgot_password_view(request):
     </html>
     """
 
-    email_sent = False
-    try:
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Smart Campus <noreply@eduportal.edu>')
-        send_mail(
-            subject=subject,
-            message=plain_msg,
-            from_email=from_email,
-            recipient_list=[recipient_email],
-            html_message=html_msg,
-            fail_silently=False
-        )
-        email_sent = True
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not send reset email to {recipient_email}: {e}")
+    from accounts.email_service import send_smart_email
+    email_sent, mail_info = send_smart_email(
+        subject=subject,
+        plain_msg=plain_msg,
+        recipient_list=[recipient_email],
+        html_msg=html_msg
+    )
 
     AuditLog.log(
         action='PASSWORD_RESET_REQUEST',
