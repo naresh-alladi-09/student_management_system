@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from accounts.permissions import IsTeacherOrAdmin, IsSelfOrStaff, IsAdmin
@@ -375,21 +376,66 @@ def save_student_score(request):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsTeacherOrAdmin])
+@permission_classes([IsAuthenticated])
 def list_create_subjects(request):
     """
-    List all curriculum subjects or create a new subject (Admin/Teacher).
+    List curriculum subjects or create a new curriculum course.
+    - Students can view curriculum subjects accredited for their respective branch and common courses.
+    - Teachers and Admins can view all curriculum subjects or filter by branch/semester.
+    - Only Admins and authorized Teachers can create new curriculum courses.
     """
     if request.method == 'GET':
         branch = request.query_params.get('branch', None)
+        semester = request.query_params.get('semester', None)
         subs = Subject.objects.filter(is_active=True)
-        if branch and branch.upper() != 'ALL':
-            subs = subs.filter(branch__iexact=branch)
+
+        profile = getattr(request.user, 'profile', None)
+        is_student = bool(profile and profile.role == 'student')
+
+        if is_student and getattr(profile, 'student', None):
+            student_branch = (profile.student.branch or '').strip().upper()
+            if not branch:
+                # Default student view to their enrolled branch or common curriculum courses
+                subs = subs.filter(
+                    Q(branch__iexact=student_branch) |
+                    Q(branch__iexact='ALL') |
+                    Q(branch__iexact='COMMON')
+                )
+            elif branch.upper() != 'ALL':
+                subs = subs.filter(branch__iexact=branch)
+        else:
+            # Teacher or Admin
+            if branch and branch.upper() != 'ALL':
+                subs = subs.filter(branch__iexact=branch)
+
+        if semester and semester.upper() != 'ALL':
+            subs = subs.filter(semester=str(semester))
+
         serializer = SubjectSerializer(subs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'POST':
-        serializer = SubjectSerializer(data=request.data)
+        profile = getattr(request.user, 'profile', None)
+        is_faculty_or_admin = (
+            request.user.is_superuser
+            or request.user.is_staff
+            or (profile and profile.role in ['teacher', 'admin'])
+        )
+        if not is_faculty_or_admin:
+            return Response(
+                {"detail": "Only administrators and authorized faculty can create curriculum courses."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        if 'code' in data and data['code']:
+            data['code'] = str(data['code']).strip().upper()
+        if 'branch' in data and data['branch']:
+            data['branch'] = str(data['branch']).strip().upper()
+        if 'is_active' not in data:
+            data['is_active'] = True
+
+        serializer = SubjectSerializer(data=data)
         if serializer.is_valid():
             subject = serializer.save()
             AuditLog.log(
@@ -415,10 +461,10 @@ def list_create_subjects(request):
 
 
 @api_view(['GET', 'DELETE'])
-@permission_classes([IsTeacherOrAdmin])
+@permission_classes([IsAuthenticated])
 def delete_subject_view(request, subject_id):
     """
-    Retrieve or delete a curriculum subject (Admin/Teacher).
+    Retrieve or delete a curriculum subject (Admin/Teacher for delete, Authenticated for view).
     """
     try:
         subject = Subject.objects.get(id=subject_id)
@@ -430,6 +476,18 @@ def delete_subject_view(request, subject_id):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'DELETE':
+        profile = getattr(request.user, 'profile', None)
+        is_faculty_or_admin = (
+            request.user.is_superuser
+            or request.user.is_staff
+            or (profile and profile.role in ['teacher', 'admin'])
+        )
+        if not is_faculty_or_admin:
+            return Response(
+                {"detail": "Only administrators and authorized faculty can delete curriculum courses."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         code = subject.code
         name = subject.name
         subject.delete()

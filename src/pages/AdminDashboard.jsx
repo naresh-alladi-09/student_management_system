@@ -263,6 +263,7 @@ const AdminDashboard = () => {
     "Electrical & Electronics Engineering",
     "Mechanical Engineering",
     "Civil Engineering",
+    "General Studies & Basic Sciences",
     "University Administration",
   ];
 
@@ -296,6 +297,7 @@ const AdminDashboard = () => {
     { code: "EEE", name: "Electrical & Electronics", dept: "Electrical & Electronics Engineering" },
     { code: "MECH", name: "Mechanical Engineering", dept: "Mechanical Engineering" },
     { code: "CIVIL", name: "Civil Engineering", dept: "Civil Engineering" },
+    { code: "ALL", name: "Common / All Branches", dept: "General Studies & Basic Sciences" },
   ];
 
   // Curriculum Courses Modal & Filter States
@@ -4479,9 +4481,15 @@ const AdminDashboard = () => {
                     <select
                       value={courseFormData.branch}
                       required
-                      onChange={(e) =>
-                        setCourseFormData({ ...courseFormData, branch: e.target.value })
-                      }
+                      onChange={(e) => {
+                        const selBranch = e.target.value;
+                        const matched = COLLEGE_BRANCHES.find((b) => b.code === selBranch);
+                        setCourseFormData({
+                          ...courseFormData,
+                          branch: selBranch,
+                          department: matched ? matched.dept : courseFormData.department,
+                        });
+                      }}
                       style={{
                         width: "100%",
                         padding: "10px",

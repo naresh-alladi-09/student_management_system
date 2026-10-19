@@ -55,6 +55,15 @@ class Subject(models.Model):
     def __str__(self):
         return f"{self.code} - {self.name} ({self.branch})"
 
+    def save(self, *args, **kwargs):
+        if self.code:
+            self.code = self.code.strip().upper()
+        if self.branch:
+            self.branch = self.branch.strip().upper()
+        if self.is_active is None:
+            self.is_active = True
+        super().save(*args, **kwargs)
+
 
 class Assessment(models.Model):
     ASSESSMENT_TYPES = (

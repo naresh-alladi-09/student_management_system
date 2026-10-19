@@ -60,11 +60,11 @@ const StudentDashboard = () => {
     }
   }, [currentUser, isStudent, navigate]);
 
-  const studentName = currentUser?.name || "Student";
-  const studentBranch = currentUser?.branch || "—";
-  const studentYear = currentUser?.year || "—";
-  const studentSem = currentUser?.semester || "—";
-  const studentRoll = currentUser?.rollNo || "—";
+  const studentName = currentUser?.name || reportData?.name || "Student";
+  const studentBranch = (currentUser?.branch || reportData?.branch || attendanceData?.student?.branch || "—").trim();
+  const studentYear = currentUser?.year || reportData?.year || attendanceData?.student?.year || "—";
+  const studentSem = String(currentUser?.semester || reportData?.semester || attendanceData?.student?.semester || "1").trim();
+  const studentRoll = currentUser?.rollNo || reportData?.roll_no || "—";
   const studentEmail = currentUser?.email || "—";
   const studentPhone = currentUser?.phone || "—";
 
@@ -317,12 +317,13 @@ const StudentDashboard = () => {
 
   const fetchAllData = () => {
     setLoading(true);
+    const branchQuery = (currentUser?.branch || reportData?.branch || "").trim();
     Promise.all([
       getMyReportCard().catch(() => ({ data: null })),
       getMyAttendance().catch(() => ({ data: null })),
       getTimetable().catch(() => ({ data: [] })),
       getAnnouncements().catch(() => ({ data: [] })),
-      getAllSubjects().catch(() => ({ data: [] })),
+      getAllSubjects(branchQuery || undefined).catch(() => ({ data: [] })),
       getLeaveRequests().catch(() => ({ data: [] })),
       getMyHallTickets().catch(() => ({ data: [] })),
     ])
@@ -331,7 +332,10 @@ const StudentDashboard = () => {
         if (attRes.data) setAttendanceData(attRes.data);
         if (timeRes.data) setTimetableSlots(timeRes.data);
         if (annRes.data) setAnnouncements(annRes.data);
-        if (subRes.data) setCurriculumCourses(subRes.data);
+        if (subRes.data) {
+          const rawSubs = Array.isArray(subRes.data) ? subRes.data : (subRes.data?.results || []);
+          setCurriculumCourses(rawSubs);
+        }
         if (leaveRes.data) setLeaveRequests(leaveRes.data);
         if (ticketRes.data) {
           const tData = ticketRes.data;
@@ -599,20 +603,33 @@ const StudentDashboard = () => {
           <div className="stat-info">
             <small>Curriculum Courses</small>
             <div className="stat-number">
-              {curriculumCourses.length > 0
-                ? `${curriculumCourses.filter((c) => String(c.semester) === String(studentSem) && (c.branch || "").toUpperCase() === String(studentBranch).toUpperCase()).length || curriculumCourses.length} Subjects`
-                : `${subjects.length} Subjects`}
+              {(() => {
+                const sBranch = (studentBranch || "").trim().toUpperCase();
+                const branchCourses = curriculumCourses.filter((c) => {
+                  const b = (c.branch || "").trim().toUpperCase();
+                  return !sBranch || sBranch === "—" || b === sBranch || b === "ALL" || b === "COMMON";
+                });
+                const semCourses = branchCourses.filter((c) => String(c.semester).trim() === String(studentSem).trim());
+                const count = semCourses.length > 0 ? semCourses.length : branchCourses.length;
+                return count > 0 ? `${count} Subjects` : `${subjects.length} Subjects`;
+              })()}
             </div>
             <span className="stat-badge-tag tag-info">
-              {curriculumCourses.length > 0
-                ? `${curriculumCourses
-                    .filter(
-                      (c) =>
-                        String(c.semester) === String(studentSem) &&
-                        (c.branch || "").toUpperCase() === String(studentBranch).toUpperCase()
-                    )
-                    .reduce((acc, c) => acc + (Number(c.credits) || 0), 0) || totalCredits} Sem Credits`
-                : `${totalCredits > 0 ? `${totalCredits} Total Credits` : "Registered"}`}
+              {(() => {
+                const sBranch = (studentBranch || "").trim().toUpperCase();
+                const branchCourses = curriculumCourses.filter((c) => {
+                  const b = (c.branch || "").trim().toUpperCase();
+                  return !sBranch || sBranch === "—" || b === sBranch || b === "ALL" || b === "COMMON";
+                });
+                const semCourses = branchCourses.filter((c) => String(c.semester).trim() === String(studentSem).trim());
+                const semCredits = semCourses.reduce((acc, c) => acc + (Number(c.credits) || 0), 0);
+                const totalBranchCredits = branchCourses.reduce((acc, c) => acc + (Number(c.credits) || 0), 0);
+                return semCredits > 0
+                  ? `${semCredits} Sem Credits`
+                  : totalBranchCredits > 0
+                  ? `${totalBranchCredits} Total Credits`
+                  : `${totalCredits > 0 ? totalCredits : 0} Credits`;
+              })()}
             </span>
           </div>
         </div>
@@ -1371,7 +1388,7 @@ const StudentDashboard = () => {
               </p>
             </div>
 
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               <button
                 type="button"
                 onClick={() => setStudentCourseSemFilter("CURRENT")}
@@ -1386,7 +1403,7 @@ const StudentDashboard = () => {
                   cursor: "pointer",
                 }}
               >
-                Semester {studentSem} (Current)
+                Semester {studentSem} (Current Term)
               </button>
               <button
                 type="button"
@@ -1402,22 +1419,52 @@ const StudentDashboard = () => {
                   cursor: "pointer",
                 }}
               >
-                All {studentBranch} Courses
+                All {studentBranch} Semesters
               </button>
+              <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                  <button
+                    key={sem}
+                    type="button"
+                    onClick={() => setStudentCourseSemFilter(String(sem))}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "14px",
+                      border: "none",
+                      background: studentCourseSemFilter === String(sem) ? "#2563eb" : "#f8fafc",
+                      color: studentCourseSemFilter === String(sem) ? "#fff" : "#64748b",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      border: studentCourseSemFilter === String(sem) ? "1px solid #2563eb" : "1px solid #e2e8f0",
+                    }}
+                  >
+                    Sem {sem}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Quick Metrics Strip */}
           {(() => {
             const displayedCourses = curriculumCourses.filter((course) => {
+              const cBranch = (course.branch || "").trim().toUpperCase();
+              const sBranch = (studentBranch || "").trim().toUpperCase();
               const matchBranch =
-                !studentBranch ||
-                studentBranch === "—" ||
-                (course.branch || "").toUpperCase() === String(studentBranch).toUpperCase();
+                !sBranch ||
+                sBranch === "—" ||
+                cBranch === sBranch ||
+                cBranch === "ALL" ||
+                cBranch === "COMMON";
+
               if (studentCourseSemFilter === "CURRENT") {
-                return matchBranch && String(course.semester) === String(studentSem);
+                return matchBranch && String(course.semester).trim() === String(studentSem).trim();
               }
-              return matchBranch;
+              if (studentCourseSemFilter === "ALL") {
+                return matchBranch;
+              }
+              return matchBranch && String(course.semester).trim() === String(studentCourseSemFilter).trim();
             });
 
             const totalSemCredits = displayedCourses.reduce(
@@ -1448,7 +1495,7 @@ const StudentDashboard = () => {
                 >
                   <div>
                     <small style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
-                      {studentCourseSemFilter === "CURRENT" ? "Semester Courses" : "Total Program Courses"}
+                      {studentCourseSemFilter === "CURRENT" ? `Sem ${studentSem} Courses` : studentCourseSemFilter === "ALL" ? "All Program Courses" : `Sem ${studentCourseSemFilter} Courses`}
                     </small>
                     <div style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>
                       {displayedCourses.length} Subjects
@@ -1478,7 +1525,7 @@ const StudentDashboard = () => {
                       Academic Department
                     </small>
                     <div style={{ fontSize: "14px", fontWeight: 600, color: "#2563eb", marginTop: "2px" }}>
-                      {studentBranch} Engineering
+                      {studentBranch} Department
                     </div>
                   </div>
                 </div>
@@ -1489,6 +1536,7 @@ const StudentDashboard = () => {
                       <tr>
                         <th style={{ textAlign: "left" }}>Course Code</th>
                         <th style={{ textAlign: "left" }}>Course Title</th>
+                        <th style={{ textAlign: "center" }}>Branch</th>
                         <th style={{ textAlign: "center" }}>Semester</th>
                         <th style={{ textAlign: "center" }}>Credits</th>
                         <th style={{ textAlign: "left" }}>Department</th>
@@ -1502,7 +1550,7 @@ const StudentDashboard = () => {
                             (s) =>
                               (s.code || "").toUpperCase() === (course.code || "").toUpperCase()
                           );
-                          const isCurrentSem = String(course.semester) === String(studentSem);
+                          const isCurrentSem = String(course.semester).trim() === String(studentSem).trim();
 
                           return (
                             <tr
@@ -1547,6 +1595,11 @@ const StudentDashboard = () => {
                                 )}
                               </td>
                               <td style={{ textAlign: "center" }}>
+                                <span className="stat-badge-tag tag-primary">
+                                  {course.branch || studentBranch}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: "center" }}>
                                 <span className="stat-badge-tag tag-neutral">
                                   Sem {course.semester}
                                 </span>
@@ -1576,9 +1629,13 @@ const StudentDashboard = () => {
                                   <span className={`grade-badge ${gradedScore.gradeClass}`}>
                                     Grade {gradedScore.grade} ({gradedScore.total}/100)
                                   </span>
-                                ) : (
+                                ) : isCurrentSem ? (
                                   <span className="stat-badge-tag tag-info">
-                                    Enrolled / Ongoing
+                                    Enrolled / In Progress
+                                  </span>
+                                ) : (
+                                  <span className="stat-badge-tag tag-neutral">
+                                    Prescribed Curriculum
                                   </span>
                                 )}
                               </td>
@@ -1588,10 +1645,13 @@ const StudentDashboard = () => {
                       ) : (
                         <tr>
                           <td
-                            colSpan="6"
+                            colSpan="7"
                             style={{ textAlign: "center", padding: "32px", color: "#64748b" }}
                           >
-                            No curriculum courses configured for {studentBranch} Department.
+                            No curriculum courses configured for {studentBranch} Department
+                            {studentCourseSemFilter !== "ALL" && studentCourseSemFilter !== "CURRENT"
+                              ? ` (Semester ${studentCourseSemFilter})`
+                              : ""}.
                           </td>
                         </tr>
                       )}
