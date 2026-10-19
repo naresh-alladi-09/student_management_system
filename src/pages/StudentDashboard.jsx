@@ -2133,7 +2133,7 @@ const StudentDashboard = () => {
                         {session.name} ({session.academic_year})
                       </h3>
                       <div style={{ fontSize: "13px", color: "#1e40af", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
-                        <FaUniversity /> {session.college_name || "ST. PETER'S ENGINEERING COLLEGE"} • Exam Dates: {session.start_date} to {session.end_date}
+                        <FaUniversity /> {session.college_name || "SRKR ENGINEERING COLLEGE"} • Exam Dates: {session.start_date} to {session.end_date}
                       </div>
                     </div>
                     <div style={{ fontSize: "12px", background: "#f1f5f9", padding: "6px 12px", borderRadius: "8px", color: "#334155", fontWeight: 600 }}>
@@ -2526,10 +2526,10 @@ const StudentDashboard = () => {
                               textTransform: "uppercase",
                             }}
                           >
-                            {currentTicket.college_name || "ST. PETER'S ENGINEERING COLLEGE"}
+                            {currentTicket.college_name || "SRKR ENGINEERING COLLEGE"}
                           </h1>
                           <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, letterSpacing: "0.5px" }}>
-                            Autonomous Institution • Approved by AICTE &amp; UGC • Accredited by NAAC
+                            Autonomous Institution • Affiliated to JNTUK • Accredited by NAAC with 'A+' Grade
                           </div>
                         </div>
                       </div>

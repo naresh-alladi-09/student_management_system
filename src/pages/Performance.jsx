@@ -66,7 +66,7 @@ function Performance() {
   const [showExamModal, setShowExamModal] = useState(false);
   const [newExamData, setNewExamData] = useState({
     name: "",
-    college_name: "ST. PETER'S ENGINEERING COLLEGE",
+    college_name: "SRKR ENGINEERING COLLEGE",
     academic_year: "2026-2027",
     exam_type: "REGULAR",
     branch: "ALL",
@@ -209,7 +209,7 @@ function Performance() {
       fetchExamSessions();
       setNewExamData({
         name: "",
-        college_name: "ST. PETER'S ENGINEERING COLLEGE",
+        college_name: "SRKR ENGINEERING COLLEGE",
         academic_year: "2026-2027",
         exam_type: "REGULAR",
         branch: "ALL",
@@ -1454,7 +1454,7 @@ function Performance() {
                                   <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "14px" }}>{exam.name}</div>
                                   <div style={{ fontSize: "12px", color: "#1e40af", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>
                                     <FaUniversity style={{ fontSize: "11px" }} />
-                                    {exam.college_name || "ST. PETER'S ENGINEERING COLLEGE"}
+                                    {exam.college_name || "SRKR ENGINEERING COLLEGE"}
                                   </div>
                                   <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "2px" }}>
                                     {exam.papers_count} scheduled timetable papers
@@ -1647,7 +1647,7 @@ function Performance() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. ST. PETER'S ENGINEERING COLLEGE"
+                      placeholder="e.g. SRKR ENGINEERING COLLEGE"
                       value={newExamData.college_name}
                       onChange={(e) => setNewExamData({ ...newExamData, college_name: e.target.value })}
                       style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontWeight: 600, color: "#1e3a8a" }}
@@ -1982,33 +1982,52 @@ function Performance() {
                 </div>
 
                 {/* Printable Frame */}
-                <div style={{ border: "2px solid #1e3a8a", padding: "20px", borderRadius: "8px", background: "#fff" }}>
-                  <div style={{ textAlign: "center", borderBottom: "2px solid #1e3a8a", paddingBottom: "10px", marginBottom: "14px" }}>
-                    <div style={{ fontSize: "16px", fontWeight: 800, color: "#1e3a8a", textTransform: "uppercase" }}>National Institute of Science &amp; Technology</div>
-                    <div style={{ fontSize: "11px", color: "#64748b" }}>OFFICE OF THE CONTROLLER OF EXAMINATIONS • OFFICIAL HALL TICKET</div>
-                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginTop: "4px" }}>{previewTicket.exam_session_name} ({previewTicket.academic_year})</div>
+                <div className="official-admit-card-printable" style={{ border: "2px solid #1e3a8a", padding: "24px", borderRadius: "8px", background: "#fff", position: "relative" }}>
+                  <div style={{ textAlign: "center", borderBottom: "2px solid #1e3a8a", paddingBottom: "12px", marginBottom: "14px" }}>
+                    <div style={{ fontSize: "18px", fontWeight: 900, color: "#1e3a8a", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      {previewTicket.college_name || "SRKR ENGINEERING COLLEGE"}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 600, letterSpacing: "0.5px", marginTop: "2px" }}>
+                      AUTONOMOUS INSTITUTION • AFFILIATED TO JNTUK • ACCREDITED BY NAAC WITH 'A+' GRADE
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#0284c7", fontWeight: 700, marginTop: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      OFFICE OF THE CONTROLLER OF EXAMINATIONS • OFFICIAL HALL TICKET
+                    </div>
+                    <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", marginTop: "6px" }}>
+                      {previewTicket.exam_session_name} ({previewTicket.academic_year})
+                    </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: "16px", marginBottom: "16px", fontSize: "12.5px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 130px", gap: "16px", marginBottom: "16px", fontSize: "12.5px", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "12px", background: "#f8fafc" }}>
                     <div>
-                      <div><strong>Candidate:</strong> {previewTicket.student_name}</div>
-                      <div><strong>Roll No:</strong> {previewTicket.roll_no}</div>
-                      <div><strong>Branch:</strong> {previewTicket.branch} (Sem {previewTicket.semester})</div>
-                      <div><strong>Hall Ticket No:</strong> {previewTicket.hall_ticket_number}</div>
+                      <div style={{ marginBottom: "3px" }}><strong>Candidate:</strong> {previewTicket.student_name}</div>
+                      <div style={{ marginBottom: "3px" }}><strong>Roll No:</strong> {previewTicket.roll_no}</div>
+                      <div style={{ marginBottom: "3px" }}><strong>Branch:</strong> {previewTicket.branch} (Sem {previewTicket.semester})</div>
+                      <div style={{ marginBottom: "3px" }}><strong>Hall Ticket No:</strong> <strong>{previewTicket.hall_ticket_number}</strong></div>
                       <div>
                         <strong>Attendance Status:</strong>{" "}
                         <span style={{ color: previewTicket.is_eligible ? "#15803d" : "#dc2626", fontWeight: 700 }}>
-                          {previewTicket.calculated_attendance_pct}% {previewTicket.is_condoned && "(Condoned)"}
+                          {previewTicket.calculated_attendance_pct}% {previewTicket.is_condoned ? "(Special Condonation Granted)" : previewTicket.is_eligible ? "(Eligible)" : "(Detained / Shortage)"}
                         </span>
                       </div>
                     </div>
-                    <div style={{ textAlign: "center" }}>
-                      <QRCodeSVG value={`${window.location.origin}/verify-hallticket?token=${previewTicket.verification_token}`} size={90} />
-                      <div style={{ fontSize: "10px", color: "#64748b", marginTop: "4px" }}>Official QR Verification</div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", borderLeft: "1px solid #cbd5e1", borderRight: "1px solid #cbd5e1", padding: "0 8px" }}>
+                      <div style={{ width: "85px", height: "105px", border: "1.5px solid #1e3a8a", borderRadius: "4px", overflow: "hidden", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {previewTicket.student_profile_pic ? (
+                          <img src={previewTicket.student_profile_pic} alt="Candidate" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <div style={{ textAlign: "center", fontSize: "10px", color: "#64748b", fontWeight: 600 }}>PHOTO<br />AFFIXED</div>
+                        )}
+                      </div>
+                      <div style={{ fontSize: "9px", color: "#64748b", marginTop: "4px", fontWeight: 700 }}>CANDIDATE</div>
+                    </div>
+                    <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                      <QRCodeSVG value={`${window.location.origin}/verify-hallticket?token=${previewTicket.verification_token}`} size={85} />
+                      <div style={{ fontSize: "9.5px", color: "#64748b", marginTop: "4px", fontWeight: 600 }}>Official QR Verification</div>
                     </div>
                   </div>
 
-                  {previewTicket.timetable && previewTicket.timetable.length > 0 && (
+                  {previewTicket.timetable && previewTicket.timetable.length > 0 ? (
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: "14px", border: "1px solid #cbd5e1" }}>
                       <thead>
                         <tr style={{ background: "#f1f5f9" }}>
@@ -2017,6 +2036,7 @@ function Performance() {
                           <th style={{ padding: "6px 8px" }}>Code</th>
                           <th style={{ padding: "6px 8px" }}>Course Title</th>
                           <th style={{ padding: "6px 8px" }}>Venue</th>
+                          <th style={{ padding: "6px 8px", textAlign: "center" }}>Invigilator Sign</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2027,19 +2047,56 @@ function Performance() {
                             <td style={{ padding: "6px 8px", fontWeight: 700, color: "#2563eb" }}>{p.subject_code}</td>
                             <td style={{ padding: "6px 8px" }}>{p.subject_name}</td>
                             <td style={{ padding: "6px 8px" }}>{p.hall_number}</td>
+                            <td style={{ padding: "6px 8px", borderLeft: "1px dashed #cbd5e1", height: "24px" }}></td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  ) : (
+                    <div style={{ padding: "16px", textAlign: "center", color: "#64748b", fontSize: "12px", border: "1px dashed #cbd5e1", borderRadius: "6px", marginBottom: "14px" }}>
+                      No examination schedule papers found for this student's branch.
+                    </div>
                   )}
 
-                  <div style={{ fontSize: "11px", color: "#64748b", whiteSpace: "pre-wrap", borderTop: "1px solid #cbd5e1", paddingTop: "8px" }}>
+                  <div style={{ fontSize: "10.5px", color: "#475569", whiteSpace: "pre-wrap", borderTop: "1px solid #cbd5e1", paddingTop: "8px", lineHeight: "1.4" }}>
+                    <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: "3px" }}>INSTRUCTIONS TO CANDIDATE:</div>
                     {previewTicket.instructions}
+                  </div>
+
+                  {/* Signatures */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: "20px", marginTop: "14px", borderTop: "1px dashed #cbd5e1" }}>
+                    <div style={{ textAlign: "center", width: "160px" }}>
+                      <div style={{ borderBottom: "1px solid #475569", height: "28px", marginBottom: "4px" }}></div>
+                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#334155" }}>Candidate's Signature</div>
+                    </div>
+                    <div style={{ textAlign: "center", width: "160px" }}>
+                      <div style={{ borderBottom: "1px solid #475569", height: "28px", marginBottom: "4px" }}></div>
+                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#334155" }}>Controller of Examinations</div>
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
-                  <button type="button" onClick={() => setPreviewTicket(null)} style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer" }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "#1e3a8a",
+                      color: "#ffffff",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <FaPrint /> Print Official Hall Ticket
+                  </button>
+                  <button type="button" onClick={() => setPreviewTicket(null)} style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer", fontWeight: 600 }}>
                     Close Preview
                   </button>
                 </div>

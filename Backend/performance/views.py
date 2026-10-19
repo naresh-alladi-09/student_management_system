@@ -605,7 +605,7 @@ def list_create_exam_sessions(request):
         with transaction.atomic():
             exam = ExamSession.objects.create(
                 name=name,
-                college_name=data.get('college_name') or "ST. PETER'S ENGINEERING COLLEGE",
+                college_name=data.get('college_name') or "SRKR ENGINEERING COLLEGE",
                 academic_year=data.get('academic_year', '2025-2026'),
                 exam_type=data.get('exam_type', 'REGULAR'),
                 branch=data.get('branch', 'ALL'),
@@ -1055,7 +1055,7 @@ def my_hall_tickets(request):
             timetable_papers = []
             for tt in exam.timetable.all():
                 s = tt.subject
-                if student_branch and s.branch and s.branch.upper() not in ['ALL', student_branch]:
+                if student_branch and s.branch and s.branch.upper() not in ['ALL', 'COMMON', student_branch]:
                     continue
                 timetable_papers.append({
                     "subject_code": s.code,

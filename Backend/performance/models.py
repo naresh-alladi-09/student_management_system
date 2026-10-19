@@ -157,7 +157,7 @@ class ExamSession(models.Model):
     )
 
     name = models.CharField(max_length=200)
-    college_name = models.CharField(max_length=250, default="ST. PETER'S ENGINEERING COLLEGE")
+    college_name = models.CharField(max_length=250, default="SRKR ENGINEERING COLLEGE")
     academic_year = models.CharField(max_length=50, default="2025-2026")
     exam_type = models.CharField(max_length=50, choices=EXAM_TYPE_CHOICES, default='REGULAR')
     branch = models.CharField(max_length=50, default='ALL')

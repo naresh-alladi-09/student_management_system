@@ -104,7 +104,7 @@ const VerifyHallTicket = () => {
               textTransform: "uppercase",
             }}
           >
-            {data?.exam?.college_name || "ST. PETER'S ENGINEERING COLLEGE"}
+            {data?.exam?.college_name || "SRKR ENGINEERING COLLEGE"}
           </h2>
           <div style={{ fontSize: "12px", color: "#bfdbfe", letterSpacing: "0.5px" }}>
             Office of the Controller of Examinations • Candidate Verification

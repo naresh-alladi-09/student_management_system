@@ -250,21 +250,26 @@ class HallTicketSerializer(serializers.ModelSerializer):
         return ""
 
     def get_timetable(self, obj):
-        papers = obj.exam_session.timetable.all()
+        papers = obj.exam_session.timetable.select_related('subject').all()
         student_branch = (obj.student.branch or '').strip().upper()
         student_sem = str(obj.student.semester or '').strip()
 
+        # Strictly include only subjects applicable to student's branch (or COMMON / ALL)
         relevant_papers = []
         for p in papers:
             s = p.subject
-            if student_branch and s.branch and s.branch.upper() not in ['ALL', student_branch]:
-                continue
-            if student_sem and s.semester and s.semester not in ['ALL', student_sem]:
+            sub_branch = (s.branch or '').strip().upper()
+            if student_branch and sub_branch and sub_branch not in ['ALL', 'COMMON', student_branch]:
                 continue
             relevant_papers.append(p)
 
-        if not relevant_papers:
-            relevant_papers = list(papers)
+        # Match semester if possible among the branch-relevant papers
+        sem_matched = [
+            p for p in relevant_papers
+            if not p.subject.semester or str(p.subject.semester).upper() in ['ALL', student_sem]
+        ]
+        final_papers = sem_matched if sem_matched else relevant_papers
 
-        return ExamTimetableSerializer(relevant_papers, many=True).data
+        return ExamTimetableSerializer(final_papers, many=True).data
+
 
