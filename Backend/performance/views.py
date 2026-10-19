@@ -96,20 +96,25 @@ def list_student_scores(request):
             for sc in scores
         ]
 
+        scores_map = {}
+        for sc in scores:
+            score_item = {
+                "subject_id": sc.subject.id,
+                "code": sc.subject.code,
+                "name": sc.subject.name,
+                "credits": sc.subject.credits,
+                "internals": sc.internals,
+                "end_sem": sc.end_sem,
+                "total": sc.total,
+                "grade": sc.grade,
+                "grade_point": sc.grade_point,
+                "grade_class": sc.grade_class,
+                "is_passed": sc.grade != 'F' and sc.total >= 40.0
+            }
+            scores_map[str(sc.subject.id)] = score_item
+            scores_map[sc.subject.code] = score_item
+
         if scores.exists():
-            maths = scores.filter(subject__name__icontains='math').first()
-            coding = (
-                scores.filter(subject__name__icontains='tech').first() or
-                scores.filter(subject__name__icontains='program').first() or
-                scores.filter(subject__name__icontains='data').first() or
-                scores.first()
-            )
-            other = scores.exclude(id__in=[maths.id if maths else 0, coding.id if coding else 0]).first()
-
-            maths_val = maths.total if maths else 0.0
-            coding_val = coding.total if coding else 0.0
-            science_val = other.total if other else 0.0
-
             total_points = sum(sc.subject.credits * sc.grade_point for sc in scores)
             total_credits = sum(sc.subject.credits for sc in scores)
             sgpa = round(total_points / total_credits, 2) if total_credits > 0 else 0.0
@@ -118,9 +123,6 @@ def list_student_scores(request):
             grade, _, grade_class = calculate_grade_and_points(avg_score)
         else:
             # Student has no scores in database yet
-            maths_val = 0.0
-            coding_val = 0.0
-            science_val = 0.0
             avg_score = 0.0
             sgpa = 0.0
             grade = "N/A"
@@ -135,10 +137,8 @@ def list_student_scores(request):
             "semester": s.semester,
             "section": s.section,
             "academic_class_name": str(s.academic_class) if s.academic_class else f"{s.branch} Y{s.year}S{s.semester}-{s.section}",
-            "maths": maths_val,
-            "science": science_val,
-            "coding": coding_val,
             "scores": detailed_scores,
+            "scores_map": scores_map,
             "avg": avg_score,
             "sgpa": sgpa,
             "grade": grade,
@@ -406,7 +406,11 @@ def list_create_subjects(request):
         else:
             # Teacher or Admin
             if branch and branch.upper() != 'ALL':
-                subs = subs.filter(branch__iexact=branch)
+                subs = subs.filter(
+                    Q(branch__iexact=branch) |
+                    Q(branch__iexact='ALL') |
+                    Q(branch__iexact='COMMON')
+                )
 
         if semester and semester.upper() != 'ALL':
             subs = subs.filter(semester=str(semester))

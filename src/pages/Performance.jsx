@@ -297,6 +297,7 @@ function Performance() {
       });
   }, [selectedBranch]);
 
+
   useEffect(() => {
     loadData();
     getAllSubjects()
@@ -307,6 +308,28 @@ function Performance() {
       })
       .catch(() => {});
   }, [loadData]);
+
+  // Only subjects created for the selected branch (or all created subjects if ALL)
+  const activeCreatedSubjects = useMemo(() => {
+    if (selectedBranch === "ALL") {
+      return subjects;
+    }
+    return subjects.filter((s) => {
+      const b = (s.branch || "").trim().toUpperCase();
+      const target = selectedBranch.trim().toUpperCase();
+      return b === target || b === "ALL" || b === "COMMON";
+    });
+  }, [subjects, selectedBranch]);
+
+  // Subjects valid for the student currently in the mark entry modal
+  const studentModalSubjects = useMemo(() => {
+    if (!markStudent) return subjects;
+    const sBranch = (markStudent.branch || "").trim().toUpperCase();
+    return subjects.filter((sub) => {
+      const b = (sub.branch || "").trim().toUpperCase();
+      return !sBranch || b === sBranch || b === "ALL" || b === "COMMON";
+    });
+  }, [subjects, markStudent]);
 
   const filtered = useMemo(() => {
     return students.filter((s) => {
@@ -328,7 +351,13 @@ function Performance() {
     setMarkStudent(student);
     setMarkFeedback(null);
 
-    const targetSubId = subjectId || (subjects.length > 0 ? String(subjects[0].id) : "");
+    const sBranch = (student.branch || "").trim().toUpperCase();
+    const allowedSubs = subjects.filter((sub) => {
+      const b = (sub.branch || "").trim().toUpperCase();
+      return !sBranch || b === sBranch || b === "ALL" || b === "COMMON";
+    });
+
+    const targetSubId = subjectId || (allowedSubs.length > 0 ? String(allowedSubs[0].id) : (subjects.length > 0 ? String(subjects[0].id) : ""));
     setMarkSubjectId(targetSubId);
 
     // If student already has existing score for this subject, pre-fill it
@@ -569,9 +598,46 @@ function Performance() {
                       <th>Roll No / ID</th>
                       <th>Student Name</th>
                       <th>Class & Section</th>
-                      <th>Mathematics</th>
-                      <th>Tech / Coding</th>
-                      <th>Elective / Sci</th>
+                      {activeCreatedSubjects.length > 0 ? (
+                        activeCreatedSubjects.map((sub) => (
+                          <th key={sub.id} style={{ textAlign: "center", minWidth: "110px" }}>
+                            <div style={{ fontWeight: 700, color: "#1e293b" }}>{sub.code}</div>
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 400,
+                                color: "#64748b",
+                                textTransform: "none",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: "130px",
+                              }}
+                              title={`${sub.name} (${sub.branch || "Common"})`}
+                            >
+                              {sub.name}
+                            </div>
+                            {sub.branch && (
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  fontSize: "9px",
+                                  fontWeight: 700,
+                                  background: "#f1f5f9",
+                                  color: "#475569",
+                                  padding: "1px 5px",
+                                  borderRadius: "3px",
+                                  marginTop: "2px",
+                                }}
+                              >
+                                {sub.branch}
+                              </span>
+                            )}
+                          </th>
+                        ))
+                      ) : (
+                        <th style={{ textAlign: "center", color: "#94a3b8" }}>Created Subjects</th>
+                      )}
                       <th>Computed SGPA</th>
                       <th>Average (%)</th>
                       <th>Overall Grade</th>
@@ -615,9 +681,67 @@ function Performance() {
                                   {item.academic_class_name || `${item.branch} Y${item.year}S${item.semester}-${item.section}`}
                                 </span>
                               </td>
-                              <td>{item.maths > 0 ? `${item.maths} / 100` : "—"}</td>
-                              <td>{item.coding > 0 ? `${item.coding} / 100` : "—"}</td>
-                              <td>{item.science > 0 ? `${item.science} / 100` : "—"}</td>
+                              {activeCreatedSubjects.length > 0 ? (
+                                activeCreatedSubjects.map((sub) => {
+                                  const sBranch = (item.branch || "").trim().toUpperCase();
+                                  const subBranch = (sub.branch || "").trim().toUpperCase();
+                                  const isSubjectApplicable =
+                                    !subBranch || subBranch === "ALL" || subBranch === "COMMON" || subBranch === sBranch;
+
+                                  if (!isSubjectApplicable) {
+                                    return (
+                                      <td key={sub.id} style={{ textAlign: "center", color: "#cbd5e1" }} title={`Not in ${sBranch} curriculum`}>
+                                        —
+                                      </td>
+                                    );
+                                  }
+
+                                  const sc = item.scores_map
+                                    ? item.scores_map[String(sub.id)] || item.scores_map[sub.code]
+                                    : null;
+
+                                  if (sc) {
+                                    return (
+                                      <td key={sub.id} style={{ textAlign: "center" }}>
+                                        <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                                          <span style={{ fontWeight: 700, fontSize: "13px", color: sc.is_passed ? "#0f172a" : "#dc2626" }}>
+                                            {sc.total} / 100
+                                          </span>
+                                          <span className={`grade-badge ${sc.grade_class}`} style={{ fontSize: "10px", padding: "1px 6px" }}>
+                                            {sc.grade} ({sc.grade_point})
+                                          </span>
+                                        </div>
+                                      </td>
+                                    );
+                                  }
+
+                                  return (
+                                    <td key={sub.id} style={{ textAlign: "center" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenMarkModal(item, String(sub.id))}
+                                        title={`Enter marks for ${sub.code}`}
+                                        style={{
+                                          background: "#f8fafc",
+                                          border: "1px dashed #cbd5e1",
+                                          borderRadius: "4px",
+                                          padding: "3px 8px",
+                                          fontSize: "11px",
+                                          color: "#64748b",
+                                          cursor: "pointer",
+                                          fontWeight: 500,
+                                        }}
+                                      >
+                                        + Enter
+                                      </button>
+                                    </td>
+                                  );
+                                })
+                              ) : (
+                                <td style={{ textAlign: "center", color: "#94a3b8", fontSize: "12px" }}>
+                                  No subjects created
+                                </td>
+                              )}
                               <td>
                                 <strong style={{ color: "#2563eb", fontSize: "14px" }}>
                                   {item.sgpa > 0 ? `${item.sgpa} / 10` : "N/A"}
@@ -657,11 +781,11 @@ function Performance() {
                             {/* Expandable Enrolled Subject Breakdown */}
                             {isExpanded && (
                               <tr key={`expand-${item.student_id || item.id}`} style={{ background: "#f8fafc" }}>
-                                <td colSpan="11" style={{ padding: "16px 24px" }}>
+                                <td colSpan={8 + (activeCreatedSubjects.length || 1)} style={{ padding: "16px 24px" }}>
                                   <div style={{ background: "#ffffff", borderRadius: "10px", border: "1px solid #e2e8f0", padding: "16px" }}>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                                       <h4 style={{ margin: 0, fontSize: "14px", color: "#1e293b", display: "flex", alignItems: "center", gap: "8px" }}>
-                                        <FaBook style={{ color: "#2563eb" }} /> All Evaluated Subjects for {item.name}
+                                        <FaBook style={{ color: "#2563eb" }} /> Curriculum Subjects &amp; Evaluated Marks for {item.name} ({item.branch})
                                       </h4>
                                       <button
                                         type="button"
@@ -677,76 +801,165 @@ function Performance() {
                                           fontWeight: 600,
                                         }}
                                       >
-                                        + Record New Subject
+                                        + Record New Subject Marks
                                       </button>
                                     </div>
 
-                                    {item.scores && item.scores.length > 0 ? (
-                                      <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
-                                        <thead>
-                                          <tr style={{ borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#64748b" }}>
-                                            <th style={{ padding: "8px" }}>Subject Code</th>
-                                            <th style={{ padding: "8px" }}>Course Name</th>
-                                            <th style={{ padding: "8px" }}>Credits</th>
-                                            <th style={{ padding: "8px" }}>Internals (40)</th>
-                                            <th style={{ padding: "8px" }}>End Sem (60)</th>
-                                            <th style={{ padding: "8px" }}>Total (100)</th>
-                                            <th style={{ padding: "8px" }}>Grade</th>
-                                            <th style={{ padding: "8px" }}>Point</th>
-                                            <th style={{ padding: "8px" }}>Result</th>
-                                            <th style={{ padding: "8px", textAlign: "center" }}>Action</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {item.scores.map((sc) => (
-                                            <tr key={sc.subject_id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                                              <td style={{ padding: "8px" }}><strong>{sc.code}</strong></td>
-                                              <td style={{ padding: "8px" }}>{sc.name}</td>
-                                              <td style={{ padding: "8px" }}>{sc.credits}</td>
-                                              <td style={{ padding: "8px" }}>{sc.internals}</td>
-                                              <td style={{ padding: "8px" }}>{sc.end_sem}</td>
-                                              <td style={{ padding: "8px" }}><strong>{sc.total}</strong></td>
-                                              <td style={{ padding: "8px" }}>
-                                                <span className={`grade-badge ${sc.grade_class}`}>{sc.grade}</span>
-                                              </td>
-                                              <td style={{ padding: "8px" }}>{sc.grade_point}</td>
-                                              <td style={{ padding: "8px" }}>
-                                                <span style={{
-                                                  padding: "2px 8px",
-                                                  borderRadius: "4px",
-                                                  fontSize: "11px",
-                                                  fontWeight: 700,
-                                                  background: sc.is_passed ? "#dcfce7" : "#fee2e2",
-                                                  color: sc.is_passed ? "#166534" : "#991b1b"
-                                                }}>
-                                                  {sc.is_passed ? "PASSED" : "FAILED"}
-                                                </span>
-                                              </td>
-                                              <td style={{ padding: "8px", textAlign: "center" }}>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenMarkModal(item, String(sc.subject_id))}
-                                                  style={{
-                                                    background: "none",
-                                                    border: "none",
-                                                    color: "#2563eb",
-                                                    cursor: "pointer",
-                                                    fontWeight: 600,
-                                                    fontSize: "12px",
-                                                  }}
-                                                >
-                                                  Edit
-                                                </button>
-                                              </td>
+                                    {(() => {
+                                      const sBranch = (item.branch || "").trim().toUpperCase();
+                                      const studentCurriculum = subjects.filter((sub) => {
+                                        const b = (sub.branch || "").trim().toUpperCase();
+                                        return !b || b === "ALL" || b === "COMMON" || b === sBranch;
+                                      });
+
+                                      // Also include any subjects where the student has scores but isn't strictly in studentCurriculum
+                                      const extraScores = (item.scores || []).filter(
+                                        (sc) => !studentCurriculum.some((sub) => sub.id === sc.subject_id || sub.code === sc.code)
+                                      );
+
+                                      if (studentCurriculum.length === 0 && extraScores.length === 0) {
+                                        return (
+                                          <p style={{ margin: "8px 0", color: "#94a3b8", fontSize: "13px" }}>
+                                            No curriculum subjects have been created for branch {item.branch || "General"} yet.
+                                          </p>
+                                        );
+                                      }
+
+                                      return (
+                                        <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+                                          <thead>
+                                            <tr style={{ borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#64748b" }}>
+                                              <th style={{ padding: "8px" }}>Subject Code</th>
+                                              <th style={{ padding: "8px" }}>Course Name</th>
+                                              <th style={{ padding: "8px" }}>Credits</th>
+                                              <th style={{ padding: "8px" }}>Internals (40)</th>
+                                              <th style={{ padding: "8px" }}>End Sem (60)</th>
+                                              <th style={{ padding: "8px" }}>Total (100)</th>
+                                              <th style={{ padding: "8px" }}>Grade</th>
+                                              <th style={{ padding: "8px" }}>Point</th>
+                                              <th style={{ padding: "8px" }}>Status / Result</th>
+                                              <th style={{ padding: "8px", textAlign: "center" }}>Action</th>
                                             </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    ) : (
-                                      <p style={{ margin: "8px 0", color: "#94a3b8", fontSize: "13px" }}>
-                                        No individual subject scores evaluated yet for this student. Click "Enter Marks" to add one.
-                                      </p>
-                                    )}
+                                          </thead>
+                                          <tbody>
+                                            {studentCurriculum.map((sub) => {
+                                              const sc = item.scores_map
+                                                ? item.scores_map[String(sub.id)] || item.scores_map[sub.code]
+                                                : null;
+
+                                              return (
+                                                <tr key={sub.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                                                  <td style={{ padding: "8px" }}><strong>{sub.code}</strong></td>
+                                                  <td style={{ padding: "8px" }}>{sub.name}</td>
+                                                  <td style={{ padding: "8px" }}>{sub.credits}</td>
+                                                  <td style={{ padding: "8px" }}>{sc ? sc.internals : "—"}</td>
+                                                  <td style={{ padding: "8px" }}>{sc ? sc.end_sem : "—"}</td>
+                                                  <td style={{ padding: "8px" }}>{sc ? <strong>{sc.total}</strong> : "—"}</td>
+                                                  <td style={{ padding: "8px" }}>
+                                                    {sc ? (
+                                                      <span className={`grade-badge ${sc.grade_class}`}>{sc.grade}</span>
+                                                    ) : (
+                                                      <span style={{ color: "#94a3b8", fontSize: "11px" }}>Pending</span>
+                                                    )}
+                                                  </td>
+                                                  <td style={{ padding: "8px" }}>{sc ? sc.grade_point : "—"}</td>
+                                                  <td style={{ padding: "8px" }}>
+                                                    {sc ? (
+                                                      <span
+                                                        style={{
+                                                          padding: "2px 8px",
+                                                          borderRadius: "4px",
+                                                          fontSize: "11px",
+                                                          fontWeight: 700,
+                                                          background: sc.is_passed ? "#dcfce7" : "#fee2e2",
+                                                          color: sc.is_passed ? "#166534" : "#991b1b",
+                                                        }}
+                                                      >
+                                                        {sc.is_passed ? "PASSED" : "FAILED"}
+                                                      </span>
+                                                    ) : (
+                                                      <span
+                                                        style={{
+                                                          padding: "2px 8px",
+                                                          borderRadius: "4px",
+                                                          fontSize: "11px",
+                                                          fontWeight: 700,
+                                                          background: "#fef3c7",
+                                                          color: "#b45309",
+                                                        }}
+                                                      >
+                                                        NOT RECORDED
+                                                      </span>
+                                                    )}
+                                                  </td>
+                                                  <td style={{ padding: "8px", textAlign: "center" }}>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleOpenMarkModal(item, String(sub.id))}
+                                                      style={{
+                                                        background: "none",
+                                                        border: "none",
+                                                        color: "#2563eb",
+                                                        cursor: "pointer",
+                                                        fontWeight: 600,
+                                                        fontSize: "12px",
+                                                      }}
+                                                    >
+                                                      {sc ? "Edit" : "+ Enter Marks"}
+                                                    </button>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+
+                                            {extraScores.map((sc) => (
+                                              <tr key={sc.subject_id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                                                <td style={{ padding: "8px" }}><strong>{sc.code}</strong></td>
+                                                <td style={{ padding: "8px" }}>{sc.name}</td>
+                                                <td style={{ padding: "8px" }}>{sc.credits}</td>
+                                                <td style={{ padding: "8px" }}>{sc.internals}</td>
+                                                <td style={{ padding: "8px" }}>{sc.end_sem}</td>
+                                                <td style={{ padding: "8px" }}><strong>{sc.total}</strong></td>
+                                                <td style={{ padding: "8px" }}>
+                                                  <span className={`grade-badge ${sc.grade_class}`}>{sc.grade}</span>
+                                                </td>
+                                                <td style={{ padding: "8px" }}>{sc.grade_point}</td>
+                                                <td style={{ padding: "8px" }}>
+                                                  <span
+                                                    style={{
+                                                      padding: "2px 8px",
+                                                      borderRadius: "4px",
+                                                      fontSize: "11px",
+                                                      fontWeight: 700,
+                                                      background: sc.is_passed ? "#dcfce7" : "#fee2e2",
+                                                      color: sc.is_passed ? "#166534" : "#991b1b",
+                                                    }}
+                                                  >
+                                                    {sc.is_passed ? "PASSED" : "FAILED"}
+                                                  </span>
+                                                </td>
+                                                <td style={{ padding: "8px", textAlign: "center" }}>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleOpenMarkModal(item, String(sc.subject_id))}
+                                                    style={{
+                                                      background: "none",
+                                                      border: "none",
+                                                      color: "#2563eb",
+                                                      cursor: "pointer",
+                                                      fontWeight: 600,
+                                                      fontSize: "12px",
+                                                    }}
+                                                  >
+                                                    Edit
+                                                  </button>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      );
+                                    })()}
                                   </div>
                                 </td>
                               </tr>
@@ -1924,7 +2137,26 @@ function Performance() {
                       const found = students.find(
                         (s) => String(s.student_id || s.id) === e.target.value
                       );
-                      if (found) setMarkStudent(found);
+                      if (found) {
+                        setMarkStudent(found);
+                        const sBranch = (found.branch || "").trim().toUpperCase();
+                        const allowedSubs = subjects.filter((sub) => {
+                          const b = (sub.branch || "").trim().toUpperCase();
+                          return !sBranch || b === sBranch || b === "ALL" || b === "COMMON";
+                        });
+                        const newSubId = allowedSubs.length > 0 ? String(allowedSubs[0].id) : "";
+                        setMarkSubjectId(newSubId);
+                        const ex = (found.scores || []).find(
+                          (sc) => String(sc.subject_id) === String(newSubId)
+                        );
+                        if (ex) {
+                          setInternals(ex.internals);
+                          setEndSem(ex.end_sem);
+                        } else {
+                          setInternals(25.0);
+                          setEndSem(60.0);
+                        }
+                      }
                     }}
                     style={{
                       width: "100%",
@@ -1961,11 +2193,15 @@ function Performance() {
                       fontSize: "14px",
                     }}
                   >
-                    {subjects.map((sub) => (
-                      <option key={sub.id} value={sub.id}>
-                        {sub.code} - {sub.name} ({sub.credits} Credits)
-                      </option>
-                    ))}
+                    {studentModalSubjects.length > 0 ? (
+                      studentModalSubjects.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.code} - {sub.name} ({sub.branch ? `Branch: ${sub.branch}, ` : ""}{sub.credits} Credits)
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No subjects created for {markStudent?.branch || "this branch"}</option>
+                    )}
                   </select>
                 </div>
 
