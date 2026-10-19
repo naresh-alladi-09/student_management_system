@@ -384,6 +384,24 @@ const Students = () => {
     }
   };
 
+  // Statistics & Filter helpers
+  const activeCount = students.filter((s) => s.is_active !== false).length;
+  const faceCount = students.filter((s) => Boolean(s.face_registered || s.profile_photo)).length;
+  const hasActiveFilters =
+    Boolean(searchTerm.trim()) ||
+    selectedBranch !== "ALL" ||
+    selectedYear !== "ALL" ||
+    selectedSection !== "ALL" ||
+    selectedStatus !== "ALL";
+
+  const handleResetFilters = () => {
+    setSearchTerm("");
+    setSelectedBranch("ALL");
+    setSelectedYear("ALL");
+    setSelectedSection("ALL");
+    setSelectedStatus("ALL");
+  };
+
   return (
     <div className="sideandmain">
       <div className="Sidebarindashboard">
@@ -396,17 +414,15 @@ const Students = () => {
           {/* Header & Stats Banner */}
           <div className="students-header-banner">
             <div>
-              <h2>Student Directory Management</h2>
-              <p>Search, filter, edit, and manage enrolled university students</p>
+              <h2>
+                <i className="fa-solid fa-graduation-cap"></i> Student Directory Management
+              </h2>
+              <p>Search, filter, edit student profiles, update facial biometrics, and dispatch institutional credentials</p>
             </div>
-            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <div className="students-banner-actions">
               <Link
                 to="/attendance?openAlerts=true"
-                className="add-student-btn"
-                style={{
-                  background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
-                  boxShadow: "0 4px 12px rgba(220, 38, 38, 0.3)",
-                }}
+                className="alerts-student-btn"
                 title="Send warning emails to students below 75% attendance or test alerts"
               >
                 <i className="fa-solid fa-triangle-exclamation"></i> 75% Attendance Alerts
@@ -414,6 +430,58 @@ const Students = () => {
               <Link to="/addstudents" className="add-student-btn">
                 <i className="fa-solid fa-user-plus"></i> Enroll Student
               </Link>
+            </div>
+          </div>
+
+          {/* KPI Analytics Stat Cards */}
+          <div className="student-kpi-grid">
+            <div className="student-kpi-card">
+              <div className="kpi-icon-wrap blue">
+                <i className="fa-solid fa-user-graduate"></i>
+              </div>
+              <div className="kpi-details">
+                <span className="kpi-label">Total Enrolled</span>
+                <span className="kpi-value">{totalCount}</span>
+                <span className="kpi-subtitle">Registered in database</span>
+              </div>
+            </div>
+
+            <div className="student-kpi-card">
+              <div className="kpi-icon-wrap emerald">
+                <i className="fa-solid fa-circle-check"></i>
+              </div>
+              <div className="kpi-details">
+                <span className="kpi-label">Active Roster</span>
+                <span className="kpi-value">{activeCount}</span>
+                <span className="kpi-subtitle">Active on current page</span>
+              </div>
+            </div>
+
+            <div className="student-kpi-card">
+              <div className="kpi-icon-wrap purple">
+                <i className="fa-solid fa-shield-halved"></i>
+              </div>
+              <div className="kpi-details">
+                <span className="kpi-label">Biometrics Ready</span>
+                <span className="kpi-value">{faceCount}</span>
+                <span className="kpi-subtitle">Facial biometrics enrolled</span>
+              </div>
+            </div>
+
+            <div className="student-kpi-card">
+              <div className="kpi-icon-wrap amber">
+                <i className="fa-solid fa-layer-group"></i>
+              </div>
+              <div className="kpi-details">
+                <span className="kpi-label">Filtered Cohort</span>
+                <span className="kpi-value" style={{ fontSize: "17px" }}>
+                  {selectedBranch === "ALL" ? "All Depts" : selectedBranch}
+                </span>
+                <span className="kpi-subtitle">
+                  {selectedYear === "ALL" ? "All Years" : `Year ${selectedYear}`} •{" "}
+                  {selectedSection === "ALL" ? "All Sec" : `Sec ${selectedSection}`}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -433,8 +501,8 @@ const Students = () => {
           )}
 
           {/* Controls Bar: Search & Multi-Filters */}
-          <div className="table-controls-bar" style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}>
-            <div className="search-box-wrap" style={{ flex: 2, minWidth: "240px" }}>
+          <div className="table-controls-bar">
+            <div className="search-box-wrap">
               <i className="fa-solid fa-magnifying-glass search-icon"></i>
               <input
                 type="text"
@@ -448,6 +516,7 @@ const Students = () => {
                   type="button"
                   className="clear-search-btn"
                   onClick={() => setSearchTerm("")}
+                  title="Clear search input"
                 >
                   <i className="fa-solid fa-xmark"></i>
                 </button>
@@ -515,14 +584,26 @@ const Students = () => {
                 onChange={(e) => setSelectedStatus(e.target.value)}
                 className="branch-select"
               >
-                <option value="ALL">All Students</option>
+                <option value="ALL">All Status</option>
                 <option value="active">Active Only</option>
                 <option value="inactive">Deactivated Only</option>
               </select>
             </div>
 
+            {hasActiveFilters && (
+              <button
+                type="button"
+                className="reset-filters-btn"
+                onClick={handleResetFilters}
+                title="Reset all search queries and dropdown filters"
+              >
+                <i className="fa-solid fa-rotate-left"></i> Reset
+              </button>
+            )}
+
             <div className="record-count-badge">
-              <strong>{totalCount}</strong> Records in Database
+              <i className="fa-solid fa-database" style={{ color: "#2563eb" }}></i>
+              <span><strong>{totalCount}</strong> Records</span>
             </div>
           </div>
 
@@ -545,56 +626,29 @@ const Students = () => {
               />
 
               {/* Server-Side Pagination Bar */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "16px 20px",
-                  background: "#fff",
-                  borderRadius: "12px",
-                  border: "1px solid #e2e8f0",
-                  marginTop: "16px",
-                }}
-              >
-                <span style={{ fontSize: "14px", color: "#64748b" }}>
+              <div className="student-pagination-bar">
+                <span className="pagination-info-text">
                   Showing Page <strong>{currentPage}</strong> of{" "}
                   <strong>{Math.ceil(totalCount / 15) || 1}</strong> ({totalCount} total students)
                 </span>
 
-                <div style={{ display: "flex", gap: "10px" }}>
+                <div className="pagination-btn-group">
                   <button
                     type="button"
+                    className="page-nav-btn"
                     disabled={!hasPrevPage || currentPage <= 1}
                     onClick={() => loadStudents(currentPage - 1)}
-                    style={{
-                      padding: "8px 16px",
-                      borderRadius: "8px",
-                      border: "1px solid #cbd5e1",
-                      background: hasPrevPage ? "#fff" : "#f1f5f9",
-                      color: hasPrevPage ? "#0f172a" : "#94a3b8",
-                      cursor: hasPrevPage ? "pointer" : "not-allowed",
-                      fontWeight: 600,
-                    }}
                   >
-                    ← Previous
+                    <i className="fa-solid fa-arrow-left"></i> Previous
                   </button>
 
                   <button
                     type="button"
+                    className="page-nav-btn"
                     disabled={!hasNextPage}
                     onClick={() => loadStudents(currentPage + 1)}
-                    style={{
-                      padding: "8px 16px",
-                      borderRadius: "8px",
-                      border: "1px solid #cbd5e1",
-                      background: hasNextPage ? "#fff" : "#f1f5f9",
-                      color: hasNextPage ? "#0f172a" : "#94a3b8",
-                      cursor: hasNextPage ? "pointer" : "not-allowed",
-                      fontWeight: 600,
-                    }}
                   >
-                    Next →
+                    Next <i className="fa-solid fa-arrow-right"></i>
                   </button>
                 </div>
               </div>
@@ -606,7 +660,10 @@ const Students = () => {
             <div className="modal-overlay">
               <div className="modal-card">
                 <div className="modal-header">
-                  <h3>Edit Student #{editingStudent.id}</h3>
+                  <h3>
+                    <i className="fa-solid fa-user-pen" style={{ color: "#2563eb", marginRight: "6px" }}></i>
+                    Edit Student #{editingStudent.id}
+                  </h3>
                   <button
                     type="button"
                     className="modal-close-btn"

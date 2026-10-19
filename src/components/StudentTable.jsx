@@ -27,13 +27,11 @@ const StudentTable = ({
             <tr>
               <th className="student-id-col">Roll No / ID</th>
               <th>Student Name</th>
-              <th>Academic Year</th>
-              <th>Branch / Department</th>
-              <th>Semester & Sec</th>
+              <th>Branch</th>
+              <th>Academic Class</th>
+              <th>Contact Details</th>
+              <th>Biometrics</th>
               <th>Status</th>
-              <th>Face Biometrics</th>
-              <th>Contact Email</th>
-              <th>Phone</th>
               <th style={{ textAlign: "center" }}>Actions</th>
             </tr>
           </thead>
@@ -43,124 +41,136 @@ const StudentTable = ({
               students.map((student) => {
                 const isActive = student.is_active !== false;
                 const hasFace = Boolean(student.face_registered || student.profile_photo);
+                const rollDisplay = student.roll_no || student.student_id || `#${student.id}`;
+                const hasAlternateId = student.roll_no && student.student_id && student.roll_no !== student.student_id;
+
                 return (
-                  <tr key={student.id} style={{ opacity: isActive ? 1 : 0.7 }}>
+                  <tr key={student.id} style={{ opacity: isActive ? 1 : 0.72 }}>
+                    {/* Roll No / ID */}
                     <td className="student-id-col">
-                      <strong>{student.roll_no || student.student_id || `#${student.id}`}</strong>
+                      <div className="roll-id-cell">
+                        <span className="roll-no-badge" title={`Student Record #${student.id}`}>
+                          {rollDisplay}
+                        </span>
+                        {hasAlternateId && (
+                          <span className="student-sub-id" title="Institutional Student ID">
+                            {student.student_id}
+                          </span>
+                        )}
+                      </div>
                     </td>
+
+                    {/* Student Avatar & Name */}
                     <td>
                       <div className="student-name-container">
-                        <div className="avatar-circle">
-                          {student.profile_photo ? (
-                            <img
-                              src={student.profile_photo}
-                              alt={student.name}
-                              style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
-                            />
-                          ) : student.name ? (
-                            student.name[0].toUpperCase()
-                          ) : (
-                            "S"
-                          )}
-                        </div>
-                        <div>
-                          <span className="student-display-name">{student.name}</span>
-                          <div style={{ fontSize: "11px", color: "#94a3b8" }}>
-                            {student.student_id || `ID: ${student.id}`}
+                        <div className="avatar-circle-wrapper">
+                          <div className="avatar-circle">
+                            {student.profile_photo ? (
+                              <img
+                                src={student.profile_photo}
+                                alt={student.name}
+                                className="avatar-img"
+                              />
+                            ) : (
+                              <span>{student.name ? student.name[0].toUpperCase() : "S"}</span>
+                            )}
                           </div>
+                          <span
+                            className={`status-dot ${isActive ? "active" : "inactive"}`}
+                            title={isActive ? "Active Enrollment" : "Deactivated Enrollment"}
+                          ></span>
+                        </div>
+                        <div className="student-info-meta">
+                          <span className="student-display-name">{student.name}</span>
+                          <span className="student-meta-id">
+                            ID: {student.student_id || student.id}
+                          </span>
                         </div>
                       </div>
                     </td>
-                    <td>Year {student.year}</td>
+
+                    {/* Branch */}
                     <td>
                       <span className={`badge-branch ${getBranchClass(student.branch)}`}>
                         {student.branch || "General"}
                       </span>
                     </td>
-                    <td>Sem {student.semester} <span style={{ color: "#64748b", fontSize: "12px" }}>({student.section || 'A'})</span></td>
+
+                    {/* Academic Class (Year, Sem, Sec) */}
                     <td>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "3px 8px",
-                          borderRadius: "12px",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          background: isActive ? "#ecfdf5" : "#fef2f2",
-                          color: isActive ? "#047857" : "#b91c1c",
-                          border: `1px solid ${isActive ? "#a7f3d0" : "#fecaca"}`,
-                        }}
-                      >
+                      <div className="academic-badge">
+                        <span className="academic-year-tag">Year {student.year || "1"}</span>
+                        <span className="academic-sem-sec">
+                          Sem {student.semester || "1"} • Sec {student.section || "A"}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Contact Details (Stacked Email & Phone) */}
+                    <td>
+                      <div className="contact-info-cell">
+                        <div className="contact-line email" title={student.email || "No email"}>
+                          <i className="fa-regular fa-envelope"></i>
+                          <span>{student.email || "—"}</span>
+                        </div>
+                        <div className="contact-line phone" title={student.phone || "No phone"}>
+                          <i className="fa-solid fa-phone"></i>
+                          <span>{student.phone || "—"}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Biometrics Status */}
+                    <td>
+                      <span className={`badge-face ${hasFace ? "registered" : "pending"}`}>
+                        <i className={`fa-solid ${hasFace ? "fa-shield-halved" : "fa-triangle-exclamation"}`}></i>
+                        {hasFace ? "Verified" : "Pending"}
+                      </span>
+                    </td>
+
+                    {/* Enrollment Status */}
+                    <td>
+                      <span className={`badge-status ${isActive ? "active" : "inactive"}`}>
                         {isActive ? "● Active" : "○ Deactivated"}
                       </span>
                     </td>
-                    <td>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          padding: "3px 8px",
-                          borderRadius: "12px",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          background: hasFace ? "#ecfdf5" : "#fffbeb",
-                          color: hasFace ? "#047857" : "#b45309",
-                          border: `1px solid ${hasFace ? "#a7f3d0" : "#fde68a"}`,
-                        }}
-                      >
-                        <i className={`fa-solid ${hasFace ? "fa-shield-halved" : "fa-triangle-exclamation"}`}></i>
-                        {hasFace ? "Registered" : "Pending"}
-                      </span>
-                    </td>
-                    <td className="email-col">
-                      <i className="fa-regular fa-envelope"></i>
-                      {student.email}
-                    </td>
-                    <td className="phone-col">
-                      <i className="fa-solid fa-phone"></i>
-                      {student.phone}
-                    </td>
+
+                    {/* Action Buttons */}
                     <td style={{ textAlign: "center" }}>
-                      <div className="action-buttons-cell" style={{ justifyContent: "center", gap: "6px" }}>
+                      <div className="action-buttons-cell">
                         {onRegisterFace && (
                           <button
                             type="button"
-                            className="action-btn"
+                            className="tbl-action-btn face-btn"
                             onClick={() => onRegisterFace(student)}
-                            title="Register / Update Face Biometrics"
-                            style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
+                            title="Register or update facial biometrics photo"
                           >
-                            <i className="fa-solid fa-camera"></i> Face
+                            <i className="fa-solid fa-camera"></i>
+                            <span className="btn-text">Face</span>
                           </button>
                         )}
 
                         {onSendCredentials && (
                           <button
                             type="button"
-                            className="action-btn"
-                            disabled={sendingStudentId === student.id}
+                            className={`tbl-action-btn send-id-btn ${sendingStudentId === student.id ? "loading" : ""}`}
+                            disabled={sendingStudentId === student.id || !student.email}
                             onClick={() => onSendCredentials(student)}
                             title={
                               student.email
-                                ? `Send Student ID (${student.student_id || student.roll_no}) & login instructions to ${student.email}`
-                                : "No email address registered for this student"
+                                ? `Send Student ID (${student.student_id || student.roll_no}) & login guide to ${student.email}`
+                                : "No registered email address for this student"
                             }
-                            style={{
-                              background: sendingStudentId === student.id ? "#f1f5f9" : "#f0fdf4",
-                              color: sendingStudentId === student.id ? "#64748b" : "#047857",
-                              border: "1px solid " + (sendingStudentId === student.id ? "#cbd5e1" : "#a7f3d0"),
-                              cursor: sendingStudentId === student.id ? "wait" : "pointer",
-                              opacity: student.email ? 1 : 0.6,
-                            }}
                           >
                             {sendingStudentId === student.id ? (
                               <>
-                                <i className="fa-solid fa-spinner fa-spin"></i> Sending...
+                                <i className="fa-solid fa-spinner fa-spin"></i>
+                                <span className="btn-text">Sending...</span>
                               </>
                             ) : (
                               <>
-                                <i className="fa-solid fa-paper-plane"></i> Send ID
+                                <i className="fa-solid fa-paper-plane"></i>
+                                <span className="btn-text">Send ID</span>
                               </>
                             )}
                           </button>
@@ -168,32 +178,33 @@ const StudentTable = ({
 
                         <button
                           type="button"
-                          className="action-btn edit"
+                          className="tbl-action-btn edit-btn"
                           onClick={() => onEdit(student)}
-                          title="Edit Student"
+                          title="Edit student details"
                         >
-                          <i className="fa-solid fa-pen-to-square"></i> Edit
+                          <i className="fa-solid fa-pen-to-square"></i>
+                          <span className="btn-text">Edit</span>
                         </button>
 
                         {isActive ? (
                           <button
                             type="button"
-                            className="action-btn delete"
+                            className="tbl-action-btn deactivate-btn"
                             onClick={() => onDeactivate(student.id, student.name)}
-                            title="Soft Delete / Deactivate Student"
-                            style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5" }}
+                            title="Soft-delete / Deactivate student account"
                           >
-                            <i className="fa-solid fa-user-slash"></i> Deactivate
+                            <i className="fa-solid fa-user-slash"></i>
+                            <span className="btn-text">Deactivate</span>
                           </button>
                         ) : (
                           <button
                             type="button"
-                            className="action-btn"
+                            className="tbl-action-btn restore-btn"
                             onClick={() => onActivate(student.id, student.name)}
-                            title="Restore / Activate Student"
-                            style={{ background: "#ecfdf5", color: "#047857", border: "1px solid #a7f3d0", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
+                            title="Restore student account to active"
                           >
-                            <i className="fa-solid fa-user-check"></i> Restore
+                            <i className="fa-solid fa-user-check"></i>
+                            <span className="btn-text">Restore</span>
                           </button>
                         )}
                       </div>
@@ -203,11 +214,11 @@ const StudentTable = ({
               })
             ) : (
               <tr>
-                <td colSpan="9">
+                <td colSpan="8">
                   <div className="table-empty-state">
-                    <i className="fa-solid fa-user-slash"></i>
+                    <i className="fa-solid fa-users-slash"></i>
                     <h3>No Students Found</h3>
-                    <p>No matching student records in the database.</p>
+                    <p>No matching student records found. Try adjusting your search query or filters.</p>
                   </div>
                 </td>
               </tr>
