@@ -28,6 +28,7 @@ import {
   activateStudentAccount,
   requestActivationToken,
   setStudentPassword,
+  setTeacherPassword,
   forgotPassword,
   resetPassword,
 } from "../services/studentservice";
@@ -176,13 +177,15 @@ const Login = ({ initialRole }) => {
         navigate("/dashboard");
       }
     } else {
-      // If student account needs activation / password has not been created yet
+      // If student or teacher account needs activation / password has not been created yet
       if (res.needsPasswordSetup || res.needsActivation) {
         setMode("set_password");
-        setSetId(res.studentId || res.identifier || username);
+        setSetId(res.teacherId || res.studentId || res.identifier || username);
         setSetPasswordMsg({
           type: "info",
-          text: "Student account requires initial setup: Please enter your Student ID and create your secure password.",
+          text: activeRole === "teacher"
+            ? "Faculty account requires initial setup: Please enter your Teacher ID and create your secure password."
+            : "Student account requires initial setup: Please enter your Student ID and create your secure password.",
         });
       } else {
         setError(res.message || "Invalid credentials. Please verify your details.");
@@ -199,7 +202,12 @@ const Login = ({ initialRole }) => {
 
     const trimmedId = setId.trim();
     if (!trimmedId) {
-      setSetPasswordMsg({ type: "error", text: "Please enter your Student ID or Roll Number." });
+      setSetPasswordMsg({
+        type: "error",
+        text: activeRole === "teacher"
+          ? "Please enter your Teacher ID or Employee ID."
+          : "Please enter your Student ID or Roll Number."
+      });
       return;
     }
 
@@ -220,11 +228,20 @@ const Login = ({ initialRole }) => {
 
     setIsSettingPassword(true);
     try {
-      const res = await setStudentPassword({
-        student_id: trimmedId,
-        new_password: setNewPw,
-        confirm_password: setConfirmPw,
-      });
+      let res;
+      if (activeRole === "teacher" || trimmedId.toUpperCase().startsWith("TCH")) {
+        res = await setTeacherPassword({
+          teacher_id: trimmedId,
+          new_password: setNewPw,
+          confirm_password: setConfirmPw,
+        });
+      } else {
+        res = await setStudentPassword({
+          student_id: trimmedId,
+          new_password: setNewPw,
+          confirm_password: setConfirmPw,
+        });
+      }
 
       setIsSettingPassword(false);
       if (res.data?.token) {
@@ -234,7 +251,13 @@ const Login = ({ initialRole }) => {
         });
         setAuthenticatedUser(res.data);
         setTimeout(() => {
-          navigate("/student/dashboard");
+          if (res.data.role === "teacher") {
+            navigate("/dashboard");
+          } else if (res.data.role === "admin") {
+            navigate("/admin");
+          } else {
+            navigate("/student/dashboard");
+          }
         }, 1200);
       } else {
         setSetPasswordMsg({
@@ -248,7 +271,7 @@ const Login = ({ initialRole }) => {
       }
     } catch (err) {
       setIsSettingPassword(false);
-      const detail = err.response?.data?.detail || "Could not set password. Please check your Student ID.";
+      const detail = err.response?.data?.detail || `Could not set password. Please check your ${activeRole === "teacher" ? "Teacher ID" : "Student ID"}.`;
       setSetPasswordMsg({ type: "error", text: detail });
     }
   };
@@ -605,7 +628,9 @@ const Login = ({ initialRole }) => {
           <div className="login-header-group">
             <h3 className="login-form-title">
               {mode === "set_password"
-                ? "Set Student Account Password"
+                ? activeRole === "teacher"
+                  ? "Set Faculty Account Password"
+                  : "Set Student Account Password"
                 : mode === "forgot_password"
                 ? forgotStep === 1
                   ? "Forgot Your Password?"
@@ -622,10 +647,12 @@ const Login = ({ initialRole }) => {
             </h3>
             <p className="login-form-subtitle">
               {mode === "set_password"
-                ? "Enter your Student ID sent by the administrator to set your password and activate your account."
+                ? activeRole === "teacher"
+                  ? "Enter your Teacher ID sent to your email to set your password and activate your faculty account."
+                  : "Enter your Student ID sent by the administrator to set your password and activate your account."
                 : mode === "forgot_password"
                 ? forgotStep === 1
-                  ? "Enter your Student ID or registered email. We will send a 6-digit password reset code to your email."
+                  ? "Enter your Teacher/Student ID or registered email. We will send a 6-digit password reset code to your email."
                   : `Enter the 6-digit verification code sent to ${maskedEmail} and choose your new password.`
                 : mode === "token_activate"
                 ? "Activate account with administrative security token."
@@ -700,19 +727,27 @@ const Login = ({ initialRole }) => {
           {mode === "set_password" ? (
             <form onSubmit={handleSetPasswordSubmit} className="login-form-body" autoComplete="off">
               <div className="form-group">
-                <label className="input-field-label">Student ID or Roll Number</label>
-                <div className="input-control-wrap student-theme">
+                <label className="input-field-label">
+                  {activeRole === "teacher" ? "Teacher ID or Employee ID" : "Student ID or Roll Number"}
+                </label>
+                <div className={`input-control-wrap ${activeRole === "teacher" ? "teacher-theme" : "student-theme"}`}>
                   <FaIdCard className="field-adornment-icon" />
                   <input
                     type="text"
-                    placeholder="e.g. STU20240001 or STU-2024-001"
+                    placeholder={
+                      activeRole === "teacher"
+                        ? "e.g. TCH-001 or TCH-2024-001"
+                        : "e.g. STU20240001 or STU-2024-001"
+                    }
                     value={setId}
                     required
                     onChange={(e) => setSetId(e.target.value)}
                   />
                 </div>
                 <span className="field-hint-text">
-                  Student ID provided to you by your Administrator or institution.
+                  {activeRole === "teacher"
+                    ? "Teacher ID provided to you via your registered email or administrator."
+                    : "Student ID provided to you by your Administrator or institution."}
                 </span>
               </div>
 
@@ -757,7 +792,9 @@ const Login = ({ initialRole }) => {
 
               <button
                 type="submit"
-                className="btn-submit-login student-theme-btn"
+                className={`btn-submit-login ${
+                  activeRole === "teacher" ? "teacher-theme-btn" : "student-theme-btn"
+                }`}
                 disabled={isSettingPassword}
               >
                 {isSettingPassword ? (
@@ -1176,14 +1213,18 @@ const Login = ({ initialRole }) => {
                 </div>
               </div>
 
-              {/* Student Onboarding Quick Action Banner */}
-              {isStudentMode && (
-                <div className="student-first-time-box">
+              {/* Student & Faculty Onboarding Quick Action Banner */}
+              {(isStudentMode || activeRole === "teacher") && (
+                <div className={`student-first-time-box ${activeRole === "teacher" ? "teacher-first-time-box" : ""}`}>
                   <div className="first-time-icon">
                     <FaKey />
                   </div>
                   <div className="first-time-text">
-                    <span>First time logging in with your Student ID?</span>
+                    <span>
+                      {activeRole === "teacher"
+                        ? "First time logging in with your Teacher ID?"
+                        : "First time logging in with your Student ID?"}
+                    </span>
                     <button
                       type="button"
                       className="btn-first-time-action"
@@ -1193,7 +1234,9 @@ const Login = ({ initialRole }) => {
                         setSetId(username);
                       }}
                     >
-                      Set Your Password with Student ID →
+                      {activeRole === "teacher"
+                        ? "Set Your Password with Teacher ID →"
+                        : "Set Your Password with Student ID →"}
                     </button>
                   </div>
                 </div>

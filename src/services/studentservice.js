@@ -441,6 +441,18 @@ export const setStudentPassword = (payload) => {
   return apiClient.post("/api/auth/set-student-password/", payload);
 };
 
+export const setTeacherPassword = (payload) => {
+  return apiClient.post("/api/auth/set-teacher-password/", payload);
+};
+
+export const registerFaculty = (facultyData) => {
+  return apiClient.post("/api/auth/faculty/register/", facultyData);
+};
+
+export const sendTeacherCredentials = (userId) => {
+  return apiClient.post(`/api/auth/teachers/${userId}/send-credentials/`);
+};
+
 export const forgotPassword = (payload) => {
   return apiClient.post("/api/auth/forgot-password/", payload);
 };

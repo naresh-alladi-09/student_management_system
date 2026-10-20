@@ -20,6 +20,8 @@ class UserProfile(models.Model):
     )
     phone = models.CharField(max_length=30, blank=True, default='')
     department = models.CharField(max_length=100, blank=True, default='Academic Operations')
+    designation = models.CharField(max_length=100, blank=True, default='Faculty')
+    qualification = models.CharField(max_length=150, blank=True, default='')
     employee_id = models.CharField(max_length=50, blank=True, null=True, unique=True)
     profile_pic = models.TextField(blank=True, default='')
 

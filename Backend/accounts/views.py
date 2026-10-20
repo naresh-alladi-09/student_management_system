@@ -9,9 +9,10 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.shortcuts import get_object_or_404
 from audit.models import AuditLog
 from .models import UserProfile, LoginAttempt
-from .permissions import IsAdmin
+from .permissions import IsAdmin, IsTeacherOrAdmin
 from .serializers import UserSerializer
 from .utils import get_client_ip, validate_strong_password
 from students.models import Student
@@ -181,18 +182,22 @@ def login_view(request):
                     prof.generate_activation_token()
 
         if user_obj:
-            # Check if student password has not been set yet
+            # Check if student or teacher password has not been set yet
             user_prof = getattr(user_obj, 'profile', None)
-            if (not user_obj.has_usable_password() or (user_prof and not user_prof.is_activated)) and (user_prof and user_prof.role == 'student'):
-                s = user_prof.student
+            if (not user_obj.has_usable_password() or (user_prof and not user_prof.is_activated)) and (user_prof and user_prof.role in ('student', 'teacher')):
+                is_teacher = user_prof.role == 'teacher'
+                s = getattr(user_prof, 'student', None)
+                id_code = user_prof.employee_id or user_prof.user_id_code
                 return Response(
                     {
-                        "detail": "Your student account password is not set yet. Please set your password using your Student ID to activate your account.",
+                        "detail": f"Your {'faculty' if is_teacher else 'student'} account password is not set yet. Please set your password using your {'Teacher' if is_teacher else 'Student'} ID to activate your account.",
                         "needs_activation": True,
                         "needs_password_setup": True,
                         "identifier": user_obj.username,
-                        "student_id": s.student_id if s else user_obj.username,
-                        "roll_no": s.roll_no if s else user_obj.username,
+                        "role": user_prof.role,
+                        "teacher_id": id_code if is_teacher else None,
+                        "student_id": (s.student_id if s else user_obj.username) if not is_teacher else None,
+                        "roll_no": (s.roll_no if s else user_obj.username) if not is_teacher else None,
                     },
                     status=status.HTTP_403_FORBIDDEN
                 )
@@ -484,6 +489,152 @@ def send_student_onboarding_email(student):
         }
 
 
+def send_teacher_onboarding_email(user_or_profile):
+    """
+    Dispatches official onboarding email containing Teacher ID, designation, department, and password setup instructions.
+    """
+    if not user_or_profile:
+        return False, {
+            "message": "No faculty user provided.",
+            "error": "No faculty user provided.",
+            "sent": False
+        }
+
+    if hasattr(user_or_profile, 'user'):
+        profile = user_or_profile
+        user = user_or_profile.user
+    else:
+        user = user_or_profile
+        profile = getattr(user, 'profile', None)
+
+    if not user or not user.email:
+        return False, {
+            "message": "No faculty email address available.",
+            "error": "No faculty email address available.",
+            "sent": False
+        }
+
+    teacher_name = user.get_full_name() or user.first_name or user.username
+    teacher_id = (profile.employee_id if profile else None) or (profile.user_id_code if profile else None) or f"TCH-{user.id:03d}"
+    department = (profile.department if profile else None) or 'Academic Operations'
+    designation = getattr(profile, 'designation', 'Faculty') or 'Faculty'
+
+    is_live_smtp = bool(getattr(settings, 'EMAIL_HOST_USER', '') and getattr(settings, 'EMAIL_HOST_PASSWORD', ''))
+    backend_name = getattr(settings, 'EMAIL_BACKEND', '')
+
+    subject = f"Welcome to Smart Campus: Your Faculty / Teacher ID Details ({teacher_id})"
+    plain_msg = (
+        f"SMART CAMPUS ACADEMIC SUITE\n"
+        f"FACULTY APPOINTMENT & CREDENTIAL NOTICE\n\n"
+        f"Dear {teacher_name},\n\n"
+        f"Welcome to the institution! Your faculty profile has been officially enrolled in the Smart Campus system.\n\n"
+        f"YOUR OFFICIAL FACULTY CREDENTIAL DETAILS:\n"
+        f"--------------------------------------------------\n"
+        f"• Teacher / Employee ID: {teacher_id}\n"
+        f"• Designation:           {designation}\n"
+        f"• Department:            {department}\n"
+        f"• Registered Email:      {user.email}\n"
+        f"--------------------------------------------------\n\n"
+        f"HOW TO LOG IN TO THE FACULTY PORTAL:\n"
+        f"1. Open the Smart Campus portal login page.\n"
+        f"2. Select the 'Faculty' tab.\n"
+        f"3. Click 'Set Password with Teacher ID' (First time login).\n"
+        f"4. Enter your Teacher ID: {teacher_id}\n"
+        f"5. Create your new secure password and submit.\n"
+        f"6. Once saved, you can log in anytime using your Teacher ID and chosen password!\n\n"
+        f"FORGOT PASSWORD:\n"
+        f"If you ever forget your password, click 'Forgot Password' on the login screen to receive a verification code at this email.\n\n"
+        f"Office of Academic Affairs & Faculty Administration\n"
+        f"Smart Campus Management System"
+    )
+
+    html_msg = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0; padding:20px; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#0f172a; color:#f8fafc;">
+      <div style="max-width:580px; margin:0 auto; background:#1e293b; border-radius:14px; border:1px solid #334155; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.4);">
+        <div style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding:28px 32px; text-align:center;">
+          <h2 style="margin:0; color:#ffffff; font-size:22px; font-weight:700;">👨‍🏫 Welcome to Smart Campus</h2>
+          <p style="margin:6px 0 0; color:#e0e7ff; font-size:13px;">Official Faculty Appointment & Access Credentials</p>
+        </div>
+        <div style="padding:32px;">
+          <p style="font-size:15px; color:#cbd5e1; margin:0 0 16px;">Dear <strong>{teacher_name}</strong>,</p>
+          <p style="font-size:14px; color:#94a3b8; line-height:1.6; margin:0 0 20px;">
+            Your faculty profile has been registered in the institution's system. Please use the following details to set your initial password and access the Faculty Academic Portal:
+          </p>
+          <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:20px; margin-bottom:24px;">
+            <table width="100%" cellpadding="6" cellspacing="0" style="font-size:14px; color:#cbd5e1;">
+              <tr>
+                <td width="38%" style="color:#94a3b8; font-weight:600;">Teacher ID:</td>
+                <td><code style="background:#1e293b; color:#38bdf8; font-size:16px; font-weight:700; padding:3px 8px; border-radius:4px;">{teacher_id}</code></td>
+              </tr>
+              <tr>
+                <td style="color:#94a3b8; font-weight:600;">Designation:</td>
+                <td><strong style="color:#f8fafc;">{designation}</strong></td>
+              </tr>
+              <tr>
+                <td style="color:#94a3b8; font-weight:600;">Department:</td>
+                <td>{department}</td>
+              </tr>
+              <tr>
+                <td style="color:#94a3b8; font-weight:600;">Registered Email:</td>
+                <td>{user.email}</td>
+              </tr>
+            </table>
+          </div>
+          <h3 style="font-size:15px; color:#f8fafc; margin:0 0 12px;">Next Steps to Sign In:</h3>
+          <ol style="font-size:13.5px; color:#94a3b8; line-height:1.7; margin:0 0 24px; padding-left:20px;">
+            <li>Go to the <strong style="color:#f8fafc;">Faculty Portal</strong> login screen.</li>
+            <li>Click <strong style="color:#818cf8;">"Set Password with Teacher ID"</strong>.</li>
+            <li>Enter your Teacher ID: <strong style="color:#38bdf8;">{teacher_id}</strong>.</li>
+            <li>Create your new secure password and submit.</li>
+            <li>Log in anytime using your Teacher ID and password!</li>
+          </ol>
+          <p style="font-size:12.5px; color:#64748b; line-height:1.5; margin:0;">
+            Note: If you ever forget your password, click "Forgot Password" on the login screen to receive a verification code at this email address.
+          </p>
+          <div style="border-top:1px solid #334155; margin-top:24px; padding-top:18px; font-size:12px; color:#64748b; text-align:center;">
+            Office of Academic Affairs & Faculty Administration • Smart Campus System
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    from accounts.email_service import send_smart_email
+    ok, mail_info = send_smart_email(
+        subject=subject,
+        plain_msg=plain_msg,
+        recipient_list=[user.email.strip()],
+        html_msg=html_msg
+    )
+
+    if ok:
+        return True, {
+            "message": mail_info.get("message", f"Teacher ID details successfully sent to {user.email}."),
+            "teacher_id": teacher_id,
+            "teacher_name": teacher_name,
+            "email": user.email,
+            "is_live_smtp": is_live_smtp or mail_info.get("is_live_smtp", False),
+            "backend": mail_info.get("provider", backend_name),
+            "subject": subject,
+            "html_content": html_msg,
+            "plain_text": plain_msg,
+        }
+    else:
+        return False, {
+            "message": mail_info.get("message", "Could not send onboarding email."),
+            "error": mail_info.get("error", "Failed to dispatch email."),
+            "teacher_id": teacher_id,
+            "teacher_name": teacher_name,
+            "email": user.email,
+            "is_live_smtp": is_live_smtp,
+            "backend": backend_name,
+        }
+
+
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -571,11 +722,25 @@ def set_student_password_view(request):
                 defaults={"role": "student", "student": student, "is_activated": False}
             )
     else:
+        # Check if identifier matches a teacher account
+        prof_teacher = UserProfile.objects.filter(employee_id__iexact=raw_ident, role='teacher').first()
+        if not prof_teacher:
+            clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+            for p in UserProfile.objects.filter(role='teacher').exclude(employee_id__isnull=True).exclude(employee_id=''):
+                if (p.employee_id or '').replace('-', '').replace('_', '').replace(' ', '').upper() == clean_ident:
+                    prof_teacher = p
+                    break
+        if prof_teacher:
+            return set_teacher_password_view(request)
+
         user_obj = User.objects.filter(username__iexact=raw_ident).first()
-        if user_obj and hasattr(user_obj, 'profile') and user_obj.profile.role == 'student':
-            user = user_obj
-            profile = user_obj.profile
-            student = profile.student
+        if user_obj and hasattr(user_obj, 'profile'):
+            if user_obj.profile.role == 'teacher':
+                return set_teacher_password_view(request)
+            elif user_obj.profile.role == 'student':
+                user = user_obj
+                profile = user_obj.profile
+                student = profile.student
 
     if not student or not profile:
         LoginAttempt.record_failure(raw_ident, ip)
@@ -654,6 +819,337 @@ def set_student_password_view(request):
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
+def set_teacher_password_view(request):
+    """
+    Allow faculty/teachers to set their password directly using their Teacher ID (or Employee ID / Username / Email).
+    Stores password securely in database and activates the faculty account.
+    Accepts: {
+        "teacher_id": "TCH-001",
+        "new_password": "...",
+        "confirm_password": "...",
+        "email": "..." (optional)
+    }
+    """
+    ip = get_client_ip(request)
+    raw_ident = (
+        request.data.get('teacher_id') or
+        request.data.get('employee_id') or
+        request.data.get('identifier') or
+        request.data.get('username') or
+        ''
+    ).strip()
+    new_password = (request.data.get('new_password') or '').strip()
+    confirm_password = (request.data.get('confirm_password') or '').strip()
+    email = (request.data.get('email') or '').strip().lower()
+
+    if not raw_ident:
+        return Response(
+            {"detail": "Teacher ID is required to set your password."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not new_password or not confirm_password:
+        return Response(
+            {"detail": "Both new password and confirm password are required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    is_locked, rem_mins = LoginAttempt.is_locked_out(raw_ident, ip)
+    if is_locked:
+        return Response(
+            {"detail": f"Too many attempts. Please try again in {rem_mins} minute(s)."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+
+    if new_password != confirm_password:
+        return Response(
+            {"detail": "Passwords do not match."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 1. Resolve teacher by employee_id, username, or email
+    profile = UserProfile.objects.filter(employee_id__iexact=raw_ident, role='teacher').first()
+    if not profile:
+        clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+        for p in UserProfile.objects.filter(role='teacher').exclude(employee_id__isnull=True).exclude(employee_id=''):
+            p_clean = (p.employee_id or '').replace('-', '').replace('_', '').replace(' ', '').upper()
+            if clean_ident == p_clean:
+                profile = p
+                break
+
+    user = profile.user if profile else None
+    if not user:
+        user_match = User.objects.filter(username__iexact=raw_ident).first() or User.objects.filter(email__iexact=raw_ident).first()
+        if user_match and hasattr(user_match, 'profile') and user_match.profile.role == 'teacher':
+            user = user_match
+            profile = user_match.profile
+
+    if not profile or not user or profile.role != 'teacher':
+        LoginAttempt.record_failure(raw_ident, ip)
+        return Response(
+            {"detail": f"No faculty account found with Teacher ID '{raw_ident}'. Please verify your Teacher ID or contact your administrator."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if email and user.email and user.email.lower() != email:
+        LoginAttempt.record_failure(raw_ident, ip)
+        return Response(
+            {"detail": "Provided email does not match institutional faculty records."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Prevent using teacher ID or username as password
+    ident_clean = raw_ident.lower().replace('-', '').replace('_', '').replace(' ', '')
+    pw_clean = new_password.lower().replace('-', '').replace('_', '').replace(' ', '')
+    if ident_clean and (ident_clean in pw_clean or (len(pw_clean) >= 4 and pw_clean in ident_clean)):
+        return Response(
+            {"detail": "For security, your password cannot match or contain your Teacher ID."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Validate strong password requirements
+    pw_errors = validate_strong_password(new_password, user=user)
+    if pw_errors:
+        return Response(
+            {"detail": "Password does not meet security requirements: " + "; ".join(pw_errors), "errors": pw_errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Store hashed password in database and activate account
+    user.set_password(new_password)
+    user.is_active = True
+    user.save()
+
+    profile.is_activated = True
+    profile.activation_token = None
+    profile.activation_token_expires_at = None
+    profile.must_change_password = False
+    profile.clear_reset_otp()
+    profile.save(update_fields=['is_activated', 'activation_token', 'activation_token_expires_at', 'must_change_password', 'reset_otp', 'reset_otp_expires_at'])
+
+    LoginAttempt.record_success(raw_ident, ip)
+    auth_token, _ = Token.objects.get_or_create(user=user)
+
+    AuditLog.log(
+        action='TEACHER_ACCOUNT_ACTIVATE',
+        entity='User',
+        entity_id=str(user.id),
+        description=f"Faculty '{user.username}' successfully set password with Teacher ID '{profile.user_id_code}'.",
+        user=user,
+        request=request
+    )
+
+    return Response({
+        "detail": "Password set successfully! Your faculty account is now active and stored in the database.",
+        "token": auth_token.key,
+        "user_id": user.id,
+        "user_id_code": profile.user_id_code,
+        "employee_id": profile.employee_id,
+        "username": user.username,
+        "email": user.email,
+        "role": profile.role,
+        "name": user.get_full_name() or user.first_name or user.username,
+        "department": profile.department,
+        "designation": getattr(profile, 'designation', 'Faculty'),
+        "qualification": getattr(profile, 'qualification', ''),
+        "profile_pic": profile.profile_pic,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register_faculty_view(request):
+    """
+    Register a new faculty / teacher in the system with full faculty form details.
+    Generates a unique Teacher ID (TCH-...), stores account in database, sets account as
+    awaiting password setup (unusable initial password), and dispatches Teacher ID onboarding email.
+    Accepts: {
+        "name": "Dr. Ramesh Sharma",
+        "email": "ramesh.sharma@gmail.com",
+        "phone": "9876543210",
+        "department": "Computer Science & Engineering",
+        "designation": "Associate Professor",
+        "qualification": "Ph.D in AI & Machine Learning",
+        "teacher_id": "TCH-005" (optional),
+        "profile_photo": "data:image/jpeg;base64,..." (optional)
+    }
+    """
+    raw_name = (request.data.get('name') or request.data.get('full_name') or '').strip()
+    email = (request.data.get('email') or '').strip().lower()
+    phone = (request.data.get('phone') or '').strip()
+    raw_department = (request.data.get('department') or '').strip()
+    designation = (request.data.get('designation') or 'Faculty').strip()
+    qualification = (request.data.get('qualification') or '').strip()
+    custom_teacher_id = (request.data.get('teacher_id') or request.data.get('employee_id') or '').strip().upper()
+    profile_photo = (request.data.get('profile_photo') or request.data.get('profile_pic') or '').strip()
+
+    if not raw_name:
+        return Response({"detail": "Faculty name is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not email:
+        return Response({"detail": "Email address is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        validate_email(email)
+    except ValidationError:
+        return Response({"detail": "Please enter a valid email address format."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not email.endswith('@gmail.com') and not email.endswith('.edu') and not email.endswith('.ac.in'):
+        return Response({
+            "detail": "Email must be a valid @gmail.com or institutional (.edu / .ac.in) address."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(email__iexact=email).exists():
+        return Response({"detail": f"A user with email '{email}' already exists in the system."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Department normalization
+    norm_department = DEPARTMENT_MAP.get(raw_department.upper(), raw_department)
+    if norm_department not in COLLEGE_DEPARTMENTS:
+        department = COLLEGE_DEPARTMENTS[0] if not raw_department else norm_department
+    else:
+        department = norm_department
+
+    # Resolve Teacher ID
+    if custom_teacher_id:
+        if not custom_teacher_id.startswith('TCH'):
+            clean_body = custom_teacher_id.replace('-', '').strip()
+            custom_teacher_id = f"TCH-{clean_body}"
+        if UserProfile.objects.filter(employee_id__iexact=custom_teacher_id).exists():
+            return Response(
+                {"detail": f"Teacher ID '{custom_teacher_id}' is already in use. Please choose another ID or leave blank to auto-generate."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        assigned_teacher_id = custom_teacher_id
+    else:
+        cnt = User.objects.count() + 1
+        candidate = f"TCH-{cnt:03d}"
+        while UserProfile.objects.filter(employee_id__iexact=candidate).exists():
+            cnt += 1
+            candidate = f"TCH-{cnt:03d}"
+        assigned_teacher_id = candidate
+
+    # Generate a unique username based on teacher ID
+    base_user = assigned_teacher_id.lower().replace('-', '')
+    username = base_user
+    u_cnt = 1
+    while User.objects.filter(username__iexact=username).exists():
+        username = f"{base_user}{u_cnt}"
+        u_cnt += 1
+
+    parts = raw_name.split(' ', 1)
+    first_name = parts[0]
+    last_name = parts[1] if len(parts) > 1 else ''
+
+    user = User.objects.create(
+        username=username,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        is_active=True
+    )
+    user.set_unusable_password()
+    user.save()
+
+    profile, _ = UserProfile.objects.update_or_create(
+        user=user,
+        defaults={
+            "role": "teacher",
+            "department": department,
+            "designation": designation,
+            "qualification": qualification,
+            "phone": phone,
+            "employee_id": assigned_teacher_id,
+            "profile_pic": profile_photo,
+            "is_activated": False,
+        }
+    )
+    profile.generate_activation_token()
+
+    # Automatically dispatch onboarding email with Teacher ID asynchronously
+    import threading
+    t = threading.Thread(target=send_teacher_onboarding_email, args=(user,))
+    t.daemon = True
+    t.start()
+
+    log_user = request.user if (request.user and request.user.is_authenticated) else user
+    AuditLog.log(
+        action='TEACHER_CREATE',
+        entity='User',
+        entity_id=str(user.id),
+        description=f"Faculty '{raw_name}' enrolled with Teacher ID '{assigned_teacher_id}' in department '{department}'.",
+        user=log_user,
+        request=request
+    )
+
+    return Response({
+        "detail": f"Faculty '{raw_name}' registered successfully! Assigned Teacher ID: {assigned_teacher_id}. Teacher ID details and password setup instructions sent to {email}.",
+        "teacher_id": assigned_teacher_id,
+        "employee_id": assigned_teacher_id,
+        "user_id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "name": raw_name,
+        "department": department,
+        "designation": designation,
+        "qualification": qualification,
+        "phone": phone,
+        "is_activated": False
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsTeacherOrAdmin])
+def send_teacher_credentials_view(request, user_id):
+    """
+    Admin or faculty lead re-sends the official Teacher ID details and password setup instructions to the teacher's email.
+    """
+    user = get_object_or_404(User, pk=user_id)
+    if not user.email:
+        return Response(
+            {"detail": "This faculty member does not have an email address on file.", "sent": False},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    ok, res_data = send_teacher_onboarding_email(user)
+    profile = getattr(user, 'profile', None)
+    teacher_id = (profile.employee_id if profile else None) or (profile.user_id_code if profile else None) or f"TCH-{user.id:03d}"
+
+    AuditLog.log(
+        action='TEACHER_CREDENTIALS_DISPATCH',
+        entity='User',
+        entity_id=str(user.id),
+        description=f"User '{request.user.username}' sent Teacher ID '{teacher_id}' details email to '{user.email}' (Success: {ok}).",
+        user=request.user,
+        request=request
+    )
+
+    if not ok:
+        return Response(
+            {
+                "detail": f"Failed to send email: {res_data.get('message', 'Unknown error')}",
+                "error": res_data.get("error", "Dispatch failed"),
+                "email": user.email,
+                "sent": False,
+                "teacher_id": teacher_id
+            },
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+
+    return Response(
+        {
+            "detail": res_data.get("message", f"Teacher ID details successfully sent to {user.email}."),
+            "sent": True,
+            "email": user.email,
+            "teacher_id": teacher_id,
+            "info": res_data
+        },
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def forgot_password_view(request):
     """
     Initiate password reset: Look up student by Student ID or registered email,
@@ -708,11 +1204,24 @@ def forgot_password_view(request):
                 defaults={"role": "student", "student": student, "is_activated": False}
             )
     else:
-        user_match = User.objects.filter(username__iexact=raw_ident).first() or User.objects.filter(email__iexact=raw_ident).first()
-        if user_match:
-            user = user_match
-            profile = getattr(user, 'profile', None)
-            student = getattr(profile, 'student', None) if profile else None
+        # Check by Teacher / Employee ID
+        prof_match = UserProfile.objects.filter(employee_id__iexact=raw_ident).first()
+        if not prof_match:
+            clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+            for p in UserProfile.objects.exclude(employee_id__isnull=True).exclude(employee_id=''):
+                if (p.employee_id or '').replace('-', '').replace('_', '').replace(' ', '').upper() == clean_ident:
+                    prof_match = p
+                    break
+        if prof_match:
+            user = prof_match.user
+            profile = prof_match
+            student = getattr(profile, 'student', None)
+        else:
+            user_match = User.objects.filter(username__iexact=raw_ident).first() or User.objects.filter(email__iexact=raw_ident).first()
+            if user_match:
+                user = user_match
+                profile = getattr(user, 'profile', None)
+                student = getattr(profile, 'student', None) if profile else None
 
     if not profile or not user:
         LoginAttempt.record_failure(raw_ident, ip)
@@ -869,11 +1378,24 @@ def reset_password_view(request):
         profile = student.user_profile
         user = profile.user
     else:
-        user_match = User.objects.filter(username__iexact=raw_ident).first() or User.objects.filter(email__iexact=raw_ident).first()
-        if user_match:
-            user = user_match
-            profile = getattr(user, 'profile', None)
-            student = getattr(profile, 'student', None) if profile else None
+        # Check by Teacher / Employee ID
+        prof_match = UserProfile.objects.filter(employee_id__iexact=raw_ident).first()
+        if not prof_match:
+            clean_ident = raw_ident.replace('-', '').replace('_', '').replace(' ', '').upper()
+            for p in UserProfile.objects.exclude(employee_id__isnull=True).exclude(employee_id=''):
+                if (p.employee_id or '').replace('-', '').replace('_', '').replace(' ', '').upper() == clean_ident:
+                    prof_match = p
+                    break
+        if prof_match:
+            user = prof_match.user
+            profile = prof_match
+            student = getattr(profile, 'student', None)
+        else:
+            user_match = User.objects.filter(username__iexact=raw_ident).first() or User.objects.filter(email__iexact=raw_ident).first()
+            if user_match:
+                user = user_match
+                profile = getattr(user, 'profile', None)
+                student = getattr(profile, 'student', None) if profile else None
 
     if not profile or not user:
         LoginAttempt.record_failure(raw_ident, ip)
@@ -1513,6 +2035,15 @@ def manage_users_view(request):
             user=user,
             defaults={"role": role, "department": department, "employee_id": custom_user_id}
         )
+
+        if role == 'teacher':
+            try:
+                import threading
+                t = threading.Thread(target=send_teacher_onboarding_email, args=(user,))
+                t.daemon = True
+                t.start()
+            except Exception as e:
+                print(f"[manage_users_view] Teacher onboarding email dispatch note: {e}")
 
         action_choice = 'TEACHER_CREATE' if role == 'teacher' else 'USER_CREATE'
         AuditLog.log(

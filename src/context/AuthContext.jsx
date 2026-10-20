@@ -110,6 +110,8 @@ export const AuthProvider = ({ children }) => {
         needsPasswordSetup: Boolean(err.response?.data?.needs_password_setup || err.response?.data?.needs_activation),
         identifier: err.response?.data?.identifier || trimmedId,
         studentId: err.response?.data?.student_id,
+        teacherId: err.response?.data?.teacher_id,
+        role: err.response?.data?.role,
         rollNo: err.response?.data?.roll_no,
       };
     }

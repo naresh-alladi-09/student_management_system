@@ -23,6 +23,7 @@ import {
   getLowAttendanceReport,
   getStudentsRosterReport,
   getPerformanceReport,
+  sendTeacherCredentials,
 } from "../services/studentservice";
 import {
   FaUserShield,
@@ -51,6 +52,7 @@ import {
   FaInfoCircle,
   FaCreditCard,
   FaQrcode,
+  FaPaperPlane,
 } from "react-icons/fa";
 
 const AdminDashboard = () => {
@@ -558,6 +560,30 @@ const AdminDashboard = () => {
       });
     } finally {
       setIsSubmittingUser(false);
+    }
+  };
+
+  const [resendingTeacherId, setResendingTeacherId] = useState(null);
+  const [resendNotice, setResendNotice] = useState(null);
+
+  const handleResendTeacherEmail = async (userId, teacherName, teacherId, email) => {
+    setResendingTeacherId(userId);
+    setResendNotice(null);
+    try {
+      const res = await sendTeacherCredentials(userId);
+      setResendNotice({
+        type: "success",
+        text: `✓ Official Teacher ID details successfully dispatched to ${teacherName} (${email})!`,
+      });
+      setTimeout(() => setResendNotice(null), 5000);
+    } catch (err) {
+      setResendNotice({
+        type: "error",
+        text: err.response?.data?.detail || `Failed to dispatch email to ${email}.`,
+      });
+      setTimeout(() => setResendNotice(null), 5000);
+    } finally {
+      setResendingTeacherId(null);
     }
   };
 
@@ -1892,7 +1918,7 @@ const AdminDashboard = () => {
                     padding: "20px",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
                     <div>
                       <h4 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#1e40af", display: "flex", alignItems: "center", gap: "8px" }}>
                         <FaChalkboardTeacher /> Faculty &amp; Teaching Staff ({filteredTeachers.length})
@@ -1901,7 +1927,44 @@ const AdminDashboard = () => {
                         Authorized teachers and course instructors with designated Teacher IDs (TCH-XXX).
                       </small>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/addfaculty")}
+                      style={{
+                        background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+                        color: "#ffffff",
+                        border: "none",
+                        padding: "8px 16px",
+                        borderRadius: "8px",
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        boxShadow: "0 2px 6px rgba(124, 58, 237, 0.25)",
+                      }}
+                    >
+                      <FaPlusCircle /> Register Faculty (Form)
+                    </button>
                   </div>
+
+                  {resendNotice && (
+                    <div
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        marginBottom: "14px",
+                        background: resendNotice.type === "success" ? "#dcfce7" : "#fee2e2",
+                        color: resendNotice.type === "success" ? "#166534" : "#991b1b",
+                        border: `1px solid ${resendNotice.type === "success" ? "#86efac" : "#fca5a5"}`,
+                      }}
+                    >
+                      {resendNotice.text}
+                    </div>
+                  )}
 
                   <div className="table-responsive">
                     <table className="grades-table">
@@ -1914,6 +1977,7 @@ const AdminDashboard = () => {
                           <th>Staff Gmail</th>
                           <th>Role</th>
                           <th>Status</th>
+                          <th>Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1952,12 +2016,40 @@ const AdminDashboard = () => {
                                 <td>
                                   <span className="stat-badge-tag tag-success">ACTIVE</span>
                                 </td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResendTeacherEmail(t.id, t.first_name ? `${t.first_name} ${t.last_name}` : t.username, teacherId, t.email)}
+                                    disabled={resendingTeacherId === t.id}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "6px",
+                                      padding: "5px 10px",
+                                      fontSize: "12px",
+                                      fontWeight: 600,
+                                      borderRadius: "6px",
+                                      border: "1px solid #c4b5fd",
+                                      background: "#ede9fe",
+                                      color: "#6d28d9",
+                                      cursor: "pointer",
+                                    }}
+                                    title="Dispatch Teacher ID credentials email"
+                                  >
+                                    {resendingTeacherId === t.id ? (
+                                      <FaSync className="spin-icon" />
+                                    ) : (
+                                      <FaPaperPlane />
+                                    )}
+                                    <span>{resendingTeacherId === t.id ? "Sending..." : "Resend ID"}</span>
+                                  </button>
+                                </td>
                               </tr>
                             );
                           })
                         ) : (
                           <tr>
-                            <td colSpan="7" style={{ textAlign: "center", padding: "28px", color: "#94a3b8" }}>
+                            <td colSpan="8" style={{ textAlign: "center", padding: "28px", color: "#94a3b8" }}>
                               No faculty records found matching the current search/filter.
                             </td>
                           </tr>

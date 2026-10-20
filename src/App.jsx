@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import Students from './pages/Students';
 import Addstudent from './pages/Addstudent';
+import AddFaculty from './pages/AddFaculty';
 import Attendence from './pages/Attendence';
 import Performance from './pages/Performance';
 import StudentDashboard from './pages/StudentDashboard';
@@ -71,6 +72,16 @@ function App() {
               <ProtectedRoute>
                 <RoleRoute allowedRoles={['teacher', 'admin']}>
                   <Addstudent />
+                </RoleRoute>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/addfaculty"
+            element={
+              <ProtectedRoute>
+                <RoleRoute allowedRoles={['teacher', 'admin']}>
+                  <AddFaculty />
                 </RoleRoute>
               </ProtectedRoute>
             }

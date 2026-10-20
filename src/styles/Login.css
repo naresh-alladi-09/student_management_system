@@ -864,6 +864,36 @@
   color: #065f46;
 }
 
+.teacher-first-time-box {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.teacher-first-time-box:hover {
+  background: #ede9fe;
+  border-color: #c4b5fd;
+}
+
+.teacher-first-time-box .first-time-icon {
+  background: #7c3aed;
+}
+
+.teacher-first-time-box .first-time-text {
+  color: #4c1d95;
+}
+
+.teacher-first-time-box .first-time-text span {
+  color: #6d28d9;
+}
+
+.teacher-first-time-box .btn-first-time-action {
+  color: #7c3aed;
+}
+
+.teacher-first-time-box .btn-first-time-action:hover {
+  color: #5b21b6;
+}
+
 .field-hint-text {
   font-size: 11.5px;
   color: #64748b;
