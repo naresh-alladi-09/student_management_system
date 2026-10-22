@@ -8,6 +8,7 @@ const StudentTable = ({
   onRegisterFace,
   onSendCredentials,
   sendingStudentId,
+  onDelete,
 }) => {
   const getBranchClass = (branch) => {
     const b = (branch || "").toLowerCase();
@@ -205,6 +206,18 @@ const StudentTable = ({
                           >
                             <i className="fa-solid fa-user-check"></i>
                             <span className="btn-text">Restore</span>
+                          </button>
+                        )}
+
+                        {onDelete && (
+                          <button
+                            type="button"
+                            className="tbl-action-btn delete-btn"
+                            onClick={() => onDelete(student)}
+                            title="Permanently delete student from database records"
+                          >
+                            <i className="fa-solid fa-trash-can"></i>
+                            <span className="btn-text">Delete</span>
                           </button>
                         )}
                       </div>

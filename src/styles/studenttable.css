@@ -818,18 +818,32 @@
   box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
 }
 
-/* Deactivate Button */
+/* Deactivate Button (Soft-Delete / Suspend) */
 .tbl-action-btn.deactivate-btn {
-  background: #fef2f2;
-  color: #b91c1c;
-  border-color: #fecaca;
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #fed7aa;
 }
 
 .tbl-action-btn.deactivate-btn:hover {
+  background: #ea580c;
+  color: #ffffff;
+  border-color: #ea580c;
+  box-shadow: 0 2px 8px rgba(234, 88, 12, 0.25);
+}
+
+/* Permanent Delete Button (Permanent Database Removal) */
+.tbl-action-btn.delete-btn {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.tbl-action-btn.delete-btn:hover {
   background: #dc2626;
   color: #ffffff;
-  border-color: #dc2626;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+  border-color: #b91c1c;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
 }
 
 /* Restore Button */

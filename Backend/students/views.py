@@ -30,9 +30,12 @@ class StudentViewSet(viewsets.ModelViewSet):
         if self.action in ['retrieve']:
             # Student can only view their own record; teachers and admins view authorized students
             return [IsAuthenticated(), IsSelfOrStaff()]
-        elif self.action in ['destroy', 'deactivate', 'activate']:
-            # Deleting or changing student lifecycle status requires Admin privileges
-            return [IsAuthenticated(), IsAdmin()]
+        elif self.action in ['destroy']:
+            # Permanently deleting student records is permitted for Faculty and Admin accounts
+            return [IsAuthenticated(), IsTeacherOrAdmin()]
+        elif self.action in ['deactivate', 'activate']:
+            # Changing student lifecycle status is permitted for Faculty and Admin accounts
+            return [IsAuthenticated(), IsTeacherOrAdmin()]
         elif self.action in ['create', 'update', 'partial_update', 'stats', 'register_face']:
             # Permitted teachers or admins can enroll students and register their faces
             return [IsAuthenticated(), IsTeacherOrAdmin()]
@@ -261,25 +264,79 @@ class StudentViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     def perform_destroy(self, instance):
-        instance.deactivate()
+        user = self.request.user
+        profile = getattr(user, 'profile', None)
+        actor = "Faculty" if (profile and profile.role == 'teacher') else "Admin"
+
+        # Faculty isolation check: verify teacher is authorized for this student's class
+        if not (user.is_superuser or user.is_staff or (profile and profile.role == 'admin')):
+            assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
+            if assigned_class_ids.exists() and instance.academic_class_id not in assigned_class_ids:
+                AuditLog.log(
+                    action='UNAUTHORIZED_ACCESS_BLOCKED',
+                    entity='Student',
+                    entity_id=str(instance.id),
+                    description=f"Teacher '{user.username}' attempted unauthorized deletion of student '{instance.roll_no}'.",
+                    user=user,
+                    request=self.request
+                )
+                raise PermissionDenied("You are not authorized to delete students outside your assigned classes.")
+
+        student_id = instance.id
+        student_name = instance.name
+        student_roll = instance.roll_no or instance.student_id or f"#{student_id}"
+
+        # Clean up linked student login account if present
+        student_user = None
+        try:
+            if hasattr(instance, 'user_profile') and instance.user_profile:
+                student_user = instance.user_profile.user
+            else:
+                from django.contrib.auth.models import User
+                student_ident = (instance.student_id or instance.roll_no or f"STU{instance.id}").strip()
+                student_user = User.objects.filter(username__iexact=student_ident).first()
+        except Exception as e:
+            print(f"[StudentViewSet] Linked user lookup note: {e}")
+
+        # Permanently delete the student record from database
+        instance.delete()
+
+        # Delete linked user account if it belonged to this student
+        if student_user:
+            try:
+                student_user.delete()
+            except Exception as e:
+                print(f"[StudentViewSet] Linked user cleanup note: {e}")
+
         AuditLog.log(
-            action='STUDENT_DEACTIVATE',
+            action='STUDENT_DELETE',
             entity='Student',
-            entity_id=str(instance.id),
-            description=f"Admin '{self.request.user.username}' deactivated student '{instance.name}' ({instance.roll_no}).",
-            user=self.request.user,
+            entity_id=str(student_id),
+            description=f"{actor} '{user.username}' permanently deleted student '{student_name}' ({student_roll}) from database records.",
+            user=user,
             request=self.request
         )
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        student_name = instance.name
+        student_roll = instance.roll_no or instance.student_id or f"#{instance.id}"
+        self.perform_destroy(instance)
+        return Response({
+            "success": True,
+            "message": f"Student '{student_name}' ({student_roll}) has been permanently deleted from database records."
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsTeacherOrAdmin])
     def deactivate(self, request, pk=None):
         student = self.get_object()
         student.deactivate()
+        actor = "Faculty" if (hasattr(request.user, 'profile') and request.user.profile.role == 'teacher') else "Admin"
         AuditLog.log(
             action='STUDENT_DEACTIVATE',
             entity='Student',
             entity_id=str(student.id),
-            description=f"Admin '{request.user.username}' deactivated student '{student.name}' ({student.roll_no}).",
+            description=f"{actor} '{request.user.username}' deactivated student '{student.name}' ({student.roll_no}).",
             user=request.user,
             request=request
         )
@@ -288,15 +345,16 @@ class StudentViewSet(viewsets.ModelViewSet):
             "is_active": False
         }, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsTeacherOrAdmin])
     def activate(self, request, pk=None):
         student = self.get_object()
         student.activate()
+        actor = "Faculty" if (hasattr(request.user, 'profile') and request.user.profile.role == 'teacher') else "Admin"
         AuditLog.log(
             action='STUDENT_ACTIVATE',
             entity='Student',
             entity_id=str(student.id),
-            description=f"Admin '{request.user.username}' restored student '{student.name}' ({student.roll_no}).",
+            description=f"{actor} '{request.user.username}' restored student '{student.name}' ({student.roll_no}).",
             user=request.user,
             request=request
         )

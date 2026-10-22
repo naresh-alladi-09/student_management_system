@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   getStudents,
   updateStudent,
+  deleteStudent,
   deactivateStudent,
   activateStudent,
   registerStudentFace,
@@ -51,6 +52,8 @@ const Students = () => {
   const [statusMessage, setStatusMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [studentToDeactivate, setStudentToDeactivate] = useState(null);
+  const [studentToDelete, setStudentToDelete] = useState(null);
+  const [deletingStudent, setDeletingStudent] = useState(false);
 
   // Edit Modal State
   const [editingStudent, setEditingStudent] = useState(null);
@@ -339,6 +342,33 @@ const Students = () => {
     }
   };
 
+  // Trigger Permanent Delete
+  const handleDeleteClick = (student) => {
+    setStudentToDelete(student);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!studentToDelete) return;
+    setDeletingStudent(true);
+    setErrorMessage(null);
+    try {
+      const studentName = studentToDelete.name;
+      const res = await deleteStudent(studentToDelete.id);
+      const msg = res.data?.message || `✓ Student "${studentName}" permanently deleted from database records.`;
+      setStatusMessage(msg);
+      setTimeout(() => setStatusMessage(null), 4000);
+      setStudentToDelete(null);
+      loadStudents(currentPage);
+    } catch (error) {
+      console.error("Permanent delete error:", error);
+      const detail = error.response?.data?.detail || "Failed to permanently delete student.";
+      setErrorMessage(detail);
+      setTimeout(() => setErrorMessage(null), 5000);
+    } finally {
+      setDeletingStudent(false);
+    }
+  };
+
   // Restore (Activate)
   const handleActivate = async (id, studentName) => {
     try {
@@ -620,6 +650,7 @@ const Students = () => {
                 onEdit={handleOpenEdit}
                 onDeactivate={handleDeactivateClick}
                 onActivate={handleActivate}
+                onDelete={handleDeleteClick}
                 onRegisterFace={handleOpenFaceModal}
                 onSendCredentials={handleSendCredentials}
                 sendingStudentId={sendingStudentId}
@@ -844,7 +875,7 @@ const Students = () => {
           {studentToDeactivate && (
             <div className="modal-overlay">
               <div className="modal-card delete-confirm-card">
-                <div className="delete-icon-wrap">
+                <div className="delete-icon-wrap" style={{ background: "#fff7ed", color: "#ea580c" }}>
                   <i className="fa-solid fa-user-slash"></i>
                 </div>
                 <h3>Deactivate Student Account?</h3>
@@ -867,10 +898,57 @@ const Students = () => {
                   <button
                     type="button"
                     className="btn-confirm-delete"
-                    style={{ background: "#dc2626" }}
+                    style={{ background: "#ea580c" }}
                     onClick={handleConfirmDeactivate}
                   >
                     Yes, Deactivate
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Permanent Delete Confirmation Modal */}
+          {studentToDelete && (
+            <div className="modal-overlay">
+              <div className="modal-card delete-confirm-card" style={{ maxWidth: "470px" }}>
+                <div className="delete-icon-wrap" style={{ background: "#fee2e2", color: "#dc2626" }}>
+                  <i className="fa-solid fa-trash-can"></i>
+                </div>
+                <h3 style={{ color: "#991b1b" }}>Permanently Delete Student?</h3>
+                <p style={{ margin: "0 0 12px 0" }}>
+                  Are you sure you want to permanently delete{" "}
+                  <strong>&quot;{studentToDelete.name}&quot;</strong> ({studentToDelete.roll_no || studentToDelete.student_id || `#${studentToDelete.id}`})?
+                </p>
+                <div style={{ textAlign: "left", fontSize: "12.5px", color: "#991b1b", background: "#fef2f2", padding: "10px 14px", borderRadius: "8px", border: "1px solid #fecaca", marginBottom: "16px", lineHeight: "1.5" }}>
+                  <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: "6px" }}></i>
+                  <strong>Permanent Database Action:</strong> This will completely wipe this student from database records, including associated user login, attendance, and performance logs. This action cannot be reversed.
+                </div>
+                <div className="delete-modal-actions">
+                  <button
+                    type="button"
+                    className="btn-cancel"
+                    onClick={() => setStudentToDelete(null)}
+                    disabled={deletingStudent}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-confirm-delete"
+                    style={{ background: "#dc2626" }}
+                    onClick={handleConfirmDelete}
+                    disabled={deletingStudent}
+                  >
+                    {deletingStudent ? (
+                      <>
+                        <i className="fa-solid fa-spinner fa-spin"></i> Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-trash-can"></i> Yes, Delete Permanently
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
