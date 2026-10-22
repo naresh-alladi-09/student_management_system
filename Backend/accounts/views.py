@@ -2099,6 +2099,18 @@ def delete_user_view(request, user_id):
         except Exception:
             pass
 
+    # Defensively nullify any unmanaged fee references before deleting user
+    try:
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE fees_feepayment SET collected_by_id = NULL WHERE collected_by_id = %s", [user_id])
+            cursor.execute("UPDATE fees_feepayment SET verified_by_id = NULL WHERE verified_by_id = %s", [user_id])
+            cursor.execute("UPDATE fees_studentfeerecord SET cleared_by_id = NULL WHERE cleared_by_id = %s", [user_id])
+            cursor.execute("UPDATE fees_feecategory SET created_by_id = NULL WHERE created_by_id = %s", [user_id])
+            cursor.execute("UPDATE fees_feestructure SET created_by_id = NULL WHERE created_by_id = %s", [user_id])
+    except Exception as fee_err:
+        print(f"[delete_user_view] Unmanaged fee cleanup note: {fee_err}")
+
     # Permanently delete the user from database
     user.delete()
 

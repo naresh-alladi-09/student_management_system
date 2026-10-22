@@ -608,6 +608,7 @@ const AdminDashboard = () => {
       });
       setTimeout(() => setResendNotice(null), 5000);
       setAdminStudentToDelete(null);
+      fetchAdminData();
     } catch (err) {
       console.error("Admin delete student error:", err);
       setResendNotice({
@@ -636,10 +637,10 @@ const AdminDashboard = () => {
         `TCH-${String(adminFacultyToDelete.id).padStart(3, "0")}`;
 
       await deleteSystemUser(adminFacultyToDelete.id);
-      setTeachersList((prev) => prev.filter((t) => t.id !== adminFacultyToDelete.id));
+      setUsers((prev) => prev.filter((u) => u.id !== adminFacultyToDelete.id));
       setStats((prev) => ({
         ...prev,
-        totalFaculty: Math.max(0, (prev.totalFaculty || 1) - 1),
+        totalTeachers: Math.max(0, (prev.totalTeachers || 1) - 1),
       }));
       setResendNotice({
         type: "success",
@@ -647,6 +648,7 @@ const AdminDashboard = () => {
       });
       setTimeout(() => setResendNotice(null), 5000);
       setAdminFacultyToDelete(null);
+      fetchAdminData();
     } catch (err) {
       console.error("Admin delete faculty error:", err);
       setResendNotice({

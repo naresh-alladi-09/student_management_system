@@ -298,12 +298,24 @@ class StudentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"[StudentViewSet] Linked user lookup note: {e}")
 
+        # Defensively clean up any unmanaged fee records referencing this student before deletion
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM fees_feepayment WHERE student_id = %s", [student_id])
+                cursor.execute("DELETE FROM fees_studentfeerecord WHERE student_id = %s", [student_id])
+        except Exception as fee_err:
+            print(f"[StudentViewSet] Fee cleanup note: {fee_err}")
+
         # Permanently delete the student record from database
         instance.delete()
 
         # Delete linked user account if it belonged to this student
         if student_user:
             try:
+                with connection.cursor() as cursor:
+                    cursor.execute("UPDATE fees_feepayment SET collected_by_id = NULL WHERE collected_by_id = %s", [student_user.id])
+                    cursor.execute("UPDATE fees_feepayment SET verified_by_id = NULL WHERE verified_by_id = %s", [student_user.id])
+                    cursor.execute("UPDATE fees_studentfeerecord SET cleared_by_id = NULL WHERE cleared_by_id = %s", [student_user.id])
                 student_user.delete()
             except Exception as e:
                 print(f"[StudentViewSet] Linked user cleanup note: {e}")
