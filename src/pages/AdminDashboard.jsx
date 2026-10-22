@@ -7,6 +7,7 @@ import {
   deleteStudent,
   getSystemUsers,
   createSystemUser,
+  deleteSystemUser,
   getAuditLogs,
   getAuditStats,
   getAllSubjects,
@@ -616,6 +617,45 @@ const AdminDashboard = () => {
       setTimeout(() => setResendNotice(null), 5000);
     } finally {
       setAdminDeletingStudent(false);
+    }
+  };
+
+  const [adminFacultyToDelete, setAdminFacultyToDelete] = useState(null);
+  const [adminDeletingFaculty, setAdminDeletingFaculty] = useState(false);
+
+  const handleConfirmDeleteFacultyAdmin = async () => {
+    if (!adminFacultyToDelete) return;
+    setAdminDeletingFaculty(true);
+    try {
+      const facultyName = adminFacultyToDelete.first_name
+        ? `${adminFacultyToDelete.first_name} ${adminFacultyToDelete.last_name}`
+        : adminFacultyToDelete.username;
+      const teacherId =
+        adminFacultyToDelete.user_id_code ||
+        adminFacultyToDelete.profile?.employee_id ||
+        `TCH-${String(adminFacultyToDelete.id).padStart(3, "0")}`;
+
+      await deleteSystemUser(adminFacultyToDelete.id);
+      setTeachersList((prev) => prev.filter((t) => t.id !== adminFacultyToDelete.id));
+      setStats((prev) => ({
+        ...prev,
+        totalFaculty: Math.max(0, (prev.totalFaculty || 1) - 1),
+      }));
+      setResendNotice({
+        type: "success",
+        text: `✓ Faculty member "${facultyName}" (${teacherId}) has been permanently deleted from database records.`,
+      });
+      setTimeout(() => setResendNotice(null), 5000);
+      setAdminFacultyToDelete(null);
+    } catch (err) {
+      console.error("Admin delete faculty error:", err);
+      setResendNotice({
+        type: "error",
+        text: err.response?.data?.detail || "Failed to permanently delete faculty member.",
+      });
+      setTimeout(() => setResendNotice(null), 5000);
+    } finally {
+      setAdminDeletingFaculty(false);
     }
   };
 
@@ -2048,33 +2088,66 @@ const AdminDashboard = () => {
                                 <td>
                                   <span className="stat-badge-tag tag-success">ACTIVE</span>
                                 </td>
-                                <td>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleResendTeacherEmail(t.id, t.first_name ? `${t.first_name} ${t.last_name}` : t.username, teacherId, t.email)}
-                                    disabled={resendingTeacherId === t.id}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "6px",
-                                      padding: "5px 10px",
-                                      fontSize: "12px",
-                                      fontWeight: 600,
-                                      borderRadius: "6px",
-                                      border: "1px solid #c4b5fd",
-                                      background: "#ede9fe",
-                                      color: "#6d28d9",
-                                      cursor: "pointer",
-                                    }}
-                                    title="Dispatch Teacher ID credentials email"
-                                  >
-                                    {resendingTeacherId === t.id ? (
-                                      <FaSync className="spin-icon" />
-                                    ) : (
-                                      <FaPaperPlane />
-                                    )}
-                                    <span>{resendingTeacherId === t.id ? "Sending..." : "Resend ID"}</span>
-                                  </button>
+                                <td style={{ textAlign: "center" }}>
+                                  <div style={{ display: "inline-flex", gap: "8px", alignItems: "center", justifyContent: "center" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleResendTeacherEmail(t.id, t.first_name ? `${t.first_name} ${t.last_name}` : t.username, teacherId, t.email)}
+                                      disabled={resendingTeacherId === t.id}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        padding: "5px 10px",
+                                        fontSize: "12px",
+                                        fontWeight: 600,
+                                        borderRadius: "6px",
+                                        border: "1px solid #c4b5fd",
+                                        background: "#ede9fe",
+                                        color: "#6d28d9",
+                                        cursor: "pointer",
+                                      }}
+                                      title="Dispatch Teacher ID credentials email"
+                                    >
+                                      {resendingTeacherId === t.id ? (
+                                        <FaSync className="spin-icon" />
+                                      ) : (
+                                        <FaPaperPlane />
+                                      )}
+                                      <span>{resendingTeacherId === t.id ? "Sending..." : "Resend ID"}</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setAdminFacultyToDelete(t)}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        padding: "5px 12px",
+                                        fontSize: "12px",
+                                        fontWeight: 600,
+                                        borderRadius: "6px",
+                                        border: "1px solid #fca5a5",
+                                        background: "#fef2f2",
+                                        color: "#dc2626",
+                                        cursor: "pointer",
+                                        transition: "all 0.2s ease",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = "#dc2626";
+                                        e.currentTarget.style.color = "#ffffff";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = "#fef2f2";
+                                        e.currentTarget.style.color = "#dc2626";
+                                      }}
+                                      title={`Permanently delete faculty record for ${t.first_name ? `${t.first_name} ${t.last_name}` : t.username}`}
+                                    >
+                                      <FaTrashAlt />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -5153,6 +5226,128 @@ const AdminDashboard = () => {
                   }}
                 >
                   {adminDeletingStudent ? (
+                    <>
+                      <FaSync className="spin-icon" /> Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <FaTrashAlt /> Yes, Delete Permanently
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Permanent Faculty Delete Confirmation Modal (Admin) */}
+        {adminFacultyToDelete && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(15, 23, 42, 0.7)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+              padding: "20px",
+            }}
+          >
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: "16px",
+                padding: "28px",
+                width: "100%",
+                maxWidth: "480px",
+                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: "56px",
+                  height: "56px",
+                  borderRadius: "50%",
+                  background: "#fee2e2",
+                  color: "#dc2626",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "24px",
+                  margin: "0 auto 16px auto",
+                }}
+              >
+                <FaTrashAlt />
+              </div>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "19px", color: "#991b1b" }}>
+                Permanently Delete Faculty?
+              </h3>
+              <p style={{ margin: "0 0 14px 0", color: "#475569", fontSize: "14px" }}>
+                Are you sure you want to permanently delete faculty member{" "}
+                <strong>&quot;{adminFacultyToDelete.first_name ? `${adminFacultyToDelete.first_name} ${adminFacultyToDelete.last_name}` : adminFacultyToDelete.username}&quot;</strong> ({adminFacultyToDelete.user_id_code || adminFacultyToDelete.profile?.employee_id || `TCH-${String(adminFacultyToDelete.id).padStart(3, "0")}`})?
+              </p>
+              <div
+                style={{
+                  textAlign: "left",
+                  fontSize: "12.5px",
+                  color: "#991b1b",
+                  background: "#fef2f2",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  border: "1px solid #fecaca",
+                  marginBottom: "20px",
+                  lineHeight: "1.5",
+                }}
+              >
+                <FaExclamationTriangle style={{ marginRight: "6px", verticalAlign: "-2px" }} />
+                <strong>Permanent Database Action:</strong> This faculty member will be completely removed from database records, including their login account and course/class teaching assignments. This action cannot be reversed.
+              </div>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setAdminFacultyToDelete(null)}
+                  disabled={adminDeletingFaculty}
+                  style={{
+                    flex: 1,
+                    padding: "10px 18px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#f8fafc",
+                    color: "#475569",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteFacultyAdmin}
+                  disabled={adminDeletingFaculty}
+                  style={{
+                    flex: 1.2,
+                    padding: "10px 18px",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: "#dc2626",
+                    color: "#ffffff",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  {adminDeletingFaculty ? (
                     <>
                       <FaSync className="spin-icon" /> Deleting...
                     </>

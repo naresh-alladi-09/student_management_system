@@ -80,7 +80,7 @@ function App() {
             path="/addfaculty"
             element={
               <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher', 'admin']}>
+                <RoleRoute allowedRoles={['admin']}>
                   <AddFaculty />
                 </RoleRoute>
               </ProtectedRoute>

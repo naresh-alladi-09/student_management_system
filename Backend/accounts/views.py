@@ -957,7 +957,7 @@ def set_teacher_password_view(request):
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAdmin])
 def register_faculty_view(request):
     """
     Register a new faculty / teacher in the system with full faculty form details.
@@ -2064,4 +2064,57 @@ def manage_users_view(request):
             },
             status=status.HTTP_201_CREATED
         )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAdmin])
+def delete_user_view(request, user_id):
+    """
+    Admin-only endpoint to permanently delete a system user (faculty / teacher or admin).
+    """
+    try:
+        user = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Prevent deleting oneself
+    if user.id == request.user.id:
+        return Response({"detail": "You cannot delete your own administrative account."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Prevent non-superusers from deleting superusers
+    if user.is_superuser and not request.user.is_superuser:
+        return Response({"detail": "Only a superuser can delete another superuser account."}, status=status.HTTP_403_FORBIDDEN)
+
+    profile = getattr(user, 'profile', None)
+    role = profile.role if profile else ('admin' if user.is_superuser else 'teacher')
+    username = user.username
+    full_name = user.get_full_name() or user.first_name or username
+    user_id_code = profile.user_id_code if profile else f"USR-{user.id:03d}"
+
+    # If linked to a Student record, dissociate student
+    if profile and profile.student:
+        try:
+            profile.student = None
+            profile.save(update_fields=['student'])
+        except Exception:
+            pass
+
+    # Permanently delete the user from database
+    user.delete()
+
+    action_name = 'TEACHER_DELETE' if role == 'teacher' else 'USER_DELETE'
+    AuditLog.log(
+        action=action_name,
+        entity='User',
+        entity_id=str(user_id),
+        description=f"Admin '{request.user.username}' permanently deleted {role} '{full_name}' ({user_id_code}) from database records.",
+        user=request.user,
+        request=request
+    )
+
+    return Response({
+        "success": True,
+        "message": f"{role.capitalize()} '{full_name}' ({user_id_code}) permanently deleted from database records."
+    }, status=status.HTTP_200_OK)
+
 

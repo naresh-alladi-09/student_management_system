@@ -298,6 +298,14 @@ export const createSystemUser = (userData) => {
   return apiClient.post("/api/auth/users/", userData);
 };
 
+export const deleteSystemUser = (userId) => {
+  return apiClient.delete(`/api/auth/users/${userId}/`);
+};
+
+export const deleteFaculty = (userId) => {
+  return apiClient.delete(`/api/auth/users/${userId}/`);
+};
+
 // ==========================================
 // AUTHENTICATION SERVICES
 // ==========================================

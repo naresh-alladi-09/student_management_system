@@ -4,6 +4,7 @@ from .views import (
     logout_view,
     me_view,
     manage_users_view,
+    delete_user_view,
     update_profile_picture,
     activate_student_account,
     set_student_password_view,
@@ -33,5 +34,6 @@ urlpatterns = [
     path('students/<int:student_id>/activation/', admin_student_activation_view, name='admin_student_activation'),
     path('profile/picture/', update_profile_picture, name='update_profile_picture'),
     path('users/', manage_users_view, name='manage_users'),
+    path('users/<int:user_id>/', delete_user_view, name='delete_user'),
 ]
 

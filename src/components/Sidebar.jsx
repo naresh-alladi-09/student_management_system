@@ -16,7 +16,7 @@ const Sidebar = () => {
     ...(!isAdmin ? [{ path: "/exam-scanner", label: "Exam Scanner", icon: "fa-solid fa-qrcode" }] : []),
     { path: "/students", label: "Students", icon: "fa-solid fa-user-graduate" },
     { path: "/addstudents", label: "Add Student", icon: "fa-solid fa-user-plus" },
-    { path: "/addfaculty", label: "Add Faculty", icon: "fa-solid fa-chalkboard-user" },
+    ...(isAdmin ? [{ path: "/addfaculty", label: "Add Faculty", icon: "fa-solid fa-chalkboard-user" }] : []),
     { path: "/attendance", label: "Attendance", icon: "fa-regular fa-calendar-check" },
     { path: "/performance", label: "Performance", icon: "fa-solid fa-chart-simple" },
   ];
