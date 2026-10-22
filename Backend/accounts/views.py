@@ -994,11 +994,6 @@ def register_faculty_view(request):
     except ValidationError:
         return Response({"detail": "Please enter a valid email address format."}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not email.endswith('@gmail.com') and not email.endswith('.edu') and not email.endswith('.ac.in'):
-        return Response({
-            "detail": "Email must be a valid @gmail.com or institutional (.edu / .ac.in) address."
-        }, status=status.HTTP_400_BAD_REQUEST)
-
     if User.objects.filter(email__iexact=email).exists():
         return Response({"detail": f"A user with email '{email}' already exists in the system."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1958,13 +1953,6 @@ def manage_users_view(request):
         except ValidationError:
             return Response(
                 {"detail": "Invalid email address format."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 2. Strict Requirement: Only valid Gmail addresses ending with @gmail.com
-        if not email.endswith('@gmail.com'):
-            return Response(
-                {"detail": "Email must be a valid address ending with @gmail.com (e.g. name@gmail.com). Other email domains are not allowed."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

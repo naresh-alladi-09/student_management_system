@@ -509,12 +509,13 @@ const AdminDashboard = () => {
     setIsSubmittingUser(true);
     setUserModalMessage(null);
 
-    // Strict Validation: Valid email ending with @gmail.com
+    // Email format validation
     const cleanEmail = (userFormData.email || "").trim().toLowerCase();
-    if (!cleanEmail.endsWith("@gmail.com")) {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(cleanEmail)) {
       setUserModalMessage({
         success: false,
-        text: "Invalid email! Only valid Gmail addresses ending with @gmail.com are permitted for faculty and admins.",
+        text: "Please enter a valid email address.",
       });
       setIsSubmittingUser(false);
       return;
@@ -2001,26 +2002,60 @@ const AdminDashboard = () => {
                         Authorized teachers and course instructors with designated Teacher IDs (TCH-XXX).
                       </small>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => navigate("/addfaculty")}
-                      style={{
-                        background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
-                        color: "#ffffff",
-                        border: "none",
-                        padding: "8px 16px",
-                        borderRadius: "8px",
-                        fontWeight: 600,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        boxShadow: "0 2px 6px rgba(124, 58, 237, 0.25)",
-                      }}
-                    >
-                      <FaPlusCircle /> Register Faculty (Form)
-                    </button>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => navigate("/addfaculty")}
+                        style={{
+                          background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+                          color: "#ffffff",
+                          border: "none",
+                          padding: "8px 16px",
+                          borderRadius: "8px",
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          boxShadow: "0 2px 6px rgba(124, 58, 237, 0.25)",
+                        }}
+                      >
+                        <FaPlusCircle /> Register Faculty (Form)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserFormData({
+                            username: "",
+                            employee_id: "",
+                            email: "",
+                            password: "",
+                            first_name: "",
+                            last_name: "",
+                            role: "teacher",
+                            department: "Computer Science & Engineering",
+                          });
+                          setShowUserModal(true);
+                        }}
+                        style={{
+                          background: "#2563eb",
+                          color: "#ffffff",
+                          border: "none",
+                          padding: "8px 16px",
+                          borderRadius: "8px",
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          boxShadow: "0 2px 6px rgba(37, 99, 235, 0.25)",
+                        }}
+                      >
+                        <FaPlusCircle /> Quick Provision Faculty
+                      </button>
+                    </div>
                   </div>
 
                   {resendNotice && (
@@ -4468,19 +4503,19 @@ const AdminDashboard = () => {
                     htmlFor="user-email-input"
                     style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}
                   >
-                    Email Address * <span style={{ color: "#2563eb", fontWeight: 500 }}>(@gmail.com only)</span>
+                    Email Address *
                   </label>
                   <input
                     id="user-email-input"
                     type="email"
-                    placeholder="e.g. sharma@gmail.com"
+                    placeholder="e.g. sharma@gmail.com or prof@university.edu"
                     value={userFormData.email}
                     required
                     onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
                     style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
                   />
                   <small style={{ color: "#64748b", fontSize: "11px", marginTop: "3px", display: "block" }}>
-                    Must be a valid email ending with <strong>@gmail.com</strong>.
+                    Official correspondence and credential notices will be sent to this address.
                   </small>
                 </div>
 

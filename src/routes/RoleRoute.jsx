@@ -12,8 +12,8 @@ const RoleRoute = ({ allowedRoles = [], excludeAdmin = false, children }) => {
     return <Navigate to="/admin" replace />;
   }
 
-  // Admins have access to teacher routes as well
-  if (allowedRoles.includes("teacher") && isAdmin) {
+  // Admins have access to admin and teacher routes
+  if (isAdmin && (allowedRoles.includes("admin") || allowedRoles.includes("teacher"))) {
     return children;
   }
 

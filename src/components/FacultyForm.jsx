@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { registerFaculty, sendTeacherCredentials } from "../services/studentservice";
 import "../styles/studentform.css";
 import {
@@ -14,6 +15,7 @@ import {
   FaCopy,
   FaPaperPlane,
   FaIdBadge,
+  FaShieldAlt,
 } from "react-icons/fa";
 
 const COLLEGE_DEPARTMENTS = [
@@ -41,6 +43,7 @@ const FACULTY_DESIGNATIONS = [
 
 const FacultyForm = () => {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -329,9 +332,27 @@ const FacultyForm = () => {
           <p>
             Enroll institution teaching faculty, configure department & designation, and auto-dispatch official Teacher ID with password setup link to their email.
           </p>
+          <div style={{ marginTop: "8px" }}>
+            <span
+              style={{
+                background: "#eff6ff",
+                color: "#1d4ed8",
+                padding: "5px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                border: "1px solid #bfdbfe",
+              }}
+            >
+              <FaShieldAlt /> Administrator Authority: Permitted to Create Faculty Accounts
+            </span>
+          </div>
         </div>
-        <Link to="/dashboard" className="back-link">
-          ← Back to Dashboard
+        <Link to={isAdmin ? "/admin" : "/dashboard"} className="back-link">
+          ← {isAdmin ? "Back to Admin Console" : "Back to Dashboard"}
         </Link>
       </div>
 
