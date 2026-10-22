@@ -13,11 +13,17 @@ const RoleRoute = ({ allowedRoles = [], excludeAdmin = false, children }) => {
   }
 
   // Admins have access to admin and teacher routes
-  if (isAdmin && (allowedRoles.includes("admin") || allowedRoles.includes("teacher"))) {
+  if (isAdmin && (allowedRoles.includes("admin") || allowedRoles.includes("teacher") || allowedRoles.includes("faculty"))) {
     return children;
   }
 
-  if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+  // Teachers and Faculty have access to teacher routes
+  if ((role === "teacher" || role === "faculty") && (allowedRoles.includes("teacher") || allowedRoles.includes("faculty"))) {
+    return children;
+  }
+
+  const normalizedRole = role === "faculty" ? "teacher" : role;
+  if (allowedRoles.length > 0 && !allowedRoles.includes(role) && !allowedRoles.includes(normalizedRole)) {
     // Redirect to respective home dashboard based on role
     if (isStudent) {
       return <Navigate to="/student/dashboard" replace />;

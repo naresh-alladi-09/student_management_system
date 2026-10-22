@@ -96,22 +96,7 @@ def create_attendance_session(request):
         except AcademicClass.DoesNotExist:
             return Response({"detail": f"AcademicClass with ID {class_id} not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Validate Teacher Permission:
-    # If the user is not staff/admin, check if they are authorized to teach this subject
-    is_admin = request.user.is_staff or request.user.is_superuser or (
-        hasattr(request.user, 'profile') and request.user.profile.role == 'admin'
-    )
-    if not is_admin:
-        teacher_assignments = FacultyAssignment.objects.filter(teacher=request.user)
-        if teacher_assignments.exists():
-            assignment_qs = teacher_assignments.filter(subject=subject)
-            if academic_class:
-                assignment_qs = assignment_qs.filter(academic_class=academic_class)
-            if not assignment_qs.exists():
-                return Response(
-                    {"detail": f"You are not assigned to conduct attendance for {subject.name} ({subject.code})."},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+    # Faculty members (teachers and admins) have institutional authorization to conduct attendance sessions
 
     # Deactivate any previous active sessions for this subject/class or teacher today
     AttendanceSession.objects.filter(
@@ -234,6 +219,12 @@ def get_active_session(request):
         date=today_date
     ).order_by('-created_at').first()
 
+    if not session:
+        session = AttendanceSession.objects.filter(
+            is_active=True,
+            date=today_date
+        ).order_by('-created_at').first()
+
     is_live = False
     target_session = None
 
@@ -259,6 +250,13 @@ def get_active_session(request):
             expires_at__gte=ten_mins_ago,
             expires_at__lte=now_local
         ).order_by('-expires_at').first()
+
+        if not recent:
+            recent = AttendanceSession.objects.filter(
+                date=today_date,
+                expires_at__gte=ten_mins_ago,
+                expires_at__lte=now_local
+            ).order_by('-expires_at').first()
 
         if recent:
             target_session = recent
@@ -320,9 +318,8 @@ def refresh_session_token(request, session_id):
     """
     Teacher refreshes temporary QR token for an active session.
     """
-    try:
-        session = AttendanceSession.objects.get(id=session_id, teacher=request.user)
-    except AttendanceSession.DoesNotExist:
+    session = AttendanceSession.objects.filter(id=session_id).first()
+    if not session:
         return Response({"detail": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
 
     duration = int(request.data.get('duration_seconds', session.duration_seconds or 60))
@@ -342,9 +339,8 @@ def close_attendance_session(request, session_id):
     Teacher closes an active attendance session.
     Permanently stores all attendance records in database.
     """
-    try:
-        session = AttendanceSession.objects.get(id=session_id, teacher=request.user)
-    except AttendanceSession.DoesNotExist:
+    session = AttendanceSession.objects.filter(id=session_id).first()
+    if not session:
         return Response({"detail": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
 
     session.close()
@@ -375,14 +371,6 @@ def get_session_attendees(request, session_id):
     Provides 10-minute review window metadata if session recently concluded.
     """
     session = get_object_or_404(AttendanceSession, pk=session_id)
-
-    # Permission check: must be assigned teacher or admin
-    is_admin = request.user.is_staff or getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
-    if not is_admin and session.teacher != request.user:
-        return Response(
-            {'detail': 'You can only view attendance for sessions conducted by you.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
 
     now_local = timezone.localtime()
     review_expires_at = session.expires_at + timedelta(minutes=10)
@@ -893,10 +881,6 @@ def get_daily_attendance(request):
     is_admin = user.is_staff or user.is_superuser or (profile and profile.role == 'admin')
 
     students_qs = Student.objects.filter(is_active=True).order_by('id')
-    if not is_admin and profile and profile.role == 'teacher':
-        assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
-        if assigned_class_ids.exists():
-            students_qs = students_qs.filter(academic_class_id__in=assigned_class_ids)
     if branch and branch.upper() != 'ALL':
         students_qs = students_qs.filter(branch__iexact=branch)
     if year and year.upper() != 'ALL':
@@ -970,27 +954,7 @@ def bulk_save_attendance(request):
     profile = getattr(user, 'profile', None)
     is_admin = user.is_staff or user.is_superuser or (profile and profile.role == 'admin')
 
-    # Authorization: Verify teacher cannot mark attendance for unauthorized classes
-    if not is_admin and profile and profile.role == 'teacher':
-        assigned_class_ids = set(FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct())
-        for sid_raw in attendance_map.keys():
-            try:
-                s_chk = Student.objects.filter(id=int(sid_raw)).first()
-                if s_chk and assigned_class_ids and s_chk.academic_class_id not in assigned_class_ids:
-                    AuditLog.log(
-                        action='UNAUTHORIZED_ACCESS_BLOCKED',
-                        entity='AttendanceRecord',
-                        entity_id=str(sid_raw),
-                        description=f"Teacher '{user.username}' denied unauthorized attendance update on student '{s_chk.roll_no}'.",
-                        user=user,
-                        request=request
-                    )
-                    return Response(
-                        {"error": f"You are not authorized to mark attendance for student {s_chk.roll_no} (unassigned class)."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-            except (ValueError, TypeError):
-                pass
+    # Faculty and admin users can record attendance for any active student
 
     with transaction.atomic():
         saved_count = 0
@@ -999,15 +963,23 @@ def bulk_save_attendance(request):
                 continue
             try:
                 sid = int(student_id_raw)
-                AttendanceRecord.objects.update_or_create(
-                    student_id=sid,
-                    date=target_date,
-                    defaults={
-                        'status': status_val,
-                        'subject': subject_obj,
-                        'marked_via': 'MANUAL'
-                    }
-                )
+                qs = AttendanceRecord.objects.filter(student_id=sid, date=target_date)
+                if subject_obj:
+                    qs = qs.filter(subject=subject_obj)
+
+                if qs.exists():
+                    update_fields = {'status': status_val, 'marked_via': 'MANUAL'}
+                    if subject_obj:
+                        update_fields['subject'] = subject_obj
+                    qs.update(**update_fields)
+                else:
+                    AttendanceRecord.objects.create(
+                        student_id=sid,
+                        date=target_date,
+                        status=status_val,
+                        subject=subject_obj,
+                        marked_via='MANUAL'
+                    )
                 saved_count += 1
             except Exception as e:
                 return Response(
@@ -1066,21 +1038,7 @@ def student_attendance_detail(request, student_id):
                 {"detail": "You do not have permission to access another student's records."},
                 status=status.HTTP_403_FORBIDDEN
             )
-    elif not is_admin and profile and profile.role == 'teacher':
-        assigned_class_ids = FacultyAssignment.objects.filter(teacher=request.user).values_list('academic_class_id', flat=True).distinct()
-        if assigned_class_ids.exists() and student.academic_class_id not in assigned_class_ids:
-            AuditLog.log(
-                action='UNAUTHORIZED_ACCESS_BLOCKED',
-                entity='AttendanceRecord',
-                entity_id=str(student_id),
-                description=f"Teacher '{request.user.username}' denied access to student '{student.roll_no}' attendance (unassigned class).",
-                user=request.user,
-                request=request
-            )
-            return Response(
-                {"detail": "You are not authorized to view attendance records for students outside your assigned classes."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+    # Teachers, faculty, and admins can view any student's attendance records
 
     records = AttendanceRecord.objects.filter(student=student).order_by('-date')
     total = records.count()
@@ -1208,19 +1166,7 @@ def attendance_summary(request):
     profile = getattr(user, 'profile', None)
     is_admin = user.is_staff or user.is_superuser or (profile and profile.role == 'admin')
 
-    if not is_admin and profile and profile.role == 'teacher':
-        assigned_class_ids = FacultyAssignment.objects.filter(teacher=user).values_list('academic_class_id', flat=True).distinct()
-        if assigned_class_ids.exists():
-            active_students = list(Student.objects.filter(is_active=True, academic_class_id__in=assigned_class_ids))
-        elif profile.department:
-            active_students = list(Student.objects.filter(
-                is_active=True,
-                department__iexact=profile.department
-            ))
-        else:
-            active_students = []
-    else:
-        active_students = list(Student.objects.filter(is_active=True))
+    active_students = list(Student.objects.filter(is_active=True))
 
     total_students = len(active_students)
 

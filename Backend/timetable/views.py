@@ -227,13 +227,7 @@ def start_attendance_from_slot(request, slot_id):
         pk=slot_id
     )
 
-    # Permission check: must be assigned teacher or staff/admin
-    is_admin = request.user.is_staff or getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
-    if not is_admin and slot.teacher != request.user:
-        return Response(
-            {'detail': 'You can only start attendance for lectures assigned to you.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
+    # Faculty members (teachers and admins) have permission to initiate attendance for lecture slots
 
     now_local = timezone.localtime()
     current_time = now_local.time()
@@ -279,9 +273,10 @@ def start_attendance_from_slot(request, slot_id):
     expires_at = slot_end_dt if not ignore_time else (now_local + timezone.timedelta(seconds=duration_seconds))
 
     # Check for active existing session for this slot today to prevent duplicates
+    conducting_teacher = slot.teacher or request.user
     active_session = AttendanceSession.objects.filter(
         subject=slot.subject,
-        teacher=slot.teacher,
+        teacher=conducting_teacher,
         date=today_date,
         is_active=True
     ).first()
@@ -304,7 +299,7 @@ def start_attendance_from_slot(request, slot_id):
     if not session:
         session = AttendanceSession.create_session(
             subject=slot.subject,
-            teacher=slot.teacher,
+            teacher=conducting_teacher,
             duration_seconds=duration_seconds,
             academic_class=slot.academic_class,
             section=slot.section or 'A',

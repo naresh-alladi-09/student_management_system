@@ -202,7 +202,7 @@ export const AuthProvider = ({ children }) => {
 
   const role = currentUser?.role || null;
   const isAdmin = role === "admin" || Boolean(currentUser?.isStaff);
-  const isTeacher = role === "teacher" || isAdmin;
+  const isTeacher = role === "teacher" || role === "faculty" || isAdmin;
   const isStudent = role === "student";
 
   return (
