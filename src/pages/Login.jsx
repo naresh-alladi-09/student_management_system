@@ -19,7 +19,6 @@ import {
   FaArrowRight,
   FaShieldAlt,
   FaUniversity,
-  FaMagic,
   FaPaperPlane,
 } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
@@ -112,21 +111,6 @@ const Login = ({ initialRole }) => {
     setPassword("");
     setMode("login");
     navigate(`/login/${newRole}`, { replace: true });
-  };
-
-  // Quick Demo Auto-fill Helper
-  const handleQuickFill = () => {
-    resetAllFeedback();
-    if (activeRole === "student") {
-      setUsername("STU20240001");
-      setPassword("student123");
-    } else if (activeRole === "admin") {
-      setUsername("admin");
-      setPassword("admin123");
-    } else {
-      setUsername("madam");
-      setPassword("123456");
-    }
   };
 
   const handleTestBackend = async () => {
@@ -470,12 +454,12 @@ const Login = ({ initialRole }) => {
 
   const getPortalDescription = () => {
     if (isAdminMode) {
-      return "Centralized management of departments, academic curriculum, faculty assignments, system audits, and institution controls.";
+      return "Manage departments, faculty, curriculum, and institutional controls.";
     }
     if (isStudentMode) {
-      return "Access your verified real-time attendance, biometric check-ins, exam hall tickets, semester grades, and department notifications.";
+      return "View verified attendance, exam hall tickets, grades, and notices.";
     }
-    return "Streamline student enrollments, launch anti-proxy QR attendance sessions, evaluate grades, and monitor real-time class analytics.";
+    return "Take attendance, track student performance, and manage classes.";
   };
 
   return (
@@ -523,10 +507,10 @@ const Login = ({ initialRole }) => {
                 </div>
                 <span>
                   {isAdminMode
-                    ? "Full user privileges & faculty access controls"
+                    ? "User privileges & access controls"
                     : isStudentMode
-                    ? "Anti-proxy live QR + AI facial recognition check-in"
-                    : "Geofenced dynamic QR code attendance sessions"}
+                    ? "Anti-proxy QR & facial verification"
+                    : "Geofenced dynamic QR attendance"}
                 </span>
               </div>
               <div className="feature-item">
@@ -535,10 +519,10 @@ const Login = ({ initialRole }) => {
                 </div>
                 <span>
                   {isAdminMode
-                    ? "Institutional security audits & session tracking"
+                    ? "Institutional security audits"
                     : isStudentMode
-                    ? "Real-time 75% attendance threshold monitoring"
-                    : "Instant facial enrollment with 128-d biometrics"}
+                    ? "Real-time attendance tracking"
+                    : "Biometric facial recognition"}
                 </span>
               </div>
               <div className="feature-item">
@@ -547,47 +531,12 @@ const Login = ({ initialRole }) => {
                 </div>
                 <span>
                   {isAdminMode
-                    ? "Class cohort scheduling & branch configuration"
+                    ? "Cohort scheduling & branch settings"
                     : isStudentMode
-                    ? "Digital examination hall tickets & CGPA cards"
-                    : "Automated shortage warning dispatch via SMS & Email"}
+                    ? "Digital hall tickets & grade reports"
+                    : "Automated shortage alert notifications"}
                 </span>
               </div>
-            </div>
-          </div>
-
-          {/* Quick Demo Credentials Footer Pill */}
-          <div className="login-demo-helper-box">
-            <div className="demo-helper-header">
-              <span className="demo-tag">
-                <FaMagic /> Quick Demo Access
-              </span>
-              <button
-                type="button"
-                className="btn-autofill"
-                onClick={handleQuickFill}
-                title="Fill credentials for this role"
-              >
-                Auto-fill Creds
-              </button>
-            </div>
-            <div className="demo-helper-body">
-              <span>
-                User:{" "}
-                <code>
-                  {isAdminMode ? "admin" : isStudentMode ? "STU20240001" : "madam"}
-                </code>
-              </span>
-              <span>
-                Pass:{" "}
-                <code>
-                  {isAdminMode
-                    ? "admin123"
-                    : isStudentMode
-                    ? "student123"
-                    : "123456"}
-                </code>
-              </span>
             </div>
           </div>
         </div>
@@ -861,7 +810,7 @@ const Login = ({ initialRole }) => {
                     />
                   </div>
                   <span className="field-hint-text">
-                    We will look up your account and send a 6-digit verification code to your registered email address.
+                    A 6-digit verification code will be sent to your registered email.
                   </span>
                 </div>
 
@@ -905,11 +854,6 @@ const Login = ({ initialRole }) => {
                   <div>
                     <strong>Verification code sent!</strong>
                     <div>Check your inbox at <span>{maskedEmail}</span>. Code expires in 15 minutes.</div>
-                    {devOtp && (
-                      <div className="dev-otp-tag">
-                        Demo Mode Hint: OTP is <code>{devOtp}</code>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -1247,13 +1191,6 @@ const Login = ({ initialRole }) => {
                   <input type="checkbox" defaultChecked />
                   <span>Remember session</span>
                 </label>
-                <button
-                  type="button"
-                  className="quick-sample-link"
-                  onClick={handleQuickFill}
-                >
-                  Use sample {activeRole} creds
-                </button>
               </div>
 
               {wakeUpNotice && (

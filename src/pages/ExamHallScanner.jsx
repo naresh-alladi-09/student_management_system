@@ -287,7 +287,7 @@ const ExamHallScanner = () => {
               </h1>
             </div>
             <p style={{ margin: 0, fontSize: "13.5px", color: "#bfdbfe" }}>
-              Verify students' official admit cards, check candidate photographs, and admit students into the examination hall.
+              Scan hall tickets and verify student identity for exam entry.
             </p>
           </div>
 
@@ -851,7 +851,7 @@ const ExamHallScanner = () => {
                   Exam Hall Admitted Candidates
                 </h3>
                 <span style={{ fontSize: "13px", color: "#64748b" }}>
-                  Official audit roster of candidates scanned and verified at examination hall entrance.
+                  Roster of verified students admitted to the exam hall.
                 </span>
               </div>
 
@@ -882,7 +882,7 @@ const ExamHallScanner = () => {
                 <FaUserGraduate style={{ fontSize: "36px", marginBottom: "10px", color: "#94a3b8" }} />
                 <div style={{ fontWeight: 600, fontSize: "15px" }}>No candidates scanned yet</div>
                 <p style={{ margin: "4px 0 0 0", fontSize: "13px" }}>
-                  Switch to the Live Camera Scanner tab to scan hall tickets at the exam door.
+                  Switch to Live Camera Scanner to scan hall tickets.
                 </p>
               </div>
             ) : (

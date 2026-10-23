@@ -105,7 +105,7 @@ const FacultyForm = () => {
             Access Restricted: Administrator Only
           </h2>
           <p style={{ color: "#64748b", fontSize: "14px", lineHeight: 1.6, marginBottom: "24px" }}>
-            Only system administrators have permission to create and register faculty accounts. If you need a new faculty member enrolled, please contact the institutional administrator.
+            Only administrators can register faculty accounts. Please contact your administrator.
           </p>
           <Link
             to="/dashboard"
@@ -389,7 +389,7 @@ const FacultyForm = () => {
         <div>
           <h2>👨‍🏫 Faculty Member Registration</h2>
           <p>
-            Enroll institution teaching faculty, configure department & designation, and auto-dispatch official Teacher ID with password setup link to their email.
+            Enroll faculty members, configure department roles, and send login credentials.
           </p>
           <div style={{ marginTop: "8px" }}>
             <span

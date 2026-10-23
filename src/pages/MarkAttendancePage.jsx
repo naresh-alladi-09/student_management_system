@@ -1681,7 +1681,7 @@ const MarkAttendancePage = () => {
                       <span>Verifying Biometric Signature & Geofence...</span>
                     </div>
                     <p style={{ margin: "6px 0 0 0", fontSize: "12px", color: "#a7f3d0" }}>
-                      Autonomous check-in in progress. Matching face against registered student profile.
+                      Matching face against registered student profile...
                     </p>
                   </div>
                 ) : (
@@ -1704,7 +1704,7 @@ const MarkAttendancePage = () => {
                           Autonomous Face Auto-Detection
                         </div>
                         <div style={{ fontSize: "11px", color: "#64748b" }}>
-                          No clicks needed: Face detection, snapshot, and verification happen automatically.
+                          Face detection and verification happen automatically.
                         </div>
                       </div>
                     </div>
@@ -1839,7 +1839,7 @@ const MarkAttendancePage = () => {
             >
               <strong>Session Scanned Successfully!</strong>
               <div style={{ marginTop: "4px" }}>
-                Please sign in with your student credentials to verify your identity and launch anti-proxy biometrics.
+                Sign in with your student credentials to verify attendance.
               </div>
             </div>
 
@@ -1960,7 +1960,7 @@ const MarkAttendancePage = () => {
             </form>
 
             <div style={{ marginTop: "16px", fontSize: "12px", color: "#64748b" }}>
-              Enter your Student ID / Roll Number and the password stored in your account record.
+              Enter your Student ID and password.
             </div>
           </div>
         )}

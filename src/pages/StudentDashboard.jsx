@@ -551,7 +551,7 @@ const StudentDashboard = () => {
               )}
             </p>
             <div style={{ fontSize: "12px", color: "#991b1b", display: "flex", alignItems: "center", gap: "6px" }}>
-              <span>⚠️ Official shortage alert has been sent via Email &amp; SMS to your registered email and your parent/guardian.</span>
+              <span>⚠️ Shortage alert sent to your registered contact and parent/guardian.</span>
             </div>
           </div>
         </div>
@@ -1682,7 +1682,7 @@ const StudentDashboard = () => {
                 <FaFileAlt style={{ color: "#2563eb" }} /> Leave &amp; On-Duty (OD) Applications
               </h3>
               <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
-                Apply for On-Duty (OD) representations, medical leaves, or academic duties. Approved leaves grant automatic attendance credit.
+                Apply for leave or on-duty attendance credit.
               </p>
             </div>
 
@@ -1951,7 +1951,7 @@ const StudentDashboard = () => {
                           No Leave or On-Duty Applications
                         </h4>
                         <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#64748b" }}>
-                          Going on leave or attending a college event? Submit an On-Duty or Medical application to safeguard your 75% attendance record.
+                          Submit an on-duty or leave application for attendance approval.
                         </p>
                         <button
                           type="button"
@@ -2013,7 +2013,7 @@ const StudentDashboard = () => {
                 Semester Examination Hall Ticket / Admit Card
               </h2>
               <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
-                Verify your attendance eligibility, view paper timetables, and download your official examination hall ticket.
+                View exam schedules and download your hall ticket.
               </p>
             </div>
 
@@ -2141,8 +2141,8 @@ const StudentDashboard = () => {
                     </div>
                   </div>
 
-                  <p style={{ margin: "0 0 12px 0", fontSize: "13.5px", color: "#475569", lineHeight: "1.5" }}>
-                    The college administration has scheduled the examination dates and subjects. As soon as the Admin clicks the button to approve and release hall tickets, your official Admit Card with scannable QR verification will appear right here.
+                  <p style={{ margin: "0 0 12px 0", fontSize: "13.5px", color: "#475569" }}>
+                    Exam scheduled. Hall ticket will appear once released by administration.
                   </p>
 
                   {session.timetable && session.timetable.length > 0 && (
@@ -3776,7 +3776,7 @@ const StudentDashboard = () => {
               >
                 <FaInfoCircle />
                 <span>
-                  Approved On-Duty and Medical Leaves automatically grant attendance credit so your 75% semester requirement is preserved.
+                  Approved requests are credited to your attendance record.
                 </span>
               </div>
 

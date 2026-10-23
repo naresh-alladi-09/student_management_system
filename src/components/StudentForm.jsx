@@ -507,7 +507,7 @@ const StudentForm = () => {
       <div className="form-page-header">
         <div>
           <h2>Enroll Student & Register Biometric Face</h2>
-          <p>Register student record and record their biometric facial identity for Anti-Proxy Attendance</p>
+          <p>Register student details and face biometrics for attendance.</p>
         </div>
         <Link to="/students" className="back-link">
           ← View All Students
@@ -520,7 +520,7 @@ const StudentForm = () => {
             <div>{successMessage}</div>
             {createdStudentId && (
               <div style={{ marginTop: "8px", fontSize: "13px", color: "#166534" }}>
-                <strong>Assigned Student ID:</strong> <code>{createdStudentId}</code> • Welcome details and onboarding instructions sent to student's email. Student will use this Student ID to set their initial password and log in.
+                <strong>Assigned Student ID:</strong> <code>{createdStudentId}</code> • Onboarding instructions sent to student email.
               </div>
             )}
           </div>
@@ -540,7 +540,7 @@ const StudentForm = () => {
                   Face Registration (Anti-Proxy Biometrics)
                 </h4>
                 <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                  Take a photo of the student to store in the database for QR attendance face matching
+                  Capture or upload student photo for facial recognition.
                 </p>
               </div>
             </div>
@@ -732,7 +732,7 @@ const StudentForm = () => {
                     </div>
                   )}
                   <p style={{ margin: "10px 0 0 0", fontSize: "12px", color: "#64748b" }}>
-                    * Recommended: Ensure student faces directly towards the camera with neutral expression.
+                    Face directly towards the camera with clear lighting.
                   </p>
                 </div>
               )}

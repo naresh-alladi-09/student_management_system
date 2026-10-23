@@ -216,75 +216,6 @@
   color: #c084fc;
 }
 
-/* Quick Demo Helper Box */
-.login-demo-helper-box {
-  background: rgba(15, 23, 42, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  padding: 14px 16px;
-  border-radius: 14px;
-  backdrop-filter: blur(12px);
-  margin-top: 28px;
-}
-
-.demo-helper-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.demo-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #93c5fd;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  font-weight: 700;
-}
-
-.student-mode .demo-tag {
-  color: #6ee7b7;
-}
-
-.admin-mode .demo-tag {
-  color: #c4b5fd;
-}
-
-.btn-autofill {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: #ffffff;
-  padding: 3px 9px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-autofill:hover {
-  background: rgba(255, 255, 255, 0.25);
-  transform: translateY(-1px);
-}
-
-.demo-helper-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-.demo-helper-body code {
-  background: rgba(0, 0, 0, 0.4);
-  color: #f8fafc;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-weight: 600;
-}
 
 /* ==========================================================================
    RIGHT FORM AREA
@@ -547,21 +478,6 @@
 .checkbox-wrap input {
   cursor: pointer;
   accent-color: #2563eb;
-}
-
-.quick-sample-link {
-  background: none;
-  border: none;
-  color: #64748b;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-  transition: color 0.15s ease;
-}
-
-.quick-sample-link:hover {
-  color: #0f172a;
 }
 
 /* Wakeup banner if cold starting */

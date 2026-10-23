@@ -473,7 +473,7 @@ const Students = () => {
               <h2>
                 <i className="fa-solid fa-graduation-cap"></i> Student Directory Management
               </h2>
-              <p>Search, filter, edit student profiles, update facial biometrics, and dispatch institutional credentials</p>
+              <p>Manage enrolled students, profiles, and biometric registration.</p>
             </div>
             <div className="students-banner-actions">
               <Link
@@ -910,7 +910,7 @@ const Students = () => {
                   <strong>&quot;{studentToDeactivate.name}&quot;</strong>?
                   <br />
                   <span style={{ fontSize: "12px", color: "#64748b" }}>
-                    Note: This is a safe soft-deletion. Historical attendance and marks records are preserved, and this account can be restored at any time.
+                    Historical attendance and marks records will be preserved.
                   </span>
                 </p>
                 <div className="delete-modal-actions">
@@ -1061,7 +1061,7 @@ const Students = () => {
                         <i className="fa-solid fa-circle-check"></i> Photo Ready for Biometrics
                       </div>
                       <p style={{ margin: "0 0 10px 0", fontSize: "12px", color: "#64748b" }}>
-                        Click Save to compute and store the 128-dimensional facial embedding in the database.
+                        Save to store facial biometrics for attendance.
                       </p>
                       <div style={{ display: "flex", gap: "8px" }}>
                         <button
@@ -1084,7 +1084,7 @@ const Students = () => {
                 ) : (
                   <div style={{ textAlign: "center", padding: "28px 16px", background: "#f8fafc", border: "2px dashed #cbd5e1", borderRadius: "12px" }}>
                     <p style={{ margin: "0 0 14px 0", fontSize: "13.5px", color: "#475569" }}>
-                      Take a live photo or upload an image of the student to register their biometric face profile.
+                      Capture or upload a photo to register face biometrics.
                     </p>
                     <div style={{ display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
                       <button

@@ -493,7 +493,7 @@ function Performance() {
               <div className="performance-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <h2>Academic Performance &amp; Gradebook</h2>
-                  <p>Subject evaluations, computed SGPA, and 10-point scale grade distribution</p>
+                  <p>Subject grades, SGPA, and semester performance summary.</p>
                 </div>
 
             <button
@@ -1353,7 +1353,7 @@ function Performance() {
                         Examination Sessions &amp; Hall Tickets
                       </h2>
                       <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
-                        Schedule semester examinations, configure minimum attendance thresholds, and automatically issue verifiable admit cards.
+                        Manage exam schedules and issue student hall tickets.
                       </p>
                     </div>
 
@@ -1431,7 +1431,7 @@ function Performance() {
                       <div style={{ textAlign: "center", padding: "50px 20px", color: "#64748b" }}>
                         <div style={{ fontSize: "36px", marginBottom: "12px" }}>📋</div>
                         <h4 style={{ margin: "0 0 8px 0", color: "#0f172a", fontSize: "17px" }}>No Examination Sessions Created</h4>
-                        <p style={{ margin: "0 0 16px 0", fontSize: "13.5px" }}>Click "+ Schedule Examination" above to create an exam session and generate hall tickets.</p>
+                        <p style={{ margin: "0 0 16px 0", fontSize: "13.5px" }}>Click "+ Schedule Examination" above to set up an exam session.</p>
                       </div>
                     ) : (
                       <div style={{ overflowX: "auto" }}>
@@ -1633,7 +1633,7 @@ function Performance() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>Schedule Examination Session &amp; Timetable</h3>
-                    <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#64748b" }}>Configure exam dates, subjects timetable, college name, and student hall ticket release settings.</p>
+                    <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#64748b" }}>Set exam timetable, dates, and ticket release settings.</p>
                   </div>
                   <button type="button" onClick={() => setShowExamModal(false)} style={{ background: "none", border: "none", fontSize: "18px", color: "#94a3b8", cursor: "pointer" }}>×</button>
                 </div>
@@ -1785,7 +1785,7 @@ function Performance() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
                       <div>
                         <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>Exam Subjects &amp; Timetable Papers</div>
-                        <div style={{ fontSize: "11px", color: "#64748b" }}>Admin can set the specific subjects, paper dates, exam timings, and hall/room.</div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>Configure subject exam dates, timings, and rooms.</div>
                       </div>
                       <button
                         type="button"
@@ -1901,7 +1901,7 @@ function Performance() {
                       <span>Approve &amp; Release Hall Tickets to Students immediately upon creation</span>
                     </label>
                     <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px", paddingLeft: "26px" }}>
-                      If unchecked, the exam remains scheduled as a draft. You can click "Give Hall Tickets" anytime later to release them to students.
+                      If unchecked, hall tickets can be released anytime after scheduling.
                     </div>
                   </div>
 

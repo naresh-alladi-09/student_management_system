@@ -844,7 +844,7 @@ const AdminDashboard = () => {
                 Institutional Governance & Audit Control
               </h1>
               <p style={{ margin: 0, color: "#94a3b8", fontSize: "14px" }}>
-                Manage faculty credentials, academic departments, courses catalog, and inspect audit logs.
+                Manage faculty, departments, courses, and system audit logs.
               </p>
             </div>
 
@@ -1360,7 +1360,7 @@ const AdminDashboard = () => {
                       </span>
                     </h3>
                     <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                      Authoritative, immutable institutional ledger recording all authentication, enrollment, attendance, and grading operations.
+                      System audit ledger of authentication, enrollment, and attendance events.
                     </p>
                   </div>
 
@@ -1844,7 +1844,7 @@ const AdminDashboard = () => {
                     Institutional Directory &amp; Accounts
                   </h3>
                   <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
-                    Separate records for Faculty Instructors, Enrolled Students, and System Administrators with role-specific User IDs.
+                    User accounts for faculty, students, and administrators.
                   </p>
                 </div>
 
@@ -2020,7 +2020,7 @@ const AdminDashboard = () => {
                         <FaChalkboardTeacher /> Faculty &amp; Teaching Staff ({filteredTeachers.length})
                       </h4>
                       <small style={{ color: "#64748b" }}>
-                        Authorized teachers and course instructors with designated Teacher IDs (TCH-XXX).
+                        Faculty members and course instructors.
                       </small>
                     </div>
                     <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
@@ -2239,7 +2239,7 @@ const AdminDashboard = () => {
                         <FaUserGraduate /> Enrolled Students Roster ({filteredStudents.length})
                       </h4>
                       <small style={{ color: "#64748b" }}>
-                        Separate student registry with enrolled cohorts, roll numbers, and unique Student IDs (STU-XXX).
+                        Enrolled student records and cohort details.
                       </small>
                     </div>
                   </div>
@@ -2379,7 +2379,7 @@ const AdminDashboard = () => {
                         <FaUserShield /> System Administrators ({filteredAdmins.length})
                       </h4>
                       <small style={{ color: "#64748b" }}>
-                        Privileged administrators with console management authorizations and Admin IDs (ADM-XXX).
+                        System administrators with console privileges.
                       </small>
                     </div>
                   </div>
@@ -2504,7 +2504,7 @@ const AdminDashboard = () => {
                     Curriculum Courses &amp; Syllabi Directory
                   </h3>
                   <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
-                    Official institution-accredited subjects, credit weightings, semester distribution, and branch allocations.
+                    Curriculum subjects, credit weights, and branch allocations.
                   </p>
                 </div>
 
@@ -2824,7 +2824,7 @@ const AdminDashboard = () => {
                             </h4>
                             <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#64748b" }}>
                               {subjects.length === 0
-                                ? "Establish your academic syllabus by creating courses with codes, credits, and department allocations."
+                                ? "Create curriculum courses to configure subjects for each department."
                                 : "Try clearing your search term or adjusting branch and semester filters."}
                             </p>
                             {subjects.length === 0 ? (
@@ -2900,7 +2900,7 @@ const AdminDashboard = () => {
                     Academic Timetable & Lecture Periods
                   </h3>
                   <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                    Manage curriculum lecture slots, classroom assignments, and assigned faculty instructors.
+                    Schedule lecture periods, classrooms, and assigned faculty.
                   </p>
                 </div>
 
@@ -3066,7 +3066,7 @@ const AdminDashboard = () => {
                     Institutional Attendance Analytics & Shortage Warning System
                   </h3>
                   <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                    Multi-dimensional tracking: branch-wise, year-wise, section-wise, subject-wise, and real-time deficit calculations.
+                    Attendance statistics across branches, years, and sections.
                   </p>
                 </div>
 
@@ -3514,7 +3514,7 @@ const AdminDashboard = () => {
                     Institutional Broadcasts & Announcements
                   </h3>
                   <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
-                    Broadcast critical campus news, academic deadlines, or section-specific directives directly to students' in-app notification centers.
+                    Publish announcements to students and faculty dashboards.
                   </p>
                 </div>
 
@@ -3658,7 +3658,7 @@ const AdminDashboard = () => {
                     Academic Reports & Data Export Engine
                   </h3>
                   <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
-                    Generate verified institutional audits, attendance sheets, shortage registers, and gradebooks with direct CSV export.
+                    Export attendance records, audit logs, and gradebooks.
                   </p>
                 </div>
 
@@ -4061,7 +4061,7 @@ const AdminDashboard = () => {
                 Add Timetable Schedule Slot
               </h3>
               <p style={{ margin: "0 0 16px 0", color: "#64748b", fontSize: "14px" }}>
-                Schedule a teaching lecture period, room assignment, and faculty instructor.
+                Add a class timetable period.
               </p>
 
               {timetableModalMessage && (
@@ -4536,7 +4536,7 @@ const AdminDashboard = () => {
                     style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
                   />
                   <small style={{ color: "#64748b", fontSize: "11px", marginTop: "3px", display: "block" }}>
-                    Official correspondence and credential notices will be sent to this address.
+                    Login credentials and notices are sent here.
                   </small>
                 </div>
 
@@ -4672,7 +4672,7 @@ const AdminDashboard = () => {
                 </h3>
               </div>
               <p style={{ margin: "0 0 16px 0", color: "#64748b", fontSize: "14px" }}>
-                Add an institution-accredited subject to the academic syllabus, timetable scheduler, and faculty grading rosters.
+                Add a new subject to the curriculum.
               </p>
 
               {courseModalMessage && (
@@ -4880,7 +4880,7 @@ const AdminDashboard = () => {
                 >
                   <FaInfoCircle />
                   <span>
-                    Once created, this course will immediately appear in the admin catalog, timetable lecture slot builder, faculty grading rosters, and student curriculum overviews.
+                    This course will be available across timetables and grading rosters.
                   </span>
                 </div>
 

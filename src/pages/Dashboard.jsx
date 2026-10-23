@@ -257,7 +257,7 @@ const Dashboard = () => {
                     Examination Hall Invigilator QR Scanner
                   </h3>
                   <p style={{ margin: 0, fontSize: "13px", color: "#bfdbfe" }}>
-                    Scan candidates' official Hall Ticket QR codes at exam doors, verify candidate photographs, and record entry.
+                    Scan exam hall tickets and verify student identity at the door.
                   </p>
                 </div>
               </div>
@@ -1176,7 +1176,7 @@ const Dashboard = () => {
                     border: "1px dashed #cbd5e1",
                   }}
                 >
-                  No students scanned QR during this period. All enrolled students are marked Absent in the database.
+                  No scans recorded. Enrolled students are marked absent.
                 </div>
               )}
             </div>

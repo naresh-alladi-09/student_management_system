@@ -872,19 +872,19 @@ function Attendance() {
                     <h3 style={{ margin: "0 0 16px 0", color: "#0f172a" }}>
                       Start New Attendance Session
                     </h3>
-                    <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
-                      Select a curriculum subject and launch a temporary QR code for students to scan in class.
+                    <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "16px" }}>
+                      Select a subject to launch an in-class QR attendance session.
                     </p>
 
                     {!isAdmin && subjects.length === 0 ? (
-                      <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", color: "#b45309", padding: "16px", borderRadius: "10px", fontSize: "13px", marginBottom: "20px", display: "flex", alignItems: "flex-start", gap: "12px" }}>
-                        <FaExclamationTriangle style={{ marginTop: "2px", fontSize: "18px", flexShrink: 0, color: "#d97706" }} />
+                      <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", color: "#b45309", padding: "14px", borderRadius: "10px", fontSize: "13px", marginBottom: "16px", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <FaExclamationTriangle style={{ marginTop: "2px", fontSize: "16px", flexShrink: 0, color: "#d97706" }} />
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px", color: "#92400e" }}>
+                          <div style={{ fontWeight: 700, fontSize: "13.5px", marginBottom: "2px", color: "#92400e" }}>
                             No Assigned Subjects Found
                           </div>
                           <div>
-                            In accordance with institutional policy, attendance must be taken by the respective subject faculty. You are not currently assigned to teach any subjects. Please contact the administrator to assign curriculum subjects or lecture slots to your account.
+                            You have no assigned subjects. Attendance must be marked by the designated subject faculty.
                           </div>
                         </div>
                       </div>
@@ -1118,13 +1118,13 @@ function Attendance() {
 
                             {(!classLatitude || !classLongitude) && (
                               <div style={{ fontSize: "11.5px", color: "#b45309", marginTop: "4px", fontWeight: 500 }}>
-                                ⚠️ Classroom coordinates are required when Geofence is active. Click 'Detect GPS Location' or 'Use Campus Location' above.
+                                ⚠️ Classroom coordinates required when Geofence is active.
                               </div>
                             )}
 
                             {classLatitude && classLongitude && (
                               <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
-                                Classroom Center: <code>{Number(classLatitude).toFixed(6)}</code>, <code>{Number(classLongitude).toFixed(6)}</code> • Students outside {geofenceRadius}m radius will be blocked as proxy!
+                                Center: <code>{Number(classLatitude).toFixed(6)}</code>, <code>{Number(classLongitude).toFixed(6)}</code> • Radius: {geofenceRadius}m
                               </div>
                             )}
                           </div>
@@ -1143,8 +1143,8 @@ function Attendance() {
                           <span>Enforce Live Facial Biometrics (Face Match Required)</span>
                         </label>
                         {faceRequired && (
-                          <div style={{ paddingLeft: "26px", marginTop: "6px", fontSize: "12px", color: "#64748b" }}>
-                            Students must scan their face through their camera. Attendance is only marked if the live face matches the registered student photo in the database.
+                          <div style={{ paddingLeft: "26px", marginTop: "4px", fontSize: "12px", color: "#64748b" }}>
+                            Students verify identity via live facial biometrics.
                           </div>
                         )}
                       </div>
@@ -1240,7 +1240,7 @@ function Attendance() {
                         {Math.floor(timeRemaining / 60)}m {String(timeRemaining % 60).padStart(2, "0")}s
                       </div>
                       <div style={{ fontSize: "12px", color: "#047857" }}>
-                        Attendance is permanently saved in the database. Review vanishes automatically after countdown.
+                        Attendance saved. Review closes automatically after countdown.
                       </div>
                     </div>
 
@@ -1299,8 +1299,8 @@ function Attendance() {
                     <h3 style={{ margin: "0 0 6px 0", color: "#0f172a" }}>
                       {activeSessionData.session?.subject_details?.name}
                     </h3>
-                    <p style={{ color: "#64748b", fontSize: "13px", margin: "0 0 16px 0" }}>
-                      Students can scan this QR code with their phone camera, or use the camera scanner on their dashboard.
+                    <p style={{ color: "#64748b", fontSize: "13px", margin: "0 0 14px 0" }}>
+                      Students scan this QR code using their dashboard camera scanner.
                     </p>
 
                     {/* QR Code Canvas */}
@@ -1992,7 +1992,7 @@ function Attendance() {
                     Attendance Analytics & Shortage Warning System
                   </h3>
                   <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                    Live cohort statistics, multi-dimensional breakdowns, and identification of students below requirement threshold.
+                    Cohort attendance statistics and shortage threshold tracking.
                   </p>
                 </div>
 
@@ -2124,7 +2124,7 @@ function Attendance() {
                           Students Below {threshold}% Required Threshold
                         </h4>
                         <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#64748b" }}>
-                          Instant official shortage notifications delivered to students &amp; parents via Email and SMS text message.
+                          Shortage alerts dispatched to students and registered parents.
                         </p>
                       </div>
 
@@ -2412,8 +2412,8 @@ function Attendance() {
                   <h2 style={{ fontSize: "20px", fontWeight: "700", color: "#0f172a", margin: "0 0 6px 0" }}>
                     Student Leave & On-Duty (OD) Requests
                   </h2>
-                  <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
-                    Review, approve, or reject student leave and on-duty requests. Approved requests automatically credit attendance and protect eligibility thresholds.
+                  <p style={{ margin: 0, color: "#64748b", fontSize: "13.5px" }}>
+                    Review and approve student leave and on-duty requests.
                   </p>
                 </div>
                 <button
@@ -3043,7 +3043,7 @@ function Attendance() {
                           🚨 Activate Warning Emails for All Defaulters (&lt;{threshold}%)
                         </h4>
                         <p style={{ margin: 0, fontSize: "12.5px", color: "#7f1d1d" }}>
-                          Immediately sends official examination debarment warnings to students and registered parents.
+                          Send official shortage warning notifications to defaulters and parents.
                         </p>
                       </div>
                       <span style={{ background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca", padding: "4px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 700 }}>
@@ -3101,7 +3101,7 @@ function Attendance() {
                         </h4>
                       </div>
                       <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#64748b" }}>
-                        Select any student to test email dispatch. Enter your own email below to receive and inspect the live test email in your personal inbox!
+                        Select a student and specify an email address to test alert dispatch.
                       </p>
                     </div>
 
@@ -3244,8 +3244,8 @@ function Attendance() {
                   )}
 
                   {/* Section 4: Email Delivery Configuration Notice */}
-                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px 14px", borderRadius: "10px", fontSize: "12px", color: "#166534", lineHeight: 1.5 }}>
-                    <strong>💡 Live Email Delivery:</strong> Warning emails are dispatched via Django's configured Email Backend. To deliver live emails to student &amp; parent Gmail inboxes, ensure <code style={{ background: "#dcfce7", padding: "2px 4px", borderRadius: "4px" }}>EMAIL_HOST_USER</code> and <code style={{ background: "#dcfce7", padding: "2px 4px", borderRadius: "4px" }}>EMAIL_HOST_PASSWORD</code> are populated in <code style={{ background: "#dcfce7", padding: "2px 4px", borderRadius: "4px" }}>Backend/.env</code>.
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "8px 12px", borderRadius: "8px", fontSize: "12px", color: "#166534" }}>
+                    <strong>Notice:</strong> Alert emails are dispatched through configured institutional SMTP credentials.
                   </div>
                 </div>
               </div>
