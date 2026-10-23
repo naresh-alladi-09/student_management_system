@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import "../styles/attendence.css";
 import Sidebar from "../components/Sidebar";
@@ -47,7 +47,21 @@ import {
 function Attendance() {
   const { currentUser, isAdmin } = useAuth();
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState("manual"); // 'manual' | 'qr' | 'analytics' | 'leaves'
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Persistent Active Tab: Reads from URL query (?tab=qr), then localStorage, defaulting to 'manual'
+  const [activeTab, setActiveTab] = useState(() => {
+    const urlTab = searchParams.get("tab");
+    if (urlTab && ["manual", "qr", "analytics", "leaves"].includes(urlTab)) {
+      return urlTab;
+    }
+    const savedTab = localStorage.getItem("sms_attendance_tab");
+    if (savedTab && ["manual", "qr", "analytics", "leaves"].includes(savedTab)) {
+      return savedTab;
+    }
+    return "manual";
+  });
+
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -55,31 +69,123 @@ function Attendance() {
   const [attendance, setAttendance] = useState({});
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [selectedBranch, setSelectedBranch] = useState("ALL");
-  const [selectedSection, setSelectedSection] = useState("ALL");
 
-  // QR Session States
+  // Persistent Date & Cohort Filters for Manual Tracker
+  const [selectedDate, setSelectedDate] = useState(() => {
+    return (
+      searchParams.get("date") ||
+      localStorage.getItem("sms_attendance_date") ||
+      new Date().toISOString().split("T")[0]
+    );
+  });
+  const [selectedBranch, setSelectedBranch] = useState(() => {
+    return (
+      searchParams.get("branch") ||
+      localStorage.getItem("sms_attendance_branch") ||
+      "ALL"
+    );
+  });
+  const [selectedSection, setSelectedSection] = useState(() => {
+    return (
+      searchParams.get("section") ||
+      localStorage.getItem("sms_attendance_section") ||
+      "ALL"
+    );
+  });
+
+  // QR Session States with persistence
   const [subjects, setSubjects] = useState([]);
-  const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [selectedSubjectId, setSelectedSubjectId] = useState(() => {
+    return localStorage.getItem("sms_attendance_subject_id") || "";
+  });
   const [academicClasses, setAcademicClasses] = useState([]);
-  const [selectedClassId, setSelectedClassId] = useState("");
-  const [sessionDuration, setSessionDuration] = useState(60);
+  const [selectedClassId, setSelectedClassId] = useState(() => {
+    return localStorage.getItem("sms_attendance_class_id") || "";
+  });
+  const [sessionDuration, setSessionDuration] = useState(() => {
+    const saved = localStorage.getItem("sms_attendance_duration");
+    return saved ? parseInt(saved, 10) || 60 : 60;
+  });
   const [activeSessionData, setActiveSessionData] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Anti-Proxy Geolocation & Biometric Facial Verification States
-  const [geoEnabled, setGeoEnabled] = useState(true);
-  const [faceRequired, setFaceRequired] = useState(true);
+  const [geoEnabled, setGeoEnabled] = useState(() => {
+    const saved = localStorage.getItem("sms_attendance_geo_enabled");
+    return saved !== null ? saved === "true" : true;
+  });
+  const [faceRequired, setFaceRequired] = useState(() => {
+    const saved = localStorage.getItem("sms_attendance_face_required");
+    return saved !== null ? saved === "true" : true;
+  });
   const [classLatitude, setClassLatitude] = useState(null);
   const [classLongitude, setClassLongitude] = useState(null);
-  const [geofenceRadius, setGeofenceRadius] = useState(100);
+  const [geofenceRadius, setGeofenceRadius] = useState(() => {
+    const saved = localStorage.getItem("sms_attendance_radius");
+    return saved ? parseFloat(saved) || 100 : 100;
+  });
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [locationLockedMsg, setLocationLockedMsg] = useState("");
+
+  // Handler for Tab switching that preserves position across refreshes
+  const handleSelectTab = (tabName) => {
+    setActiveTab(tabName);
+    localStorage.setItem("sms_attendance_tab", tabName);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", tabName);
+        return next;
+      },
+      { replace: true }
+    );
+    if (tabName === "leaves") {
+      fetchFacultyLeaves();
+    } else if (tabName === "analytics") {
+      fetchSummary(threshold);
+    } else if (tabName === "qr") {
+      checkActiveQrSession();
+    }
+  };
+
+  const handleDateChange = (val) => {
+    setSelectedDate(val);
+    localStorage.setItem("sms_attendance_date", val);
+  };
+  const handleBranchChange = (val) => {
+    setSelectedBranch(val);
+    localStorage.setItem("sms_attendance_branch", val);
+  };
+  const handleSectionChange = (val) => {
+    setSelectedSection(val);
+    localStorage.setItem("sms_attendance_section", val);
+  };
+  const handleSubjectChange = (val) => {
+    setSelectedSubjectId(val);
+    localStorage.setItem("sms_attendance_subject_id", val);
+  };
+  const handleClassChange = (val) => {
+    setSelectedClassId(val);
+    localStorage.setItem("sms_attendance_class_id", val);
+  };
+  const handleDurationChange = (val) => {
+    setSessionDuration(val);
+    localStorage.setItem("sms_attendance_duration", String(val));
+  };
+  const handleRadiusChange = (val) => {
+    setGeofenceRadius(val);
+    localStorage.setItem("sms_attendance_radius", String(val));
+  };
+  const handleGeoToggle = (val) => {
+    setGeoEnabled(val);
+    localStorage.setItem("sms_attendance_geo_enabled", String(val));
+  };
+  const handleFaceToggle = (val) => {
+    setFaceRequired(val);
+    localStorage.setItem("sms_attendance_face_required", String(val));
+  };
 
   const handleDetectClassLocation = () => {
     if (!navigator.geolocation) {
@@ -324,7 +430,10 @@ function Attendance() {
       .then((res) => {
         const subs = res.data || [];
         setSubjects(subs);
-        if (subs.length > 0) {
+        const savedSubj = localStorage.getItem("sms_attendance_subject_id");
+        if (savedSubj && subs.some((s) => String(s.id) === String(savedSubj))) {
+          setSelectedSubjectId(String(savedSubj));
+        } else if (subs.length > 0) {
           setSelectedSubjectId(String(subs[0].id));
         } else {
           setSelectedSubjectId("");
@@ -336,12 +445,45 @@ function Attendance() {
       .then((res) => {
         const cls = res.data?.results || res.data || [];
         setAcademicClasses(cls);
-        if (cls.length > 0) {
+        const savedCls = localStorage.getItem("sms_attendance_class_id");
+        if (savedCls && cls.some((c) => String(c.id) === String(savedCls))) {
+          setSelectedClassId(String(savedCls));
+        } else if (cls.length > 0) {
           setSelectedClassId(String(cls[0].id));
         }
       })
       .catch(() => {});
   }, [isAdmin]);
+
+  // Immediate check on mount: If an active QR session is running, restore it seamlessly on page refresh
+  useEffect(() => {
+    getActiveSession()
+      .then((res) => {
+        if (res.data?.session && (res.data.active || res.data.show_present_for_10_mins)) {
+          setActiveSessionData(res.data);
+          if (res.data.active) {
+            const expiresAt = new Date(res.data.session.expires_at).getTime();
+            const now = new Date().getTime();
+            const rem = Math.max(0, Math.floor((expiresAt - now) / 1000));
+            setTimeRemaining(rem);
+          } else {
+            const rem = res.data.review_remaining_seconds != null
+              ? res.data.review_remaining_seconds
+              : (res.data.review_expires_at ? Math.max(0, Math.floor((new Date(res.data.review_expires_at).getTime() - Date.now()) / 1000)) : 0);
+            setTimeRemaining(rem);
+          }
+          // If an active session is in flight and user didn't explicitly request another tab, open/stay on QR
+          const urlTab = searchParams.get("tab");
+          if (!urlTab || urlTab === "qr") {
+            setActiveTab("qr");
+            localStorage.setItem("sms_attendance_tab", "qr");
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Error checking active QR session on mount:", err);
+      });
+  }, []);
 
   // Fetch Manual Attendance Records
   const loadDailyAttendance = (dateStr, branch, section) => {
@@ -621,7 +763,7 @@ function Attendance() {
                   color: activeTab === "manual" ? "#fff" : "#475569",
                   border: "none",
                 }}
-                onClick={() => setActiveTab("manual")}
+                onClick={() => handleSelectTab("manual")}
               >
                 <FaListAlt /> Daily Manual Tracker
               </button>
@@ -641,7 +783,7 @@ function Attendance() {
                   color: activeTab === "qr" ? "#fff" : "#475569",
                   border: "none",
                 }}
-                onClick={() => setActiveTab("qr")}
+                onClick={() => handleSelectTab("qr")}
               >
                 <FaQrcode /> Live QR Session Generator
               </button>
@@ -661,7 +803,7 @@ function Attendance() {
                   color: activeTab === "analytics" ? "#fff" : "#475569",
                   border: "none",
                 }}
-                onClick={() => setActiveTab("analytics")}
+                onClick={() => handleSelectTab("analytics")}
               >
                 <FaChartLine /> Analytics & Shortage Alerts
               </button>
@@ -682,10 +824,7 @@ function Attendance() {
                   border: "none",
                   position: "relative",
                 }}
-                onClick={() => {
-                  setActiveTab("leaves");
-                  fetchFacultyLeaves();
-                }}
+                onClick={() => handleSelectTab("leaves")}
               >
                 <FaFileAlt /> Leave & OD Queue
                 {facultyLeaves.filter((l) => l.status === "PENDING").length > 0 && (
@@ -760,7 +899,7 @@ function Attendance() {
                         <select
                           id="subject-select"
                           value={selectedSubjectId}
-                          onChange={(e) => setSelectedSubjectId(e.target.value)}
+                          onChange={(e) => handleSubjectChange(e.target.value)}
                           style={{
                             width: "100%",
                             padding: "10px 12px",
@@ -788,7 +927,7 @@ function Attendance() {
                       <select
                         id="class-select"
                         value={selectedClassId}
-                        onChange={(e) => setSelectedClassId(e.target.value)}
+                        onChange={(e) => handleClassChange(e.target.value)}
                         style={{
                           width: "100%",
                           padding: "10px 12px",
@@ -816,7 +955,7 @@ function Attendance() {
                       <select
                         id="duration-select"
                         value={sessionDuration}
-                        onChange={(e) => setSessionDuration(parseInt(e.target.value, 10))}
+                        onChange={(e) => handleDurationChange(parseInt(e.target.value, 10))}
                         style={{
                           width: "100%",
                           padding: "10px 12px",
@@ -853,7 +992,7 @@ function Attendance() {
                           <input
                             type="checkbox"
                             checked={geoEnabled}
-                            onChange={(e) => setGeoEnabled(e.target.checked)}
+                            onChange={(e) => handleGeoToggle(e.target.checked)}
                             style={{ width: "16px", height: "16px", accentColor: "#2563eb" }}
                           />
                           <span>Enforce GPS Geofence (Student Must Be in Classroom)</span>
@@ -916,7 +1055,7 @@ function Attendance() {
                                 <label style={{ fontSize: "12px", color: "#64748b" }}>Radius:</label>
                                 <select
                                   value={geofenceRadius}
-                                  onChange={(e) => setGeofenceRadius(Number(e.target.value))}
+                                  onChange={(e) => handleRadiusChange(Number(e.target.value))}
                                   style={{ padding: "5px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
                                 >
                                   <option value={50}>50m (Strict - Room Only)</option>
@@ -998,7 +1137,7 @@ function Attendance() {
                           <input
                             type="checkbox"
                             checked={faceRequired}
-                            onChange={(e) => setFaceRequired(e.target.checked)}
+                            onChange={(e) => handleFaceToggle(e.target.checked)}
                             style={{ width: "16px", height: "16px", accentColor: "#2563eb" }}
                           />
                           <span>Enforce Live Facial Biometrics (Face Match Required)</span>
@@ -1539,7 +1678,7 @@ function Attendance() {
                       id="att-date"
                       type="date"
                       value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
+                      onChange={(e) => handleDateChange(e.target.value)}
                       className="date-input"
                     />
                   </div>
@@ -1549,7 +1688,7 @@ function Attendance() {
                     <select
                       id="att-branch-filter"
                       value={selectedBranch}
-                      onChange={(e) => setSelectedBranch(e.target.value)}
+                      onChange={(e) => handleBranchChange(e.target.value)}
                       style={{
                         padding: "8px 12px",
                         borderRadius: "8px",
@@ -1570,7 +1709,7 @@ function Attendance() {
                     <select
                       id="att-section-filter"
                       value={selectedSection}
-                      onChange={(e) => setSelectedSection(e.target.value)}
+                      onChange={(e) => handleSectionChange(e.target.value)}
                       style={{
                         padding: "8px 12px",
                         borderRadius: "8px",

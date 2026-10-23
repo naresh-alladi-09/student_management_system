@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   getStudents,
   updateStudent,
@@ -35,9 +35,17 @@ const YEAR_SEMESTERS = {
 };
 
 const Students = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialPage = parseInt(
+    searchParams.get("page") || localStorage.getItem("sms_students_page") || "1",
+    10
+  );
+  const [currentPage, setCurrentPage] = useState(
+    isNaN(initialPage) || initialPage < 1 ? 1 : initialPage
+  );
+  const isInitialMount = useRef(true);
   const [students, setStudents] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [hasPrevPage, setHasPrevPage] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -220,17 +228,35 @@ const Students = () => {
         setHasPrevPage(false);
       }
       setCurrentPage(page);
+      localStorage.setItem("sms_students_page", String(page));
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (page > 1) {
+            next.set("page", String(page));
+          } else {
+            next.delete("page");
+          }
+          return next;
+        },
+        { replace: true }
+      );
     } catch (error) {
       console.error("Failed to fetch students:", error);
       setErrorMessage("Could not connect to database to fetch students.");
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, selectedBranch, selectedYear, selectedSection, selectedStatus]);
+  }, [searchTerm, selectedBranch, selectedYear, selectedSection, selectedStatus, setSearchParams]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      loadStudents(1);
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        loadStudents(currentPage);
+      } else {
+        loadStudents(1);
+      }
     }, 300); // 300ms debounce
     return () => clearTimeout(timer);
   }, [loadStudents]);

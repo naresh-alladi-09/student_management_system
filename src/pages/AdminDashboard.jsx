@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import {
@@ -70,8 +70,29 @@ const AdminDashboard = () => {
   const [subjects, setSubjects] = useState([]);
   const [timetableSlots, setTimetableSlots] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTabState] = useState(() => {
+    const urlTab = searchParams.get("tab");
+    if (urlTab && ["overview", "users", "subjects", "timetable", "analytics", "announcements", "reports"].includes(urlTab)) {
+      return urlTab;
+    }
+    const saved = localStorage.getItem("sms_admin_tab");
+    if (saved && ["overview", "users", "subjects", "timetable", "analytics", "announcements", "reports"].includes(saved)) {
+      return saved;
+    }
+    return "overview";
+  });
+
+  const setActiveTab = (tab) => {
+    setActiveTabState(tab);
+    localStorage.setItem("sms_admin_tab", tab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("tab", tab);
+      return next;
+    }, { replace: true });
+  };
   const [timetableDayFilter, setTimetableDayFilter] = useState("ALL");
-  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'users' | 'subjects' | 'timetable' | 'analytics' | 'announcements'
   const [loading, setLoading] = useState(true);
 
   // Audit Console States
