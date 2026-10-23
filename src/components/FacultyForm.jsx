@@ -70,6 +70,65 @@ const FacultyForm = () => {
   const [isResending, setIsResending] = useState(false);
   const [resendStatus, setResendStatus] = useState(null);
 
+  if (!isAdmin) {
+    return (
+      <div className="form-wrapper">
+        <div
+          style={{
+            maxWidth: "520px",
+            margin: "40px auto",
+            background: "#ffffff",
+            borderRadius: "16px",
+            padding: "40px 24px",
+            textAlign: "center",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)",
+            border: "1px solid #fee2e2",
+          }}
+        >
+          <div
+            style={{
+              width: "60px",
+              height: "60px",
+              borderRadius: "50%",
+              background: "#fef2f2",
+              color: "#dc2626",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "26px",
+              margin: "0 auto 16px",
+            }}
+          >
+            <FaShieldAlt />
+          </div>
+          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "#1e293b", marginBottom: "8px" }}>
+            Access Restricted: Administrator Only
+          </h2>
+          <p style={{ color: "#64748b", fontSize: "14px", lineHeight: 1.6, marginBottom: "24px" }}>
+            Only system administrators have permission to create and register faculty accounts. If you need a new faculty member enrolled, please contact the institutional administrator.
+          </p>
+          <Link
+            to="/dashboard"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "#2563eb",
+              color: "#ffffff",
+              padding: "10px 20px",
+              borderRadius: "8px",
+              fontWeight: 600,
+              fontSize: "14px",
+              textDecoration: "none",
+            }}
+          >
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   useEffect(() => {
     return () => {
       stopCamera();

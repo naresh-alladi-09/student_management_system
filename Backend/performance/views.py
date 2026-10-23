@@ -412,8 +412,13 @@ def list_create_subjects(request):
                     Q(branch__iexact='COMMON')
                 )
 
-        if semester and semester.upper() != 'ALL':
-            subs = subs.filter(semester=str(semester))
+        assigned_only = request.query_params.get('assigned_only', '').lower() in ['true', '1'] or request.query_params.get('my', '').lower() in ['true', '1']
+        if assigned_only and request.user.is_authenticated:
+            from students.models import FacultyAssignment
+            from timetable.models import TimetableSlot
+            assigned_ids = set(FacultyAssignment.objects.filter(teacher=request.user).values_list('subject_id', flat=True))
+            assigned_ids.update(TimetableSlot.objects.filter(teacher=request.user).values_list('subject_id', flat=True))
+            subs = subs.filter(id__in=assigned_ids)
 
         serializer = SubjectSerializer(subs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

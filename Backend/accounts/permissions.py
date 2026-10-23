@@ -14,8 +14,6 @@ class IsAdmin(permissions.BasePermission):
         profile = getattr(user, 'profile', None)
         if profile and str(profile.role).lower() == 'admin':
             return True
-        if str(user.username).lower().startswith('admin'):
-            return True
         return False
 
 

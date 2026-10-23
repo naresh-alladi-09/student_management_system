@@ -227,7 +227,21 @@ def start_attendance_from_slot(request, slot_id):
         pk=slot_id
     )
 
-    # Faculty members (teachers and admins) have permission to initiate attendance for lecture slots
+    # 1. Enforce that attendance must be taken by the respective subject faculty (or admin)
+    is_admin = request.user.is_superuser or request.user.is_staff or (getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin')
+    if not is_admin:
+        if slot.teacher and slot.teacher != request.user:
+            from students.models import FacultyAssignment
+            is_assigned = (
+                FacultyAssignment.objects.filter(teacher=request.user, subject=slot.subject).exists() or
+                TimetableSlot.objects.filter(teacher=request.user, subject=slot.subject).exists()
+            )
+            if not is_assigned:
+                teacher_name = slot.teacher.get_full_name() or slot.teacher.username
+                return Response(
+                    {'detail': f"Unauthorized: Attendance for this lecture slot must be taken by the respective subject faculty ({teacher_name})."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
     now_local = timezone.localtime()
     current_time = now_local.time()
@@ -236,6 +250,35 @@ def start_attendance_from_slot(request, slot_id):
 
     ignore_day = request.data.get('ignore_day', False)
     ignore_time = request.data.get('ignore_time', False)
+
+    # Geo-coordinates & anti-proxy settings
+    latitude = request.data.get('latitude')
+    longitude = request.data.get('longitude')
+    radius_meters = request.data.get('radius_meters', 100.0)
+    try:
+        radius_meters = float(radius_meters or 100.0)
+    except (ValueError, TypeError):
+        radius_meters = 100.0
+
+    require_face = request.data.get('require_face', True)
+    if isinstance(require_face, str):
+        require_face = require_face.lower() in ('true', '1')
+
+    require_geo = request.data.get('require_geo', True)
+    if isinstance(require_geo, str):
+        require_geo = require_geo.lower() in ('true', '1')
+
+    if latitude is not None and latitude != '':
+        try:
+            latitude = float(latitude)
+        except (ValueError, TypeError):
+            latitude = None
+
+    if longitude is not None and longitude != '':
+        try:
+            longitude = float(longitude)
+        except (ValueError, TypeError):
+            longitude = None
 
     # Validate day of week
     if slot.day.lower() != today_day_actual.lower() and not ignore_day:
@@ -287,7 +330,15 @@ def start_attendance_from_slot(request, slot_id):
             session.expires_at = expires_at
             session.end_time = slot.end_time
             session.duration_seconds = duration_seconds
-            session.save(update_fields=['expires_at', 'end_time', 'duration_seconds'])
+            update_fields = ['expires_at', 'end_time', 'duration_seconds']
+            if latitude is not None and longitude is not None:
+                session.latitude = latitude
+                session.longitude = longitude
+                session.radius_meters = radius_meters
+                session.require_geo = require_geo
+                session.require_face = require_face
+                update_fields.extend(['latitude', 'longitude', 'radius_meters', 'require_geo', 'require_face'])
+            session.save(update_fields=update_fields)
         else:
             active_session.is_active = False
             active_session.save(update_fields=['is_active'])
@@ -304,7 +355,12 @@ def start_attendance_from_slot(request, slot_id):
             academic_class=slot.academic_class,
             section=slot.section or 'A',
             expires_at=expires_at,
-            end_time=slot.end_time
+            end_time=slot.end_time,
+            latitude=latitude,
+            longitude=longitude,
+            radius_meters=radius_meters,
+            require_face=require_face,
+            require_geo=require_geo
         )
 
     # Log action to AuditLog

@@ -166,7 +166,31 @@ const Dashboard = () => {
   const handleStartAttendance = async (slot) => {
     setStartingSlotId(slot.id);
     try {
-      const res = await startAttendanceFromSlot(slot.id);
+      let geoOptions = { duration_seconds: 120 };
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 2500,
+              maximumAge: 60000,
+            });
+          });
+          if (pos?.coords) {
+            geoOptions = {
+              duration_seconds: 120,
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              require_geo: true,
+              radius_meters: 60,
+            };
+          }
+        } catch {
+          // Proceed with default duration if GPS timed out or was denied
+        }
+      }
+
+      const res = await startAttendanceFromSlot(slot.id, geoOptions);
       const data = res.data;
       if (!data.qr_value && (data.token || data.qr_token)) {
         data.qr_value = `${window.location.origin}/mark-attendance?token=${data.token || data.qr_token}`;

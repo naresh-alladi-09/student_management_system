@@ -974,6 +974,13 @@ def register_faculty_view(request):
         "profile_photo": "data:image/jpeg;base64,..." (optional)
     }
     """
+    is_admin = request.user.is_superuser or request.user.is_staff or getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
+    if not is_admin:
+        return Response(
+            {"detail": "Permission denied: Only administrators have permission to create faculty accounts."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
     raw_name = (request.data.get('name') or request.data.get('full_name') or '').strip()
     email = (request.data.get('email') or '').strip().lower()
     phone = (request.data.get('phone') or '').strip()
@@ -1921,6 +1928,13 @@ def manage_users_view(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'POST':
+        is_admin = request.user.is_superuser or request.user.is_staff or getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
+        if not is_admin:
+            return Response(
+                {"detail": "Permission denied: Only administrators have permission to create user and faculty accounts."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         username = request.data.get('username', '').strip()
         email = request.data.get('email', '').strip().lower()
         password = request.data.get('password', '').strip()

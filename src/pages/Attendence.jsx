@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import "../styles/attendence.css";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
+import { useAuth } from "../context/AuthContext";
 import {
   getDailyAttendance,
   saveBulkAttendance,
@@ -40,9 +41,11 @@ import {
   FaEnvelope,
   FaPhoneAlt,
   FaPaperPlane,
+  FaMapMarkerAlt,
 } from "react-icons/fa";
 
 function Attendance() {
+  const { currentUser, isAdmin } = useAuth();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState("manual"); // 'manual' | 'qr' | 'analytics' | 'leaves'
   const [students, setStudents] = useState([]);
@@ -85,21 +88,52 @@ function Attendance() {
     }
     setDetectingLocation(true);
     setLocationLockedMsg("Detecting precise classroom coordinates via GPS satellite/network...");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setClassLatitude(pos.coords.latitude);
-        setClassLongitude(pos.coords.longitude);
-        setLocationLockedMsg(`Locked: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)} (±${Math.round(pos.coords.accuracy)}m accuracy)`);
-        setDetectingLocation(false);
-      },
-      (err) => {
-        console.warn("Geolocation detection error:", err);
-        setLocationLockedMsg("Could not detect location. Please check browser GPS permissions.");
-        setDetectingLocation(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+
+    const onSuccess = (pos) => {
+      const lat = Number(pos.coords.latitude.toFixed(6));
+      const lng = Number(pos.coords.longitude.toFixed(6));
+      const acc = Math.round(pos.coords.accuracy || 0);
+      setClassLatitude(lat);
+      setClassLongitude(lng);
+      setLocationLockedMsg(`Locked: ${lat}, ${lng} (±${acc}m accuracy)`);
+      setDetectingLocation(false);
+    };
+
+    const onError = (err) => {
+      console.warn("High-accuracy GPS timeout, retrying with network positioning...", err);
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        (fallbackErr) => {
+          console.warn("Geolocation fallback failed:", fallbackErr);
+          setLocationLockedMsg(
+            fallbackErr.code === 1
+              ? "Location access denied. Please allow location in browser settings, or click 'Use Campus Location'."
+              : "Could not acquire GPS automatically. Click 'Use Campus Location' or enter coordinates manually."
+          );
+          setDetectingLocation(false);
+        },
+        { enableHighAccuracy: false, timeout: 12000, maximumAge: 30000 }
+      );
+    };
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 8000,
+    });
   };
+
+  const handleSetCampusLocation = () => {
+    setClassLatitude(17.385044);
+    setClassLongitude(78.486671);
+    setLocationLockedMsg("Locked to Campus Reference Coordinates: 17.385044, 78.486671 (±10m)");
+  };
+
+  // Automatically lock classroom GPS on component mount if geofencing is enabled
+  useEffect(() => {
+    if (geoEnabled && !classLatitude) {
+      handleDetectClassLocation();
+    }
+  }, []);
 
   // Analytics Dashboard States
   const [summaryData, setSummaryData] = useState(null);
@@ -285,12 +319,15 @@ function Attendance() {
 
   // Load Subjects and Academic Classes for QR session
   useEffect(() => {
-    getAllSubjects()
+    const params = !isAdmin ? { assigned_only: true } : {};
+    getAllSubjects(params)
       .then((res) => {
         const subs = res.data || [];
         setSubjects(subs);
         if (subs.length > 0) {
           setSelectedSubjectId(String(subs[0].id));
+        } else {
+          setSelectedSubjectId("");
         }
       })
       .catch(() => {});
@@ -304,7 +341,7 @@ function Attendance() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   // Fetch Manual Attendance Records
   const loadDailyAttendance = (dateStr, branch, section) => {
@@ -399,7 +436,14 @@ function Attendance() {
   }, [timeRemaining]);
 
   const handleStartQrSession = async () => {
-    if (!selectedSubjectId) return;
+    if (!selectedSubjectId) {
+      setError("Please select an authorized subject to conduct attendance. If no subjects appear, verify your faculty assignment with an administrator.");
+      return;
+    }
+    if (geoEnabled && (classLatitude == null || classLongitude == null)) {
+      setError("Classroom GPS coordinates are required when GPS Geofence is enabled. Please click 'Detect Classroom Coordinates', 'Use Campus Coordinates', or enter coordinates manually.");
+      return;
+    }
     setQrLoading(true);
     setError(null);
     try {
@@ -693,32 +737,46 @@ function Attendance() {
                       Select a curriculum subject and launch a temporary QR code for students to scan in class.
                     </p>
 
-                    <div style={{ marginBottom: "16px" }}>
-                      <label
-                        htmlFor="subject-select"
-                        style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}
-                      >
-                        Select Subject:
-                      </label>
-                      <select
-                        id="subject-select"
-                        value={selectedSubjectId}
-                        onChange={(e) => setSelectedSubjectId(e.target.value)}
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "14px",
-                        }}
-                      >
-                        {subjects.map((sub) => (
-                          <option key={sub.id} value={sub.id}>
-                            {sub.code} - {sub.name} ({sub.branch} Sem {sub.semester})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {!isAdmin && subjects.length === 0 ? (
+                      <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", color: "#b45309", padding: "16px", borderRadius: "10px", fontSize: "13px", marginBottom: "20px", display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                        <FaExclamationTriangle style={{ marginTop: "2px", fontSize: "18px", flexShrink: 0, color: "#d97706" }} />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px", color: "#92400e" }}>
+                            No Assigned Subjects Found
+                          </div>
+                          <div>
+                            In accordance with institutional policy, attendance must be taken by the respective subject faculty. You are not currently assigned to teach any subjects. Please contact the administrator to assign curriculum subjects or lecture slots to your account.
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ marginBottom: "16px" }}>
+                        <label
+                          htmlFor="subject-select"
+                          style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}
+                        >
+                          Select Subject {!isAdmin ? "(Assigned to You)" : ""}:
+                        </label>
+                        <select
+                          id="subject-select"
+                          value={selectedSubjectId}
+                          onChange={(e) => setSelectedSubjectId(e.target.value)}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "8px",
+                            border: "1px solid #cbd5e1",
+                            fontSize: "14px",
+                          }}
+                        >
+                          {subjects.map((sub) => (
+                            <option key={sub.id} value={sub.id}>
+                              {sub.code} - {sub.name} ({sub.branch} Sem {sub.semester})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
                     <div style={{ marginBottom: "16px" }}>
                       <label
@@ -803,7 +861,7 @@ function Attendance() {
 
                         {geoEnabled && (
                           <div style={{ marginTop: "10px", paddingLeft: "26px" }}>
-                            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "8px" }}>
+                            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginBottom: "10px" }}>
                               <button
                                 type="button"
                                 onClick={handleDetectClassLocation}
@@ -828,9 +886,30 @@ function Attendance() {
                                   </>
                                 ) : (
                                   <>
-                                    <i className="fa-solid fa-location-crosshairs"></i> Detect Classroom Coordinates
+                                    <i className="fa-solid fa-location-crosshairs"></i> Detect GPS Location
                                   </>
                                 )}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={handleSetCampusLocation}
+                                style={{
+                                  background: "#f1f5f9",
+                                  color: "#334155",
+                                  border: "1px solid #cbd5e1",
+                                  padding: "6px 12px",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                }}
+                                title="Use verified institutional campus coordinates (17.385044, 78.486671)"
+                              >
+                                <FaMapMarkerAlt style={{ color: "#2563eb" }} /> Use Campus Location
                               </button>
 
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -847,16 +926,66 @@ function Attendance() {
                               </div>
                             </div>
 
+                            {/* Manual Latitude & Longitude Inputs for High Precision */}
+                            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "8px" }}>
+                              <div style={{ flex: "1 1 140px" }}>
+                                <label style={{ display: "block", fontSize: "11px", color: "#64748b", fontWeight: 600, marginBottom: "2px" }}>
+                                  Latitude:
+                                </label>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  placeholder="e.g. 17.385044"
+                                  value={classLatitude ?? ""}
+                                  onChange={(e) => setClassLatitude(e.target.value ? parseFloat(e.target.value) : null)}
+                                  style={{
+                                    width: "100%",
+                                    padding: "6px 8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "12px",
+                                    fontFamily: "monospace",
+                                  }}
+                                />
+                              </div>
+                              <div style={{ flex: "1 1 140px" }}>
+                                <label style={{ display: "block", fontSize: "11px", color: "#64748b", fontWeight: 600, marginBottom: "2px" }}>
+                                  Longitude:
+                                </label>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  placeholder="e.g. 78.486671"
+                                  value={classLongitude ?? ""}
+                                  onChange={(e) => setClassLongitude(e.target.value ? parseFloat(e.target.value) : null)}
+                                  style={{
+                                    width: "100%",
+                                    padding: "6px 8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "12px",
+                                    fontFamily: "monospace",
+                                  }}
+                                />
+                              </div>
+                            </div>
+
                             {locationLockedMsg && (
-                              <div style={{ fontSize: "12px", color: classLatitude ? "#166534" : "#b45309", fontWeight: 500 }}>
+                              <div style={{ fontSize: "12px", color: classLatitude ? "#166534" : "#b45309", fontWeight: 500, marginTop: "4px" }}>
                                 {classLatitude && <i className="fa-solid fa-circle-check" style={{ marginRight: "4px" }}></i>}
                                 {locationLockedMsg}
                               </div>
                             )}
 
-                            {classLatitude && (
+                            {(!classLatitude || !classLongitude) && (
+                              <div style={{ fontSize: "11.5px", color: "#b45309", marginTop: "4px", fontWeight: 500 }}>
+                                ⚠️ Classroom coordinates are required when Geofence is active. Click 'Detect GPS Location' or 'Use Campus Location' above.
+                              </div>
+                            )}
+
+                            {classLatitude && classLongitude && (
                               <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
-                                Classroom Center: <code>{classLatitude.toFixed(6)}</code>, <code>{classLongitude.toFixed(6)}</code> • Students outside {geofenceRadius}m radius will be blocked as proxy!
+                                Classroom Center: <code>{Number(classLatitude).toFixed(6)}</code>, <code>{Number(classLongitude).toFixed(6)}</code> • Students outside {geofenceRadius}m radius will be blocked as proxy!
                               </div>
                             )}
                           </div>
@@ -884,23 +1013,46 @@ function Attendance() {
 
                     <button
                       type="button"
-                      disabled={qrLoading || !selectedSubjectId}
+                      disabled={
+                        qrLoading ||
+                        !selectedSubjectId ||
+                        (!isAdmin && subjects.length === 0) ||
+                        (geoEnabled && (!classLatitude || !classLongitude))
+                      }
                       onClick={handleStartQrSession}
                       style={{
                         width: "100%",
                         padding: "14px",
-                        borderRadius: "10px",
-                        border: "none",
-                        background: "#10b981",
+                        background:
+                          !selectedSubjectId ||
+                          (!isAdmin && subjects.length === 0) ||
+                          (geoEnabled && (!classLatitude || !classLongitude))
+                            ? "#cbd5e1"
+                            : "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
                         color: "#fff",
+                        border: "none",
+                        borderRadius: "10px",
                         fontWeight: 700,
                         fontSize: "15px",
+                        cursor:
+                          !selectedSubjectId ||
+                          (!isAdmin && subjects.length === 0) ||
+                          (geoEnabled && (!classLatitude || !classLongitude))
+                            ? "not-allowed"
+                            : "pointer",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: "8px",
-                        cursor: qrLoading ? "not-allowed" : "pointer",
+                        gap: "10px",
+                        boxShadow: "0 4px 12px rgba(37,99,235,0.25)",
                       }}
+                      title={
+                        !selectedSubjectId || (!isAdmin && subjects.length === 0)
+                          ? "Attendance must be taken by respective subject faculty. No assigned subjects available."
+                          : geoEnabled && (!classLatitude || !classLongitude)
+                          ? "Please set classroom coordinates before starting a geofenced session."
+                          : "Start live QR attendance session"
+                      }
                     >
                       <FaPlayCircle /> {qrLoading ? "Initializing..." : "Launch QR Attendance Session"}
                     </button>

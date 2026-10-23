@@ -46,7 +46,7 @@ def create_attendance_session(request):
     }
     Returns: newly created session with temporary secure QR token.
     """
-    subject_id = request.data.get('subject_id')
+    subject_id = request.data.get('subject_id') or request.data.get('subject')
     duration_seconds = int(request.data.get('duration_seconds', 60))
     class_id = request.data.get('class_id') or request.data.get('academic_class_id')
     section_val = request.data.get('section', 'A')
@@ -96,7 +96,26 @@ def create_attendance_session(request):
         except AcademicClass.DoesNotExist:
             return Response({"detail": f"AcademicClass with ID {class_id} not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Faculty members (teachers and admins) have institutional authorization to conduct attendance sessions
+    # Enforce that attendance must be taken by the respective subject faculty (or admin)
+    is_admin = request.user.is_superuser or request.user.is_staff or (getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin')
+    if not is_admin:
+        from timetable.models import TimetableSlot
+        is_assigned = (
+            FacultyAssignment.objects.filter(teacher=request.user, subject=subject).exists() or
+            TimetableSlot.objects.filter(teacher=request.user, subject=subject).exists()
+        )
+        if not is_assigned:
+            return Response(
+                {"detail": f"Unauthorized: You are not assigned to teach '{subject.name} ({subject.code})'. Attendance must be taken by the respective subject faculty."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    # If geofence is required, classroom coordinates must be provided
+    if require_geo and (latitude is None or longitude is None):
+        return Response(
+            {"detail": "Classroom GPS coordinates (latitude and longitude) are required when GPS Geofencing is enabled. Please click 'Detect Classroom Coordinates' or enter coordinates."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     # Deactivate any previous active sessions for this subject/class or teacher today
     AttendanceSession.objects.filter(
@@ -652,6 +671,14 @@ def mark_qr_attendance(request):
         except (ValueError, TypeError):
             pass
 
+    raw_acc = request.data.get('accuracy') or request.data.get('acc')
+    accuracy = None
+    if raw_acc is not None and str(raw_acc).strip() != '':
+        try:
+            accuracy = float(raw_acc)
+        except (ValueError, TypeError):
+            pass
+
     distance_meters = None
     if session.require_geo and (session.latitude is not None and session.longitude is not None):
         if student_lat is None or student_lng is None:
@@ -667,20 +694,27 @@ def mark_qr_attendance(request):
                 "geo_error": "INVALID_COORDINATES"
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        allowed_radius = session.radius_meters or 100.0
-        if distance_meters > allowed_radius:
+        allowed_radius = float(session.radius_meters or 100.0)
+        # Account for standard device GPS accuracy jitter (up to 25m buffer) so students inside classroom are not falsely flagged
+        effective_distance = distance_meters
+        if accuracy is not None and accuracy > 0:
+            effective_distance = max(0.0, distance_meters - min(accuracy, 25.0))
+
+        if effective_distance > allowed_radius:
             AuditLog.log(
                 action='PROXY_ATTEMPT_FLAGGED',
                 entity='AttendanceRecord',
                 entity_id=str(student.id),
-                description=f"Anti-proxy alert: Student '{student.roll_no}' attempted attendance {int(distance_meters)}m outside classroom (allowed: {int(allowed_radius)}m).",
+                description=f"Anti-proxy alert: Student '{student.roll_no}' attempted attendance {int(distance_meters)}m outside classroom (allowed: {int(allowed_radius)}m, accuracy: ±{int(accuracy or 0)}m).",
                 user=user,
                 request=request
             )
             return Response({
                 "detail": f"Location Verification Failed: You are {int(distance_meters)}m away from the classroom (Allowed boundary: {int(allowed_radius)}m). Proxy attendance outside the classroom is prohibited!",
                 "distance_meters": distance_meters,
+                "effective_distance": round(effective_distance, 2),
                 "allowed_radius": allowed_radius,
+                "accuracy": accuracy,
                 "geo_error": "OUTSIDE_GEOFENCE",
                 "error_type": "GEOFENCE_VIOLATION"
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -936,7 +970,7 @@ def bulk_save_attendance(request):
     """
     date_str = request.data.get('date')
     attendance_map = request.data.get('attendance', {})
-    subject_id = request.data.get('subject_id', None)
+    subject_id = request.data.get('subject_id') or request.data.get('subject', None)
 
     if not date_str:
         return Response({"error": "Date is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -954,7 +988,18 @@ def bulk_save_attendance(request):
     profile = getattr(user, 'profile', None)
     is_admin = user.is_staff or user.is_superuser or (profile and profile.role == 'admin')
 
-    # Faculty and admin users can record attendance for any active student
+    # Enforce respective subject faculty check for manual attendance
+    if subject_obj and not is_admin:
+        from timetable.models import TimetableSlot
+        is_assigned = (
+            FacultyAssignment.objects.filter(teacher=request.user, subject=subject_obj).exists() or
+            TimetableSlot.objects.filter(teacher=request.user, subject=subject_obj).exists()
+        )
+        if not is_assigned:
+            return Response(
+                {"error": f"Unauthorized: You are not assigned to teach '{subject_obj.name}'. Attendance must be taken by the respective subject faculty."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
     with transaction.atomic():
         saved_count = 0

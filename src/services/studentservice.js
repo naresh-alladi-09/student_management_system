@@ -199,9 +199,12 @@ export const saveStudentScore = (scoreData) => {
   return apiClient.post("/api/performance/marks/save/", scoreData);
 };
 
-export const getAllSubjects = (branch = null) => {
-  const query = branch ? `?branch=${encodeURIComponent(branch)}` : "";
-  return apiClient.get(`/api/performance/subjects/${query}`);
+export const getAllSubjects = (params = {}) => {
+  if (typeof params === "string") {
+    const query = params ? `?branch=${encodeURIComponent(params)}` : "";
+    return apiClient.get(`/api/performance/subjects/${query}`);
+  }
+  return apiClient.get("/api/performance/subjects/", { params });
 };
 
 export const createSubject = (subjectData) => {
@@ -225,10 +228,9 @@ export const getTodayTimetable = (params = {}) => {
   return apiClient.get("/api/timetable/today/", { params });
 };
 
-export const startAttendanceFromSlot = (slotId, durationSeconds = 120) => {
-  return apiClient.post(`/api/timetable/${slotId}/start-attendance/`, {
-    duration_seconds: durationSeconds,
-  });
+export const startAttendanceFromSlot = (slotId, options = 120) => {
+  const payload = typeof options === "object" ? options : { duration_seconds: options };
+  return apiClient.post(`/api/timetable/${slotId}/start-attendance/`, payload);
 };
 
 export const createTimetableSlot = (slotData) => {

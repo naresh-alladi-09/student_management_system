@@ -51,25 +51,22 @@ if not teacher_user:
         teacher_user.profile.role = 'teacher'
         teacher_user.profile.save()
 
-student_user = User.objects.filter(profile__role__in=['student', 'STUDENT']).first()
-if not student_user:
-    student_user, _ = User.objects.get_or_create(username="STU001", defaults={"email": "student@test.edu"})
+student_user = User.objects.filter(profile__role__in=['student', 'STUDENT'], profile__student__isnull=False).first()
+if student_user and student_user.profile.student:
+    student_obj = student_user.profile.student
+else:
+    student_obj = Student.objects.filter(user_profile__isnull=True).first()
+    if not student_obj:
+        student_obj = Student.objects.create(name="Alex Student", roll_no="STU-TEST-999", branch="CSE", semester="5")
+    student_user, _ = User.objects.get_or_create(username="STU_TEST_USER", defaults={"email": "student_test@test.edu"})
     student_user.set_password("Student@123")
     student_user.save()
     if hasattr(student_user, 'profile'):
+        student_user.profile.student = student_obj
         student_user.profile.role = 'student'
         student_user.profile.save()
-
-student_obj = Student.objects.filter(user_profile__user=student_user).first()
-if not student_obj:
-    student_obj = Student.objects.first()
-    if not student_obj:
-        student_obj = Student.objects.create(name="Alex Student", roll_no="STU-001", branch="CSE", semester="5")
-
-if hasattr(student_user, 'profile'):
-    student_user.profile.student = student_obj
-    student_user.profile.role = 'student'
-    student_user.profile.save()
+    else:
+        UserProfile.objects.create(user=student_user, student=student_obj, role='student')
 
 subject = Subject.objects.filter(branch__iexact=student_obj.branch).first()
 if not subject:

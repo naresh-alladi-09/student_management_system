@@ -208,7 +208,7 @@ const MarkAttendancePage = () => {
     return () => clearInterval(interval);
   }, [timeRemaining]);
 
-  // 2. Request Geolocation Coordinates
+  // 2. Request Geolocation Coordinates with 2-tier fallback
   const acquireGeolocation = () => {
     if (!navigator.geolocation) {
       setGeoStatus("error");
@@ -219,33 +219,55 @@ const MarkAttendancePage = () => {
     setGeoStatus("detecting");
     setGeoErrorMsg("");
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const coords = {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        };
-        setUserCoords(coords);
-        setGeoStatus("available");
+    const handleSuccess = (pos) => {
+      const coords = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      };
+      setUserCoords(coords);
+      setGeoStatus("available");
 
-        if (sessionInfo?.latitude != null && sessionInfo?.longitude != null) {
-          const dist = calculateDistanceMeters(
-            coords.latitude,
-            coords.longitude,
-            sessionInfo.latitude,
-            sessionInfo.longitude
-          );
-          setCalculatedDistance(dist);
-        }
-      },
+      if (sessionInfo?.latitude != null && sessionInfo?.longitude != null) {
+        const dist = calculateDistanceMeters(
+          coords.latitude,
+          coords.longitude,
+          sessionInfo.latitude,
+          sessionInfo.longitude
+        );
+        setCalculatedDistance(dist);
+      }
+    };
+
+    // Tier 1: Try GPS high accuracy with 7s timeout
+    navigator.geolocation.getCurrentPosition(
+      handleSuccess,
       (err) => {
-        setGeoStatus("denied");
-        setGeoErrorMsg(
-          "Location permission denied. GPS geocoordinates are required to prevent proxy attendance."
+        // If permission explicitly denied by user (code 1), don't retry
+        if (err.code === 1) {
+          setGeoStatus("denied");
+          setGeoErrorMsg(
+            "Location permission denied. GPS geocoordinates are required to prevent proxy attendance."
+          );
+          return;
+        }
+
+        // Tier 2: Fallback to network/cell positioning with lower accuracy and longer timeout
+        console.warn("High-accuracy GPS timed out or unavailable, trying network positioning...", err.message);
+        navigator.geolocation.getCurrentPosition(
+          handleSuccess,
+          (fallbackErr) => {
+            setGeoStatus(fallbackErr.code === 1 ? "denied" : "error");
+            setGeoErrorMsg(
+              fallbackErr.code === 1
+                ? "Location permission denied. GPS geocoordinates are required to prevent proxy attendance."
+                : "Unable to retrieve GPS coordinates. Please ensure location services are enabled."
+            );
+          },
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 30000 }
         );
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
     );
   };
 
@@ -564,6 +586,7 @@ const MarkAttendancePage = () => {
         face_image: facePhotoToUse || null,
         latitude: userCoords?.latitude ?? null,
         longitude: userCoords?.longitude ?? null,
+        accuracy: userCoords?.accuracy ?? null,
         device_fingerprint: `${navigator.platform} | ${navigator.userAgent.slice(0, 80)}`,
       };
 
@@ -578,6 +601,8 @@ const MarkAttendancePage = () => {
         markedAt: res.data.marked_at,
         status: res.data.status,
         distanceMeters: res.data.distance_meters,
+        effectiveDistance: res.data.effective_distance,
+        accuracy: res.data.accuracy,
         faceConfidence: res.data.face_confidence,
         faceMatched: res.data.face_matched,
       });
@@ -603,6 +628,8 @@ const MarkAttendancePage = () => {
             "Verification failed. The token may be expired or proxy security rejected the scan.",
           errorType: err.response?.data?.error_type || "UNKNOWN",
           distance: err.response?.data?.distance_meters,
+          effectiveDistance: err.response?.data?.effective_distance,
+          accuracy: err.response?.data?.accuracy,
           maxRadius: err.response?.data?.max_radius_meters,
           faceConfidence: err.response?.data?.face_confidence,
         });
@@ -667,11 +694,17 @@ const MarkAttendancePage = () => {
     }
   };
 
+  // Apply jitter buffer (up to 25m) matching backend to prevent indoor GPS false alarms
+  const effectiveDistance =
+    calculatedDistance != null
+      ? Math.max(0, calculatedDistance - Math.min(userCoords?.accuracy || 0, 25))
+      : null;
+
   const isGeofenceViolated =
     sessionInfo?.require_geo &&
     sessionInfo?.radius_meters != null &&
-    calculatedDistance != null &&
-    calculatedDistance > sessionInfo.radius_meters;
+    effectiveDistance != null &&
+    effectiveDistance > sessionInfo.radius_meters;
 
   return (
     <div
@@ -1270,10 +1303,17 @@ const MarkAttendancePage = () => {
               </div>
 
               <div style={{ marginTop: "4px" }}>
-                {geoStatus === "detecting" && "Acquiring high-accuracy GPS coordinates..."}
+                {geoStatus === "detecting" && "Acquiring GPS coordinates (calibrating)..."}
                 {geoStatus === "available" && (
                   <>
-                    <span>GPS Coordinates: {userCoords.latitude.toFixed(4)}, {userCoords.longitude.toFixed(4)}</span>
+                    <span>
+                      GPS Coordinates: {userCoords.latitude.toFixed(4)}, {userCoords.longitude.toFixed(4)}
+                      {userCoords.accuracy != null && (
+                        <span style={{ opacity: 0.75, fontSize: "11px", marginLeft: "6px" }}>
+                          (±{Math.round(userCoords.accuracy)}m)
+                        </span>
+                      )}
+                    </span>
                     {calculatedDistance != null && (
                       <div style={{ marginTop: "2px", fontWeight: 600 }}>
                         {isGeofenceViolated ? (
