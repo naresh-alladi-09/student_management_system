@@ -53,17 +53,23 @@ function Attendance() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Persistent Active Tab: Reads from URL query (?tab=qr), then localStorage, defaulting to 'manual'
+  // Persistent Active Tab: Reads from URL query (?tab=qr), then localStorage, defaulting to 'analytics' for Admin and 'qr' for Faculty
   const [activeTab, setActiveTab] = useState(() => {
     const urlTab = searchParams.get("tab");
+    if (isAdmin && urlTab === "qr") {
+      return "analytics";
+    }
     if (urlTab && ["manual", "qr", "analytics", "leaves"].includes(urlTab)) {
       return urlTab;
     }
     const savedTab = localStorage.getItem("sms_attendance_tab");
+    if (isAdmin && savedTab === "qr") {
+      return "analytics";
+    }
     if (savedTab && ["manual", "qr", "analytics", "leaves"].includes(savedTab)) {
       return savedTab;
     }
-    return "manual";
+    return isAdmin ? "analytics" : "qr";
   });
 
   const [students, setStudents] = useState([]);
@@ -508,9 +514,9 @@ function Attendance() {
               : (res.data.review_expires_at ? Math.max(0, Math.floor((new Date(res.data.review_expires_at).getTime() - Date.now()) / 1000)) : 0);
             setTimeRemaining(rem);
           }
-          // If an active session is in flight and user didn't explicitly request another tab, open/stay on QR
+          // If an active session is in flight and user is faculty and didn't explicitly request another tab, open/stay on QR
           const urlTab = searchParams.get("tab");
-          if (!urlTab || urlTab === "qr") {
+          if (!isAdmin && (!urlTab || urlTab === "qr")) {
             setActiveTab("qr");
             localStorage.setItem("sms_attendance_tab", "qr");
           }
@@ -824,25 +830,28 @@ function Attendance() {
                 <FaListAlt /> Daily Manual Tracker
               </button>
 
-              <button
-                type="button"
-                className={`action-btn ${activeTab === "qr" ? "btn-primary" : ""}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "10px 18px",
-                  borderRadius: "8px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  background: activeTab === "qr" ? "#10b981" : "#f1f5f9",
-                  color: activeTab === "qr" ? "#fff" : "#475569",
-                  border: "none",
-                }}
-                onClick={() => handleSelectTab("qr")}
-              >
-                <FaQrcode /> Live QR Session Generator
-              </button>
+              {/* Live QR Session Generator: Faculty Only */}
+              {!isAdmin && (
+                <button
+                  type="button"
+                  className={`action-btn ${activeTab === "qr" ? "btn-primary" : ""}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "10px 18px",
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: activeTab === "qr" ? "#10b981" : "#f1f5f9",
+                    color: activeTab === "qr" ? "#fff" : "#475569",
+                    border: "none",
+                  }}
+                  onClick={() => handleSelectTab("qr")}
+                >
+                  <FaQrcode /> Live QR Session Generator
+                </button>
+              )}
 
               <button
                 type="button"
@@ -909,9 +918,9 @@ function Attendance() {
           )}
 
           {/* ============================================================== */}
-          {/* TAB 1: LIVE QR ATTENDANCE GENERATOR                            */}
+          {/* TAB 1: LIVE QR ATTENDANCE GENERATOR (FACULTY ONLY)             */}
           {/* ============================================================== */}
-          {activeTab === "qr" && (
+          {activeTab === "qr" && !isAdmin && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
               {/* Left Column: Generator Controls & QR Display */}
               <div
@@ -1877,6 +1886,86 @@ function Attendance() {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Admin Role Separation Guidance Notice */}
+          {activeTab === "qr" && isAdmin && (
+            <div
+              style={{
+                background: "#f8fafc",
+                border: "1.5px solid #e2e8f0",
+                borderRadius: "16px",
+                padding: "48px 32px",
+                textAlign: "center",
+                maxWidth: "680px",
+                margin: "40px auto",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div
+                style={{
+                  width: "64px",
+                  height: "64px",
+                  borderRadius: "50%",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "28px",
+                  marginBottom: "16px",
+                }}
+              >
+                <FaLock />
+              </div>
+              <h3 style={{ margin: "0 0 10px 0", color: "#0f172a", fontSize: "21px", fontWeight: 700 }}>
+                Attendance Session Generation is Reserved for Faculty
+              </h3>
+              <p style={{ color: "#64748b", fontSize: "14.5px", lineHeight: 1.6, margin: "0 auto 24px auto", maxWidth: "540px" }}>
+                In academic institutions, live in-class QR attendance sessions are generated by course instructors during their scheduled lecture periods.
+                As an Administrator, your console is configured for <strong>Attendance Analytics</strong>, <strong>75% Shortage Monitoring</strong>, and <strong>Leave Approvals</strong>.
+              </p>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab("analytics")}
+                  style={{
+                    padding: "11px 22px",
+                    background: "#0f172a",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                    fontSize: "13.5px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <FaChartLine /> View Attendance Analytics & Shortages
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab("leaves")}
+                  style={{
+                    padding: "11px 22px",
+                    background: "#7c3aed",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                    fontSize: "13.5px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <FaFileAlt /> Review Leave & OD Queue
+                </button>
               </div>
             </div>
           )}

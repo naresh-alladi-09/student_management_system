@@ -19,6 +19,7 @@ import {
   FaCalendarAlt,
   FaUsers,
   FaCamera,
+  FaCalendarCheck,
 } from "react-icons/fa";
 
 const Dashboard = () => {
@@ -610,6 +611,26 @@ const Dashboard = () => {
                           >
                             <FaClock /> Opens at {slot.start_time.slice(0, 5)}
                           </button>
+                        ) : isAdmin ? (
+                          <div
+                            style={{
+                              width: "100%",
+                              padding: "10px 14px",
+                              background: "#f1f5f9",
+                              color: "#475569",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "8px",
+                              fontSize: "12.5px",
+                              fontWeight: 600,
+                              textAlign: "center",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <FaCalendarCheck style={{ color: "#10b981" }} /> Faculty: {slot.teacher_name || "Assigned"}
+                          </div>
                         ) : (
                           <button
                             type="button"
