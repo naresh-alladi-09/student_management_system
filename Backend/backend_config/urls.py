@@ -17,38 +17,51 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
+import logging
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
 
+logger = logging.getLogger(__name__)
+
+def liveness_check(request):
+    """Basic process liveness check for hosting platforms (Render, Railway, Kubernetes)."""
+    return JsonResponse({
+        "status": "alive",
+        "service": "Academic Management System API"
+    }, status=200)
+
 def health_check(request):
-    db_status = "connected"
-    db_vendor = "unknown"
-    db_host = ""
+    """
+    Readiness & health check: verifies database connectivity without leaking internal
+    infrastructure details, hosts, or exception traces.
+    """
     try:
         from django.db import connection
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1;")
-        db_vendor = connection.vendor
-        db_host = connection.settings_dict.get('HOST', 'localhost')
-    except Exception as e:
-        db_status = f"unreachable: {str(e)}"
-
-    return JsonResponse({
-        "status": "healthy" if "unreachable" not in db_status else "degraded",
-        "service": "Academic Management System API",
-        "version": "2.0.0",
-        "database": db_status,
-        "database_vendor": db_vendor,
-        "database_host": db_host
-    })
+        return JsonResponse({
+            "status": "healthy",
+            "service": "Academic Management System API",
+            "version": "2.0.0",
+            "database": "connected"
+        }, status=200)
+    except Exception as exc:
+        logger.error("Health check database probe failed: %s", exc, exc_info=False)
+        return JsonResponse({
+            "status": "unhealthy",
+            "service": "Academic Management System API",
+            "database": "unavailable"
+        }, status=503)
 
 
 urlpatterns = [
     path('', health_check, name='health-check-root'),
     path('api/health/', health_check, name='health-check-api'),
+    path('api/health/live/', liveness_check, name='health-check-live'),
+    path('api/health/ready/', health_check, name='health-check-ready'),
     path('admin/', admin.site.urls),
 
     # OpenAPI 3 Schema & Interactive API Documentation

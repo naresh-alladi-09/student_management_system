@@ -162,15 +162,13 @@ export const getSessionAttendees = (sessionId) => {
 };
 
 export const markQrAttendance = (qrTokenOrPayload, options = {}) => {
-  let payload = {};
-  if (typeof qrTokenOrPayload === "object" && qrTokenOrPayload !== null) {
-    payload = { ...qrTokenOrPayload };
-  } else {
-    payload = {
-      qr_token: qrTokenOrPayload,
-      ...(typeof options === "object" ? options : {}),
-    };
-  }
+  const payload =
+    typeof qrTokenOrPayload === "object" && qrTokenOrPayload !== null
+      ? { ...qrTokenOrPayload }
+      : {
+          qr_token: qrTokenOrPayload,
+          ...(typeof options === "object" ? options : {}),
+        };
   return apiClient.post("/api/attendance/mark-qr/", payload);
 };
 

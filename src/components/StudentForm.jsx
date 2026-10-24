@@ -70,6 +70,87 @@ const StudentForm = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [createdStudentId, setCreatedStudentId] = useState(null);
 
+  const stopCamera = () => {
+    if (autoDetectTimerRef.current) {
+      clearInterval(autoDetectTimerRef.current);
+      autoDetectTimerRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+    setAutoDetectState("scanning");
+    setDetectedLandmarks(null);
+  };
+
+  const verifyFaceOnline = async (photoBase64) => {
+    setIsDetecting(true);
+    try {
+      const res = await detectFaceInImage(photoBase64);
+      if (res.data?.face_detected) {
+        const confPercent = Math.round((res.data.confidence || 0.9) * 100);
+        const lm = res.data.landmarks;
+        const ipd = lm?.inter_pupillary_distance ? `IPD: ${lm.inter_pupillary_distance}px • ` : "";
+        setFaceStatus({
+          valid: true,
+          confidence: confPercent,
+          message: `✓ Iris & Facial Biometrics Calibrated (${confPercent}% confidence). ${ipd}Profile photo captured & stored for anti-proxy attendance!`,
+        });
+      } else {
+        setFaceStatus({
+          valid: false,
+          confidence: 0,
+          message: res.data?.error || "No clear human face detected in this photo. Please retake facing the camera directly with good lighting.",
+        });
+      }
+    } catch {
+      setFaceStatus({
+        valid: true,
+        confidence: 85,
+        message: "Profile photo captured successfully (dual-biometric encoding will be saved upon student enrollment).",
+      });
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video || !streamRef.current) return;
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    // Guard against capturing before camera frames are ready
+    if (!vw || !vh) {
+      setCameraError("Camera feed is initializing. Please wait a moment for the video to load before taking the photo.");
+      return;
+    }
+
+    const canvas = canvasRef.current || document.createElement("canvas");
+    canvas.width = 480;
+    canvas.height = 480;
+
+    const ctx = canvas.getContext("2d");
+    // Center crop to square
+    const minDim = Math.min(vw, vh);
+    const startX = (vw - minDim) / 2;
+    const startY = (vh - minDim) / 2;
+
+    // Flip horizontally so the saved snapshot matches the mirrored user preview
+    ctx.translate(480, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, startX, startY, minDim, minDim, 0, 0, 480, 480);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    setFacePhoto(dataUrl);
+    stopCamera();
+    verifyFaceOnline(dataUrl);
+  };
+
   // Stop camera when unmounting
   useEffect(() => {
     return () => {
@@ -117,23 +198,6 @@ const StudentForm = () => {
       setCameraError("Camera permission denied or camera not available. You can use photo upload instead.");
       setIsCameraActive(false);
     }
-  };
-
-  const stopCamera = () => {
-    if (autoDetectTimerRef.current) {
-      clearInterval(autoDetectTimerRef.current);
-      autoDetectTimerRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setIsCameraActive(false);
-    setAutoDetectState("scanning");
-    setDetectedLandmarks(null);
   };
 
   // Continuous Iris & Face auto-detection loop when camera is active
@@ -227,70 +291,6 @@ const StudentForm = () => {
       }
     };
   }, [isCameraActive, facePhoto]);
-
-  const verifyFaceOnline = async (photoBase64) => {
-    setIsDetecting(true);
-    try {
-      const res = await detectFaceInImage(photoBase64);
-      if (res.data?.face_detected) {
-        const confPercent = Math.round((res.data.confidence || 0.9) * 100);
-        const lm = res.data.landmarks;
-        const ipd = lm?.inter_pupillary_distance ? `IPD: ${lm.inter_pupillary_distance}px • ` : "";
-        setFaceStatus({
-          valid: true,
-          confidence: confPercent,
-          message: `✓ Iris & Facial Biometrics Calibrated (${confPercent}% confidence). ${ipd}Profile photo captured & stored for anti-proxy attendance!`,
-        });
-      } else {
-        setFaceStatus({
-          valid: false,
-          confidence: 0,
-          message: res.data?.error || "No clear human face detected in this photo. Please retake facing the camera directly with good lighting.",
-        });
-      }
-    } catch {
-      setFaceStatus({
-        valid: true,
-        confidence: 85,
-        message: "Profile photo captured successfully (dual-biometric encoding will be saved upon student enrollment).",
-      });
-    } finally {
-      setIsDetecting(false);
-    }
-  };
-
-  const capturePhoto = () => {
-    const video = videoRef.current;
-    if (!video || !streamRef.current) return;
-
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    // Guard against capturing before camera frames are ready
-    if (!vw || !vh) {
-      setCameraError("Camera feed is initializing. Please wait a moment for the video to load before taking the photo.");
-      return;
-    }
-
-    const canvas = canvasRef.current || document.createElement("canvas");
-    canvas.width = 480;
-    canvas.height = 480;
-
-    const ctx = canvas.getContext("2d");
-    // Center crop to square
-    const minDim = Math.min(vw, vh);
-    const startX = (vw - minDim) / 2;
-    const startY = (vh - minDim) / 2;
-
-    // Flip horizontally so the saved snapshot matches the mirrored user preview
-    ctx.translate(480, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, startX, startY, minDim, minDim, 0, 0, 480, 480);
-
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    setFacePhoto(dataUrl);
-    stopCamera();
-    verifyFaceOnline(dataUrl);
-  };
 
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];

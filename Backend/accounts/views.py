@@ -749,6 +749,16 @@ def set_student_password_view(request):
             status=status.HTTP_404_NOT_FOUND
         )
 
+    # Prevent account takeover: If account is already activated and has usable password, must use login or forgot-password
+    if profile.is_activated and user and user.has_usable_password():
+        return Response(
+            {
+                "detail": "This student account is already activated. Please sign in using your password, or use the 'Forgot Password' link to reset your password.",
+                "already_activated": True
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     # Prevent using student ID or roll number as password
     ident_clean = raw_ident.lower().replace('-', '').replace('_', '').replace(' ', '')
     pw_clean = new_password.lower().replace('-', '').replace('_', '').replace(' ', '')
@@ -889,6 +899,16 @@ def set_teacher_password_view(request):
         return Response(
             {"detail": f"No faculty account found with Teacher ID '{raw_ident}'. Please verify your Teacher ID or contact your administrator."},
             status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Prevent account takeover: If faculty account is already activated and has usable password, must use login or forgot-password
+    if profile.is_activated and user.has_usable_password():
+        return Response(
+            {
+                "detail": "This faculty account is already activated. Please sign in using your password, or use the 'Forgot Password' link to reset your password.",
+                "already_activated": True
+            },
+            status=status.HTTP_400_BAD_REQUEST
         )
 
     if email and user.email and user.email.lower() != email:
@@ -1317,7 +1337,7 @@ def forgot_password_view(request):
         "identifier": student_id_disp,
         "student_id": student_id_disp,
         "email_sent": email_sent,
-        "dev_otp": otp if (settings.DEBUG or not getattr(settings, 'EMAIL_HOST_USER', '')) else None
+        "dev_otp": otp if settings.DEBUG else None
     }, status=status.HTTP_200_OK)
 
 
@@ -1663,6 +1683,12 @@ def request_activation_token(request):
     else:
         profile = student.user_profile
 
+    if profile and profile.is_activated:
+        return Response(
+            {"detail": "This student account is already activated. Please use the login page or forgot password to sign in."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     token = profile.generate_activation_token(hours=168)
 
     AuditLog.log(
@@ -1993,9 +2019,11 @@ def manage_users_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if len(password) < 4:
+        from accounts.utils import validate_strong_password
+        pwd_errors = validate_strong_password(password, user=None)
+        if pwd_errors:
             return Response(
-                {"detail": "Password must be at least 4 characters long."},
+                {"detail": f"Password does not meet security requirements: {' '.join(pwd_errors)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

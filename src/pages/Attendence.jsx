@@ -2090,7 +2090,6 @@ function Attendance() {
 
                     <div
                       style={{
-                        background: "#fff",
                         padding: "18px 20px",
                         borderRadius: "14px",
                         border: "1px solid #fecaca",

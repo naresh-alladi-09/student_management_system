@@ -18,6 +18,10 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-empty': 'warn',
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/exhaustive-deps': 'warn',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

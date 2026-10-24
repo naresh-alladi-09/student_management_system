@@ -92,6 +92,11 @@ class SecurityTestSuite(TestCase):
 
     def test_student_cannot_login_with_student_id_as_password(self):
         """Student cannot authenticate using predictable student ID / roll number as password."""
+        self.student_1_user.set_password("SecurePassword2026!")
+        self.student_1_user.save()
+        self.student_1_profile.is_activated = True
+        self.student_1_profile.save()
+
         response = self.client.post('/api/auth/login/', {
             'username': self.student_1.student_id,
             'password': self.student_1.student_id,
@@ -100,9 +105,10 @@ class SecurityTestSuite(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_unactivated_student_gets_activation_notice(self):
-        """Unactivated student with a valid token receives a 403 needs_activation signal."""
+        """Unactivated student receives a 403 needs_activation signal on login attempt."""
         # Ensure student 1 is unactivated with an activation token
         self.student_1_profile.is_activated = False
+        self.student_1_profile.save()
         token = self.student_1_profile.generate_activation_token()
 
         # Try to login with any password
@@ -111,8 +117,8 @@ class SecurityTestSuite(TestCase):
             'password': 'AnyRandomPassword123!',
             'role': 'student'
         })
-        # If password wrong, 401
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(response.data.get('needs_activation'))
 
     def test_student_account_activation_success(self):
         """Student successfully activates account with valid token and strong password."""

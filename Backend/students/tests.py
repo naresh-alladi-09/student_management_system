@@ -58,13 +58,18 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
         )
         self.user_b = self.student_b.user_profile.user
 
-        # 5. Curriculum Subject
+        # 5. Curriculum Subject & Faculty Assignment
         self.subject = Subject.objects.create(
             code='CS501',
             name='Data Structures & Algorithms',
             branch='CSE',
             semester='5',
             credits=4
+        )
+        FacultyAssignment.objects.create(
+            teacher=self.teacher_user,
+            subject=self.subject,
+            academic_class=self.student_a.academic_class
         )
 
     # -----------------------------------------------------------------
@@ -124,7 +129,9 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
         self.client.force_authenticate(user=self.teacher_user)
         response = self.client.post('/api/attendance/sessions/create/', {
             'subject_id': self.subject.id,
-            'duration_seconds': 60
+            'duration_seconds': 60,
+            'latitude': 17.385044,
+            'longitude': 78.486671
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn('session', response.data)
@@ -135,7 +142,9 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
         session = AttendanceSession.create_session(
             subject=self.subject,
             teacher=self.teacher_user,
-            duration_seconds=60
+            duration_seconds=60,
+            require_face=False,
+            require_geo=False
         )
         self.client.force_authenticate(user=self.user_a)
         response = self.client.post('/api/attendance/mark-qr/', {
@@ -150,7 +159,9 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
         session = AttendanceSession.create_session(
             subject=self.subject,
             teacher=self.teacher_user,
-            duration_seconds=60
+            duration_seconds=60,
+            require_face=False,
+            require_geo=False
         )
         self.client.force_authenticate(user=self.user_a)
         # First submission
@@ -291,7 +302,9 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
             teacher=self.teacher_user,
             duration_seconds=120,
             academic_class=ac_a,
-            section='A'
+            section='A',
+            require_face=False,
+            require_geo=False
         )
 
         self.client.force_authenticate(user=self.user_a)
@@ -322,7 +335,9 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
             teacher=self.teacher_user,
             duration_seconds=120,
             academic_class=ac_a,
-            section='A'
+            section='A',
+            require_face=False,
+            require_geo=False
         )
 
         # Student B (Section B) tries to scan Section A QR code
@@ -346,7 +361,9 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
             teacher=self.teacher_user,
             duration_seconds=120,
             academic_class=ac_a,
-            section='A'
+            section='A',
+            require_face=False,
+            require_geo=False
         )
 
         self.client.force_authenticate(user=self.user_a)
@@ -373,7 +390,7 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
         self.client.force_authenticate(user=self.user_a)
         res = self.client.post('/api/attendance/mark-qr/', {'qr_token': session.qr_token})
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('expired', res.data['detail'].lower())
+        self.assertTrue('ended' in res.data['detail'].lower() or 'expired' in res.data['detail'].lower())
 
     # -----------------------------------------------------------------
     # 8. USER CREATION PASSWORD SECURITY VALIDATION

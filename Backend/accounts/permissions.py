@@ -30,8 +30,6 @@ class IsTeacher(permissions.BasePermission):
         profile = getattr(user, 'profile', None)
         if profile and str(profile.role).lower() in ['teacher', 'faculty']:
             return True
-        if str(user.username).lower().startswith(('tch', 'fac')):
-            return True
         return False
 
 
@@ -59,8 +57,6 @@ class IsTeacherOrAdmin(permissions.BasePermission):
         profile = getattr(user, 'profile', None)
         if profile and str(profile.role).lower() in ['teacher', 'faculty', 'admin']:
             return True
-        if str(user.username).lower().startswith(('tch', 'fac', 'admin')):
-            return True
         return False
 
 
@@ -81,7 +77,7 @@ class IsSelfOrStaff(permissions.BasePermission):
         if not profile:
             return False
         role = str(profile.role).lower()
-        if role in ['teacher', 'faculty', 'admin'] or str(request.user.username).lower().startswith(('tch', 'fac', 'admin')):
+        if role in ['teacher', 'faculty', 'admin']:
             return True
         if role == 'student':
             # Check if obj is Student instance or has student attribute

@@ -18,37 +18,64 @@ load_dotenv(BASE_DIR / '.env')
 # =============================================================================
 # 1. CORE SECURITY CONFIGURATION (Features 2, 7)
 # =============================================================================
+# 1. CORE SECURITY CONFIGURATION (Features 2, 7)
+# =============================================================================
+import sys
+
+# Check if running automated tests
+IS_TESTING = 'test' in sys.argv or os.environ.get('TESTING', '').strip().lower() in ('true', '1', 'yes')
 
 # DEBUG defaults to False in production unless explicitly set to True
 DEBUG = os.environ.get('DEBUG', 'False').strip().lower() in ('true', '1', 'yes')
 
-# Resilient SECRET_KEY: accept any configured key or use secure production fallback without crashing
+# In production (DEBUG=False and not testing), SECRET_KEY must be provided from environment
+_INSECURE_DEFAULT_SECRET_KEYS = (
+    'ams-prod-django-secret-key-student-management-system-982#$@!5f7a29c1e',
+    'local-dev-key-student-management-system-dev-only-not-for-prod',
+    'replace-with-a-secure-random-secret-key-in-production',
+)
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if not SECRET_KEY:
-    SECRET_KEY = 'ams-prod-django-secret-key-student-management-system-982#$@!5f7a29c1e'
+    if not DEBUG and not IS_TESTING:
+        raise ImproperlyConfigured(
+            "CRITICAL SECURITY CONFIGURATION ERROR: SECRET_KEY environment variable is missing. "
+            "A cryptographically strong secret key must be set in production via SECRET_KEY environment variable."
+        )
+    # Safe fallback for local development only
+    SECRET_KEY = 'ams-dev-only-secret-key-for-local-testing-and-dev-sessions-only'
+elif not DEBUG and not IS_TESTING and SECRET_KEY in _INSECURE_DEFAULT_SECRET_KEYS:
+    raise ImproperlyConfigured(
+        "CRITICAL SECURITY CONFIGURATION ERROR: An insecure or well-known default SECRET_KEY was detected in production. "
+        "Generate a fresh unique secret key with: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'"
+    )
 
-# Resilient ALLOWED_HOSTS: automatically allow Render, Vercel, localhost, and configured domains
+# ALLOWED_HOSTS: require explicit hostnames; never allow wildcard '*' in production
 allowed_hosts_env = os.environ.get('ALLOWED_HOSTS')
 if allowed_hosts_env and allowed_hosts_env.strip():
-    ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
+    ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip() and h.strip() != '*']
 else:
-    ALLOWED_HOSTS = [
-        'localhost',
-        '127.0.0.1',
-        '[::1]',
-        'testserver',
-        '.onrender.com',
-        '.vercel.app',
-        '*',
-    ]
+    if not DEBUG and not IS_TESTING:
+        ALLOWED_HOSTS = []
+    else:
+        ALLOWED_HOSTS = [
+            'localhost',
+            '127.0.0.1',
+            '[::1]',
+            'testserver',
+        ]
 
-# Ensure Render hostname and testserver are included
 render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if render_hostname and render_hostname not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_hostname)
 
 if 'testserver' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('testserver')
+
+if not DEBUG and not IS_TESTING and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured(
+        "CRITICAL CONFIGURATION ERROR: ALLOWED_HOSTS environment variable is required when DEBUG=False. "
+        "Set ALLOWED_HOSTS to your backend domain(s), e.g. ALLOWED_HOSTS=api.yourcollege.edu,your-app.onrender.com"
+    )
 
 
 # =============================================================================
@@ -147,105 +174,119 @@ TEMPLATES = [
 # 4. DATABASE CONFIGURATION (Feature 2)
 # =============================================================================
 
-database_url = os.environ.get("DATABASE_URL") or os.environ.get("AIVEN_SERVICE_URI")
-
-if database_url:
-    parsed_url = urllib.parse.urlparse(database_url)
-    db_engine = "django.db.backends.mysql"
-    db_name = parsed_url.path.lstrip('/') or "defaultdb"
-    db_user = parsed_url.username or "avnadmin"
-    db_password = parsed_url.password or ""
-    db_host = parsed_url.hostname or "127.0.0.1"
-    db_port = parsed_url.port or 3306
-else:
-    db_engine = os.environ.get("DB_ENGINE", "django.db.backends.mysql")
-    db_name = os.environ.get("AIVEN_DB_NAME", os.environ.get("DB_NAME", "defaultdb"))
-    db_user = os.environ.get("AIVEN_DB_USER", os.environ.get("DB_USER", "avnadmin"))
-    db_password = os.environ.get("AIVEN_PASSWORD", os.environ.get("DB_PASSWORD", ""))
-    db_host = os.environ.get("AIVEN_DB_HOST", os.environ.get("DB_HOST", "mysql-26020f38-alekhyabandaru4-16f1.f.aivencloud.com"))
-    db_port = int(os.environ.get("AIVEN_DB_PORT", os.environ.get("DB_PORT", 22125)))
-
-db_options = {
-    'charset': 'utf8mb4',
-}
-
-ca_path = BASE_DIR / 'ca.pem'
-if not ca_path.exists():
-    _aiven_ca_data = os.environ.get("AIVEN_CA_CERT")
-    if not _aiven_ca_data:
-        _aiven_ca_data = (
-            "-----BEGIN CERTIFICATE-----\n"
-            "MIIERDCCAqygAwIBAgIUfu2vEknLxUxkUxG173MtleN51BQwDQYJKoZIhvcNAQEM\n"
-            "BQAwOjE4MDYGA1UEAwwvNzEzZGVjN2ItNGI4MS00MThiLTg4ZjYtZWQ5YjQyZGRm\n"
-            "ZGNiIFByb2plY3QgQ0EwHhcNMjYwODI4MDk1MzEwWhcNMzYwODI1MDk1MzEwWjA6\n"
-            "MTgwNgYDVQQDDC83MTNkZWM3Yi00YjgxLTQxOGItODhmNi1lZDliNDJkZGZkY2Ig\n"
-            "UHJvamVjdCBDQTCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGBAKGpL4DZ\n"
-            "zDJnO0N2wDb5OMlJmPdCZ+QCOQveM+SP1l5AbDXKFU5DHJHjGHZNtSBKr80NhNc6\n"
-            "BYEAHkCqNpakzfhpQwRRiYc6NmFnREiYaLgBW3+hOeJWa1uqdEUy8jw02ze1LgaU\n"
-            "Z+LYRRGMoS0rYcZxlo0z/htOBdA4m2Sc01BWYNW50fEPgOvwsp4UH5lrH2ijoAis\n"
-            "usvcrp9WOikO9V9GUG0/vWMJXAlI0XZWj6MHPrUIEEVuVASzIAB8Ro0iXnyoLG8g\n"
-            "rAg23+wmTwHaVIU85dtSmyv8ufDn7RQeA2Qk6W3yLMI593VcO9FuY9wDDU5/kH51\n"
-            "6+zx+8SHDIKOtnLzJcg7dnVWlYu+5eSV2aiQClMNDKxqrwXL0bmaf+/cEZ5ss7ZF\n"
-            "zU4uHMLTS9Tc9LLuFNoYo10W+OTr9J81L1QlmoAVxqZGHP0oYF5FEc4YkbpPIaLv\n"
-            "9cMTAGJpEGvUkGdWdFW3SW0OrcVN4QjDBeM318pXSy779FKwoywPIY/5hQIDAQAB\n"
-            "o0IwQDAdBgNVHQ4EFgQUpUiW0IepT99JglOaCYpVaRCUDfowEgYDVR0TAQH/BAgw\n"
-            "BgEB/wIBADALBgNVHQ8EBAMCAQYwDQYJKoZIhvcNAQEMBQADggGBAD5B9zP7k+Tq\n"
-            "vbsYUfLoOGngT7p8J/tliDuWIgeq2umEhZQEv6mxfYK8HkMK0t1tfu8hOPxolDkf\n"
-            "ZnrS8BO7nqw7pC2oY05EASyHYAzHliAL7+PBQzPuSTqu5qRfYP6f7ieShhOzSJKP\n"
-            "QckAn7bB8QlixlnUr8hS0uDjSkf2iLoH6z05w59HcflAGdUVtIZJsTEkSie6C3sH\n"
-            "ymSHZCi4nN1K8dQKnKZiLCunEJc5X4LvlaGEIza5zABsTex7IWE0IBCjW1T6Qiqv\n"
-            "2z/Z59iL4ZIIMGqDOxunH2C3Go3XAxenlj1AthBGfYz3rIzqNP4yTfj5fLSA2wJv\n"
-            "UZ+L80nVmy7k3iWjOLp2pOwBdGoZk3C+P55lE3treTxJ3z/+VEAw5kmSLkl3gXun\n"
-            "9CMiUaaIZqXRC/8NLEbiGEtPQbNA8rD8Soao23EkN00M7yD9ZkCgoA2h/ApVyI2o\n"
-            "xP5TwGc1tXB8zoPGofczwIDAnmx1NP8X01VYdpdoE3jbPJ1Z1cRK1Q==\n"
-            "-----END CERTIFICATE-----\n"
-        )
-    try:
-        ca_path.write_text(_aiven_ca_data, encoding='utf-8')
-    except Exception:
-        pass
-
-if ca_path.exists():
-    db_options['ssl'] = {
-        'ca': str(ca_path.resolve()),
-    }
-
-import socket
-
-# Verify database reachability; fallback cleanly to SQLite if offline
-use_local_sqlite = os.environ.get("USE_SQLITE", "false").lower() == "true"
-if not use_local_sqlite and db_engine == "django.db.backends.mysql":
-    if not db_password and db_host not in ("127.0.0.1", "localhost"):
-        print(f"[WARNING] Remote MySQL password missing for '{db_host}'. Falling back to local SQLite database.")
-        use_local_sqlite = True
-    else:
-        try:
-            s = socket.create_connection((db_host, db_port), timeout=10)
-            s.close()
-        except Exception as exc:
-            print(f"[WARNING] MySQL database '{db_host}:{db_port}' is unreachable ({exc}). Falling back to local SQLite database.")
-            use_local_sqlite = True
-
-
-if use_local_sqlite or db_engine == "django.db.backends.sqlite3":
+# Test runner isolation: When running automated tests, use isolated in-memory SQLite database
+if IS_TESTING:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            'NAME': ':memory:',
         }
     }
 else:
-    DATABASES = {
-        'default': {
-            "ENGINE": db_engine,
-            "NAME": db_name,
-            "USER": db_user,
-            "PASSWORD": db_password,
-            "HOST": db_host,
-            "PORT": db_port,
-            'OPTIONS': db_options,
+    database_url = os.environ.get("DATABASE_URL") or os.environ.get("AIVEN_SERVICE_URI")
+    use_local_sqlite = os.environ.get("USE_SQLITE", "false").lower() == "true"
+
+    if use_local_sqlite:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
         }
-    }
+    elif database_url:
+        parsed_url = urllib.parse.urlparse(database_url)
+        db_engine = "django.db.backends.mysql"
+        db_name = parsed_url.path.lstrip('/') or "defaultdb"
+        db_user = parsed_url.username or "avnadmin"
+        db_password = parsed_url.password or ""
+        db_host = parsed_url.hostname or "127.0.0.1"
+        db_port = parsed_url.port or 3306
+
+        db_options = {'charset': 'utf8mb4'}
+        ca_path = BASE_DIR / 'ca.pem'
+        ca_cert_data = os.environ.get("AIVEN_CA_CERT") or os.environ.get("DB_SSL_CA")
+        if ca_cert_data and not ca_path.exists():
+            try:
+                ca_path.write_text(ca_cert_data, encoding='utf-8')
+            except Exception:
+                pass
+        if ca_path.exists():
+            db_options['ssl'] = {'ca': str(ca_path.resolve())}
+
+        DATABASES = {
+            'default': {
+                "ENGINE": db_engine,
+                "NAME": db_name,
+                "USER": db_user,
+                "PASSWORD": db_password,
+                "HOST": db_host,
+                "PORT": db_port,
+                'OPTIONS': db_options,
+            }
+        }
+    else:
+        db_engine = os.environ.get("DB_ENGINE", "django.db.backends.mysql")
+        db_name = os.environ.get("AIVEN_DB_NAME", os.environ.get("DB_NAME", "defaultdb"))
+        db_user = os.environ.get("AIVEN_DB_USER", os.environ.get("DB_USER", "avnadmin"))
+        db_password = os.environ.get("AIVEN_PASSWORD", os.environ.get("DB_PASSWORD", ""))
+        db_host = os.environ.get("AIVEN_DB_HOST", os.environ.get("DB_HOST", ""))
+        db_port_raw = os.environ.get("AIVEN_DB_PORT", os.environ.get("DB_PORT", "22125"))
+        try:
+            db_port = int(db_port_raw)
+        except (ValueError, TypeError):
+            db_port = 3306
+
+        if db_engine == "django.db.backends.sqlite3":
+            DATABASES = {
+                'default': {
+                    'ENGINE': 'django.db.backends.sqlite3',
+                    'NAME': BASE_DIR / 'db.sqlite3',
+                }
+            }
+        else:
+            # Validate remote database configuration at startup
+            if not db_host:
+                if not DEBUG:
+                    raise ImproperlyConfigured(
+                        "CRITICAL DATABASE CONFIGURATION ERROR: Remote database host is missing in production. "
+                        "Configure DATABASE_URL or AIVEN_DB_HOST/DB_HOST environment variable."
+                    )
+                else:
+                    print("[NOTICE] Remote DB_HOST is not set; using local SQLite database for development.")
+                    DATABASES = {
+                        'default': {
+                            'ENGINE': 'django.db.backends.sqlite3',
+                            'NAME': BASE_DIR / 'db.sqlite3',
+                        }
+                    }
+            elif not db_password and not DEBUG and db_host not in ("127.0.0.1", "localhost"):
+                raise ImproperlyConfigured(
+                    f"CRITICAL DATABASE CONFIGURATION ERROR: Database password is missing for host '{db_host}' in production. "
+                    "Configure AIVEN_PASSWORD or DB_PASSWORD environment variable."
+                )
+            else:
+                db_options = {'charset': 'utf8mb4'}
+                ca_path = BASE_DIR / 'ca.pem'
+                ca_cert_data = os.environ.get("AIVEN_CA_CERT") or os.environ.get("DB_SSL_CA")
+                if ca_cert_data and not ca_path.exists():
+                    try:
+                        ca_path.write_text(ca_cert_data, encoding='utf-8')
+                    except Exception:
+                        pass
+                if ca_path.exists():
+                    db_options['ssl'] = {'ca': str(ca_path.resolve())}
+
+                DATABASES = {
+                    'default': {
+                        "ENGINE": db_engine,
+                        "NAME": db_name,
+                        "USER": db_user,
+                        "PASSWORD": db_password,
+                        "HOST": db_host,
+                        "PORT": db_port,
+                        'OPTIONS': db_options,
+                    }
+                }
 
 
 # =============================================================================
@@ -290,45 +331,53 @@ STATIC_ROOT.mkdir(exist_ok=True)
 # 7. CORS & CSRF CONFIGURATION (Features 2, 7)
 # =============================================================================
 
-# Permissive/Production-ready CORS: allow configured origins or enable all so frontend connects cleanly
-cors_allow_all = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'True').strip().lower()
-CORS_ALLOW_ALL_ORIGINS = cors_allow_all in ('true', '1', 'yes')
+# Strict CORS in production: never allow all origins unless explicitly overridden for debugging
+if DEBUG:
+    cors_allow_all = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'True').strip().lower()
+    CORS_ALLOW_ALL_ORIGINS = cors_allow_all in ('true', '1', 'yes')
+else:
+    cors_allow_all = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'False').strip().lower()
+    CORS_ALLOW_ALL_ORIGINS = cors_allow_all in ('true', '1', 'yes')
 
 cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS')
-if cors_origins_env:
+if cors_origins_env and cors_origins_env.strip():
     CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
 else:
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:8000",
-    ]
+    if DEBUG or IS_TESTING:
+        CORS_ALLOWED_ORIGINS = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
+            "http://localhost:3000",
+            "http://127.0.0.1:8000",
+        ]
+    else:
+        CORS_ALLOWED_ORIGINS = []
 
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https:\/\/.*\.vercel\.app$",
-    r"^https:\/\/.*\.onrender\.com$",
-    r"^https:\/\/.*\.netlify\.app$",
-]
+# Exact CORS regexes: only if explicitly provided in environment, avoid open wildcards
+cors_regex_env = os.environ.get('CORS_ALLOWED_ORIGIN_REGEXES')
+if cors_regex_env and cors_regex_env.strip():
+    CORS_ALLOWED_ORIGIN_REGEXES = [r.strip() for r in cors_regex_env.split(',') if r.strip()]
+else:
+    CORS_ALLOWED_ORIGIN_REGEXES = []
 
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF Trusted Origins
 csrf_origins_env = os.environ.get('CSRF_TRUSTED_ORIGINS')
-if csrf_origins_env:
+if csrf_origins_env and csrf_origins_env.strip():
     CSRF_TRUSTED_ORIGINS = [o.strip() for o in csrf_origins_env.split(',') if o.strip()]
 else:
-    CSRF_TRUSTED_ORIGINS = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:8000",
-        "https://*.onrender.com",
-        "https://*.vercel.app",
-        "https://*.netlify.app",
-    ]
+    if DEBUG or IS_TESTING:
+        CSRF_TRUSTED_ORIGINS = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:8000",
+        ]
+    else:
+        CSRF_TRUSTED_ORIGINS = []
 
 
 # =============================================================================
@@ -338,7 +387,7 @@ else:
 if not DEBUG:
     # Reverse proxy protocol header (e.g. Render, Railway, AWS ALB, Nginx)
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False').strip().lower() in ('true', '1', 'yes')
+    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True').strip().lower() in ('true', '1', 'yes')
 
     # Strict-Transport-Security (HSTS)
     SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', 31536000))
@@ -350,7 +399,7 @@ if not DEBUG:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_SECURE = True
-    CSRF_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_HTTPONLY = False
     CSRF_COOKIE_SAMESITE = 'Lax'
 
     # Content Security & Frame Protection
@@ -360,6 +409,7 @@ if not DEBUG:
 else:
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
+    CSRF_COOKIE_HTTPONLY = False
     X_FRAME_OPTIONS = 'SAMEORIGIN'
 
 
@@ -465,9 +515,7 @@ EMAIL_BACKEND = os.environ.get(
 )
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
-EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False').lower() in ('true', '1', 'yes') or EMAIL_PORT == 465
-EMAIL_USE_TLS = (os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')) and not EMAIL_USE_SSL
-EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', 10))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '').strip()
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '').strip().replace(' ', '')
 DEFAULT_FROM_EMAIL = os.environ.get(

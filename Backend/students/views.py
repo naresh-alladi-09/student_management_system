@@ -438,8 +438,10 @@ class StudentViewSet(viewsets.ModelViewSet):
 @permission_classes([AllowAny])
 def health_check(request):
     """
-    Health check endpoint to verify backend and database connectivity.
+    Health check endpoint to verify backend and database connectivity without leaking internal data.
     """
+    import logging
+    logger = logging.getLogger(__name__)
     start_time = time.time()
     try:
         with connection.cursor() as cursor:
@@ -450,18 +452,18 @@ def health_check(request):
         return Response({
             "status": "healthy",
             "database": "connected",
-            "database_vendor": connection.vendor,
             "latency_ms": latency_ms,
             "total_students": student_count,
             "message": "Connected to database successfully without errors."
         }, status=status.HTTP_200_OK)
     except Exception as e:
         latency_ms = round((time.time() - start_time) * 1000, 2)
+        logger.error("Student API health check failed: %s", e, exc_info=False)
         return Response({
             "status": "unhealthy",
             "database": "disconnected",
             "latency_ms": latency_ms,
-            "error": str(e)
+            "message": "Database connection unavailable."
         }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 

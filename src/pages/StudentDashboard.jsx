@@ -1430,7 +1430,6 @@ const StudentDashboard = () => {
                     style={{
                       padding: "4px 10px",
                       borderRadius: "14px",
-                      border: "none",
                       background: studentCourseSemFilter === String(sem) ? "#2563eb" : "#f8fafc",
                       color: studentCourseSemFilter === String(sem) ? "#fff" : "#64748b",
                       fontWeight: 600,

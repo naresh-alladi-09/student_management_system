@@ -64,7 +64,7 @@ function Performance() {
   const [examSessions, setExamSessions] = useState([]);
   const [examsLoading, setExamsLoading] = useState(false);
   const [showExamModal, setShowExamModal] = useState(false);
-  const [newExamData, setNewExamData] = useState({
+  const [newExamData, setNewExamData] = useState(() => ({
     name: "",
     college_name: "SRKR ENGINEERING COLLEGE",
     academic_year: "2026-2027",
@@ -78,7 +78,7 @@ function Performance() {
     is_approved_by_admin: false,
     is_released_to_students: false,
     timetable: [],
-  });
+  }));
   const [isCreatingExam, setIsCreatingExam] = useState(false);
   const [isReleasingExamId, setIsReleasingExamId] = useState(null);
 

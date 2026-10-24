@@ -357,6 +357,91 @@ const MarkAttendancePage = () => {
     };
   }, [studentUser, sessionInfo, capturedPhoto, resultStatus]);
 
+  // 5. Final Submit Attendance to Backend
+  const handleConfirmAttendance = async (photoOverride = null) => {
+    const cleanToken = token.trim();
+    if (!cleanToken) {
+      setResultStatus("error");
+      setResultData({ detail: "Please provide a valid session QR token." });
+      return;
+    }
+
+    const facePhotoToUse = photoOverride || capturedPhoto;
+
+    // Biometric check requirement
+    if (sessionInfo?.require_face && !facePhotoToUse) {
+      alert("Face photo is required for biometric identity verification.");
+      return;
+    }
+
+    // Geolocation check requirement
+    if (sessionInfo?.require_geo && !userCoords) {
+      acquireGeolocation();
+    }
+
+    setIsSubmitting(true);
+    setResultStatus("idle");
+    setResultData(null);
+
+    try {
+      const payload = {
+        qr_token: cleanToken,
+        face_image: facePhotoToUse || null,
+        latitude: userCoords?.latitude ?? null,
+        longitude: userCoords?.longitude ?? null,
+        accuracy: userCoords?.accuracy ?? null,
+        device_fingerprint: `${navigator.platform} | ${navigator.userAgent.slice(0, 80)}`,
+      };
+
+      const res = await markQrAttendance(payload);
+      setResultStatus("success");
+      setResultData({
+        message: res.data.message || "Attendance recorded successfully!",
+        subject: res.data.subject,
+        subjectCode: res.data.subject_code,
+        faculty: res.data.faculty,
+        date: res.data.date,
+        markedAt: res.data.marked_at,
+        status: res.data.status,
+        distanceMeters: res.data.distance_meters,
+        effectiveDistance: res.data.effective_distance,
+        accuracy: res.data.accuracy,
+        faceConfidence: res.data.face_confidence,
+        faceMatched: res.data.face_matched,
+      });
+      playBiometricChime("success");
+      stopCamera();
+    } catch (err) {
+      stopCamera();
+      if (err.response?.status === 409) {
+        setResultStatus("already");
+        setResultData({
+          detail:
+            err.response.data?.detail ||
+            "You have already checked in for this session.",
+          markedAt: err.response.data?.marked_at,
+          recordId: err.response.data?.record_id,
+        });
+      } else {
+        setResultStatus("error");
+        setResultData({
+          detail:
+            err.response?.data?.detail ||
+            err.response?.data?.error ||
+            "Verification failed. The token may be expired or proxy security rejected the scan.",
+          errorType: err.response?.data?.error_type || "UNKNOWN",
+          distance: err.response?.data?.distance_meters,
+          effectiveDistance: err.response?.data?.effective_distance,
+          accuracy: err.response?.data?.accuracy,
+          maxRadius: err.response?.data?.max_radius_meters,
+          faceConfidence: err.response?.data?.face_confidence,
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Autonomous Face Detection & Instant Verification Loop
   useEffect(() => {
     // Run detection loop only when:
@@ -552,91 +637,6 @@ const MarkAttendancePage = () => {
     setAutoDetectState("scanning");
     setLockProgress(0);
     startCamera();
-  };
-
-  // 5. Final Submit Attendance to Backend
-  const handleConfirmAttendance = async (photoOverride = null) => {
-    const cleanToken = token.trim();
-    if (!cleanToken) {
-      setResultStatus("error");
-      setResultData({ detail: "Please provide a valid session QR token." });
-      return;
-    }
-
-    const facePhotoToUse = photoOverride || capturedPhoto;
-
-    // Biometric check requirement
-    if (sessionInfo?.require_face && !facePhotoToUse) {
-      alert("Face photo is required for biometric identity verification.");
-      return;
-    }
-
-    // Geolocation check requirement
-    if (sessionInfo?.require_geo && !userCoords) {
-      acquireGeolocation();
-    }
-
-    setIsSubmitting(true);
-    setResultStatus("idle");
-    setResultData(null);
-
-    try {
-      const payload = {
-        qr_token: cleanToken,
-        face_image: facePhotoToUse || null,
-        latitude: userCoords?.latitude ?? null,
-        longitude: userCoords?.longitude ?? null,
-        accuracy: userCoords?.accuracy ?? null,
-        device_fingerprint: `${navigator.platform} | ${navigator.userAgent.slice(0, 80)}`,
-      };
-
-      const res = await markQrAttendance(payload);
-      setResultStatus("success");
-      setResultData({
-        message: res.data.message || "Attendance recorded successfully!",
-        subject: res.data.subject,
-        subjectCode: res.data.subject_code,
-        faculty: res.data.faculty,
-        date: res.data.date,
-        markedAt: res.data.marked_at,
-        status: res.data.status,
-        distanceMeters: res.data.distance_meters,
-        effectiveDistance: res.data.effective_distance,
-        accuracy: res.data.accuracy,
-        faceConfidence: res.data.face_confidence,
-        faceMatched: res.data.face_matched,
-      });
-      playBiometricChime("success");
-      stopCamera();
-    } catch (err) {
-      stopCamera();
-      if (err.response?.status === 409) {
-        setResultStatus("already");
-        setResultData({
-          detail:
-            err.response.data?.detail ||
-            "You have already checked in for this session.",
-          markedAt: err.response.data?.marked_at,
-          recordId: err.response.data?.record_id,
-        });
-      } else {
-        setResultStatus("error");
-        setResultData({
-          detail:
-            err.response?.data?.detail ||
-            err.response?.data?.error ||
-            "Verification failed. The token may be expired or proxy security rejected the scan.",
-          errorType: err.response?.data?.error_type || "UNKNOWN",
-          distance: err.response?.data?.distance_meters,
-          effectiveDistance: err.response?.data?.effective_distance,
-          accuracy: err.response?.data?.accuracy,
-          maxRadius: err.response?.data?.max_radius_meters,
-          faceConfidence: err.response?.data?.face_confidence,
-        });
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   // Student Login Form Handler
