@@ -71,6 +71,21 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
             subject=self.subject,
             academic_class=self.student_a.academic_class
         )
+        from timetable.models import TimetableSlot
+        now_local = timezone.localtime()
+        self.timetable_slot = TimetableSlot.objects.create(
+            subject=self.subject,
+            teacher=self.teacher_user,
+            day=now_local.strftime('%A'),
+            start_time=(now_local - timedelta(minutes=15)).time(),
+            end_time=(now_local + timedelta(minutes=45)).time(),
+            room="Lab 101",
+            branch="CSE",
+            year=3,
+            semester="5",
+            section="A",
+            academic_class=self.student_a.academic_class
+        )
 
     # -----------------------------------------------------------------
     # 1. ROLE-BASED AUTHORIZATION & ISOLATION
@@ -136,6 +151,31 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn('session', response.data)
         self.assertTrue(len(response.data['session']['qr_token']) > 20)
+
+    def test_attendance_disabled_when_no_timetable_period(self):
+        """Attendance session creation must be rejected with 400 when no timetable period is active."""
+        # Create a second subject without any timetable slot
+        sub_no_slot = Subject.objects.create(
+            code='CS999',
+            name='Advanced Quantum Computing',
+            branch='CSE',
+            semester='5',
+            credits=4
+        )
+        FacultyAssignment.objects.create(
+            teacher=self.teacher_user,
+            subject=sub_no_slot,
+            academic_class=self.student_a.academic_class
+        )
+        self.client.force_authenticate(user=self.teacher_user)
+        response = self.client.post('/api/attendance/sessions/create/', {
+            'subject_id': sub_no_slot.id,
+            'duration_seconds': 60,
+            'latitude': 17.385044,
+            'longitude': 78.486671
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Attendance is disabled', response.data['detail'])
 
     def test_student_marks_qr_attendance_successfully(self):
         """Authenticated student successfully submits temporary QR token."""

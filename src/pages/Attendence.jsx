@@ -19,6 +19,7 @@ import {
   getLeaveRequests,
   reviewLeaveRequest,
   getAllStudentsList,
+  getTodayTimetable,
 } from "../services/studentservice";
 import {
   FaQrcode,
@@ -42,6 +43,9 @@ import {
   FaPhoneAlt,
   FaPaperPlane,
   FaMapMarkerAlt,
+  FaLock,
+  FaCalendarCheck,
+  FaCalendarTimes,
 } from "react-icons/fa";
 
 function Attendance() {
@@ -129,6 +133,36 @@ function Attendance() {
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [locationLockedMsg, setLocationLockedMsg] = useState("");
 
+  // Timetable Period & Attendance Integration (Attendance enabled only during timetable periods)
+  const [todaySlots, setTodaySlots] = useState([]);
+  const [timetableLoading, setTimetableLoading] = useState(false);
+  const [adminBypass, setAdminBypass] = useState(false);
+
+  const fetchTodayTimetableData = () => {
+    setTimetableLoading(true);
+    getTodayTimetable({ all: true })
+      .then((res) => {
+        const slots = res.data?.slots || [];
+        setTodaySlots(slots);
+        // If an active period is currently in session, auto-select its subject & class
+        const active = slots.find((s) => s.status === "active" || s.can_open_qr);
+        if (active) {
+          if (active.subject) {
+            setSelectedSubjectId(String(active.subject));
+          }
+          if (active.academic_class) {
+            setSelectedClassId(String(active.academic_class));
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load today's timetable:", err);
+      })
+      .finally(() => {
+        setTimetableLoading(false);
+      });
+  };
+
   // Handler for Tab switching that preserves position across refreshes
   const handleSelectTab = (tabName) => {
     setActiveTab(tabName);
@@ -147,6 +181,7 @@ function Attendance() {
       fetchSummary(threshold);
     } else if (tabName === "qr") {
       checkActiveQrSession();
+      fetchTodayTimetableData();
     }
   };
 
@@ -457,6 +492,7 @@ function Attendance() {
 
   // Immediate check on mount: If an active QR session is running, restore it seamlessly on page refresh
   useEffect(() => {
+    fetchTodayTimetableData();
     getActiveSession()
       .then((res) => {
         if (res.data?.session && (res.data.active || res.data.show_present_for_10_mins)) {
@@ -577,7 +613,25 @@ function Attendance() {
     return () => clearInterval(t);
   }, [timeRemaining]);
 
+  // Timetable Period Active Check: Attendance is enabled only during scheduled timetable lecture slots
+  const activeTimetableSlot =
+    todaySlots.find(
+      (s) =>
+        (s.status === "active" || s.can_open_qr) &&
+        (!selectedSubjectId || String(s.subject) === String(selectedSubjectId))
+    ) || todaySlots.find((s) => s.status === "active" || s.can_open_qr);
+
+  const upcomingTimetableSlots = todaySlots.filter((s) => s.status === "upcoming");
+  const nextUpcomingSlot = upcomingTimetableSlots[0] || null;
+  const isAttendanceEnabled = Boolean(activeTimetableSlot) || (isAdmin && adminBypass);
+
   const handleStartQrSession = async () => {
+    if (!isAttendanceEnabled) {
+      setError(
+        "Attendance session cannot be launched outside of scheduled timetable lecture periods. Per institutional policy, attendance is only unlocked during active periods."
+      );
+      return;
+    }
     if (!selectedSubjectId) {
       setError("Please select an authorized subject to conduct attendance. If no subjects appear, verify your faculty assignment with an administrator.");
       return;
@@ -602,6 +656,8 @@ function Attendance() {
           radius_meters: geofenceRadius,
           require_face: faceRequired,
           require_geo: geoEnabled,
+          admin_override: adminBypass,
+          ignore_timetable: adminBypass,
         }
       );
       if (res.data?.session) {
@@ -873,8 +929,193 @@ function Attendance() {
                       Start New Attendance Session
                     </h3>
                     <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "16px" }}>
-                      Select a subject to launch an in-class QR attendance session.
+                      Select a subject to launch an in-class QR attendance session. Attendance is enabled only during scheduled timetable lecture slots.
                     </p>
+
+                    {/* TIMETABLE STATUS & SCHEDULE CARD */}
+                    <div style={{ marginBottom: "18px" }}>
+                      {timetableLoading ? (
+                        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px", fontSize: "12.5px", color: "#64748b", display: "flex", alignItems: "center", gap: "8px" }}>
+                          <FaSync className="fa-spin" style={{ color: "#2563eb" }} /> Checking current lecture timetable periods...
+                        </div>
+                      ) : activeTimetableSlot ? (
+                        <div style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "12px", padding: "14px", display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                          <div style={{ background: "#059669", color: "#fff", borderRadius: "8px", padding: "8px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginTop: "2px" }}>
+                            <FaCalendarCheck />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+                              <span style={{ background: "#10b981", color: "#fff", fontSize: "10.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "12px" }}>
+                                ACTIVE TIMETABLE PERIOD
+                              </span>
+                              <span style={{ fontSize: "13px", fontWeight: 700, color: "#065f46" }}>
+                                {activeTimetableSlot.start_time} - {activeTimetableSlot.end_time}
+                              </span>
+                              {activeTimetableSlot.room_number && (
+                                <span style={{ fontSize: "11px", color: "#047857", background: "#d1fae5", padding: "1px 6px", borderRadius: "4px" }}>
+                                  Room {activeTimetableSlot.room_number}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: "13px", color: "#047857", fontWeight: 700 }}>
+                              {activeTimetableSlot.subject_code} - {activeTimetableSlot.subject_name}
+                            </div>
+                            <div style={{ fontSize: "11.5px", color: "#065f46", marginTop: "2px" }}>
+                              Attendance is authorized & active for this scheduled lecture period.
+                            </div>
+                          </div>
+                        </div>
+                      ) : nextUpcomingSlot ? (
+                        <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px", display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                          <div style={{ background: "#d97706", color: "#fff", borderRadius: "8px", padding: "8px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginTop: "2px" }}>
+                            <FaLock />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+                              <span style={{ background: "#f59e0b", color: "#fff", fontSize: "10.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "12px" }}>
+                                ATTENDANCE LOCKED
+                              </span>
+                              <span style={{ fontSize: "13px", fontWeight: 700, color: "#92400e" }}>
+                                Next Period: {nextUpcomingSlot.start_time} - {nextUpcomingSlot.end_time}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: "13px", color: "#92400e", fontWeight: 700 }}>
+                              {nextUpcomingSlot.subject_code} - {nextUpcomingSlot.subject_name}
+                            </div>
+                            <div style={{ fontSize: "11.5px", color: "#b45309", marginTop: "2px" }}>
+                              Attendance unlocks automatically when this lecture period begins on the timetable.
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: "12px", padding: "14px", display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                          <div style={{ background: "#64748b", color: "#fff", borderRadius: "8px", padding: "8px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginTop: "2px" }}>
+                            <FaCalendarTimes />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                              <span style={{ background: "#64748b", color: "#fff", fontSize: "10.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "12px" }}>
+                                NO PERIODS IN SESSION TODAY
+                              </span>
+                            </div>
+                            <div style={{ fontSize: "13px", color: "#334155", fontWeight: 600 }}>
+                              No active lecture periods are scheduled right now for today.
+                            </div>
+                            <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "2px" }}>
+                              Attendance can only be taken during scheduled timetable slots.
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ADMIN BYPASS TOGGLE (FOR DEMOS & AUDITS) */}
+                    {isAdmin && (
+                      <div
+                        style={{
+                          background: adminBypass ? "#fef3c7" : "#f1f5f9",
+                          border: `1.5px solid ${adminBypass ? "#f59e0b" : "#cbd5e1"}`,
+                          borderRadius: "10px",
+                          padding: "10px 14px",
+                          marginBottom: "16px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "16px" }}>⚙️</span>
+                          <div>
+                            <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#1e293b" }}>
+                              Admin Timetable Bypass Mode
+                            </div>
+                            <div style={{ fontSize: "11px", color: "#64748b" }}>
+                              Conduct off-hours testing or system demonstration outside timetable slots.
+                            </div>
+                          </div>
+                        </div>
+                        <label style={{ display: "flex", alignItems: "center", cursor: "pointer", gap: "6px" }}>
+                          <input
+                            type="checkbox"
+                            checked={adminBypass}
+                            onChange={(e) => setAdminBypass(e.target.checked)}
+                            style={{ width: "16px", height: "16px", accentColor: "#f59e0b" }}
+                          />
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: adminBypass ? "#b45309" : "#475569" }}>
+                            {adminBypass ? "BYPASS ON" : "Off"}
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* TODAY'S TIMETABLE SCHEDULE STRIP */}
+                    {todaySlots.length > 0 && (
+                      <div style={{ marginBottom: "16px" }}>
+                        <div style={{ fontSize: "12px", fontWeight: 700, color: "#475569", marginBottom: "8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span>Today's Timetable Periods ({todaySlots.length})</span>
+                          <button
+                            type="button"
+                            onClick={fetchTodayTimetableData}
+                            style={{ background: "transparent", border: "none", color: "#2563eb", fontSize: "11px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+                          >
+                            <FaSync style={{ fontSize: "10px" }} /> Refresh
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "4px" }}>
+                          {todaySlots.map((slot) => {
+                            const isActive = slot.status === "active" || slot.can_open_qr;
+                            const isUpcoming = slot.status === "upcoming";
+                            const isSelected = selectedSubjectId && String(slot.subject) === String(selectedSubjectId);
+                            return (
+                              <div
+                                key={slot.id}
+                                onClick={() => {
+                                  if (slot.subject) setSelectedSubjectId(String(slot.subject));
+                                  if (slot.academic_class) setSelectedClassId(String(slot.academic_class));
+                                }}
+                                style={{
+                                  flex: "0 0 auto",
+                                  padding: "8px 12px",
+                                  borderRadius: "8px",
+                                  border: isSelected
+                                    ? "2px solid #2563eb"
+                                    : isActive
+                                    ? "2px solid #10b981"
+                                    : "1px solid #e2e8f0",
+                                  background: isActive ? "#f0fdf4" : isUpcoming ? "#ffffff" : "#f8fafc",
+                                  cursor: "pointer",
+                                  minWidth: "140px",
+                                  boxShadow: isSelected ? "0 2px 8px rgba(37,99,235,0.15)" : "none",
+                                }}
+                                title="Click to select this lecture period"
+                              >
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "4px", marginBottom: "2px" }}>
+                                  <span style={{ fontSize: "11px", fontWeight: 700, color: isActive ? "#047857" : isUpcoming ? "#2563eb" : "#64748b" }}>
+                                    {slot.start_time} - {slot.end_time}
+                                  </span>
+                                  <span style={{
+                                    fontSize: "9px",
+                                    fontWeight: 700,
+                                    padding: "1px 5px",
+                                    borderRadius: "4px",
+                                    background: isActive ? "#10b981" : isUpcoming ? "#dbeafe" : "#e2e8f0",
+                                    color: isActive ? "#ffffff" : isUpcoming ? "#1e40af" : "#64748b",
+                                  }}>
+                                    {isActive ? "ACTIVE" : isUpcoming ? "UPCOMING" : "DONE"}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {slot.subject_code || slot.subject_name}
+                                </div>
+                                <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                                  {slot.academic_class_name || (slot.room_number ? `Room ${slot.room_number}` : "Classroom")}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {!isAdmin && subjects.length === 0 ? (
                       <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", color: "#b45309", padding: "14px", borderRadius: "10px", fontSize: "13px", marginBottom: "16px", display: "flex", alignItems: "flex-start", gap: "10px" }}>
@@ -1153,6 +1394,7 @@ function Attendance() {
                     <button
                       type="button"
                       disabled={
+                        !isAttendanceEnabled ||
                         qrLoading ||
                         !selectedSubjectId ||
                         (!isAdmin && subjects.length === 0) ||
@@ -1163,17 +1405,19 @@ function Attendance() {
                         width: "100%",
                         padding: "14px",
                         background:
+                          !isAttendanceEnabled ||
                           !selectedSubjectId ||
                           (!isAdmin && subjects.length === 0) ||
                           (geoEnabled && (!classLatitude || !classLongitude))
                             ? "#cbd5e1"
-                            : "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                            : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                         color: "#fff",
                         border: "none",
                         borderRadius: "10px",
                         fontWeight: 700,
                         fontSize: "15px",
                         cursor:
+                          !isAttendanceEnabled ||
                           !selectedSubjectId ||
                           (!isAdmin && subjects.length === 0) ||
                           (geoEnabled && (!classLatitude || !classLongitude))
@@ -1183,17 +1427,30 @@ function Attendance() {
                         alignItems: "center",
                         justifyContent: "center",
                         gap: "10px",
-                        boxShadow: "0 4px 12px rgba(37,99,235,0.25)",
+                        boxShadow:
+                          isAttendanceEnabled && selectedSubjectId
+                            ? "0 4px 12px rgba(16,185,129,0.25)"
+                            : "none",
                       }}
                       title={
-                        !selectedSubjectId || (!isAdmin && subjects.length === 0)
+                        !isAttendanceEnabled
+                          ? "Attendance can only be launched during an active timetable period."
+                          : !selectedSubjectId || (!isAdmin && subjects.length === 0)
                           ? "Attendance must be taken by respective subject faculty. No assigned subjects available."
                           : geoEnabled && (!classLatitude || !classLongitude)
                           ? "Please set classroom coordinates before starting a geofenced session."
                           : "Start live QR attendance session"
                       }
                     >
-                      <FaPlayCircle /> {qrLoading ? "Initializing..." : "Launch QR Attendance Session"}
+                      {!isAttendanceEnabled ? (
+                        <>
+                          <FaLock /> Attendance Locked (No Active Timetable Period)
+                        </>
+                      ) : (
+                        <>
+                          <FaPlayCircle /> {qrLoading ? "Initializing..." : `Launch QR Attendance Session (${activeTimetableSlot ? `${activeTimetableSlot.start_time} - ${activeTimetableSlot.end_time}` : "Active Period"})`}
+                        </>
+                      )}
                     </button>
                   </div>
                 ) : activeSessionData.is_completed || !activeSessionData.active ? (

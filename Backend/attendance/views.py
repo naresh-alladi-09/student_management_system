@@ -110,6 +110,97 @@ def create_attendance_session(request):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+    # -------------------------------------------------------------------------
+    # TIMETABLE PERIOD ENFORCEMENT: Attendance enabled only during scheduled periods
+    # -------------------------------------------------------------------------
+    from timetable.models import TimetableSlot
+    ignore_timetable = request.data.get('ignore_timetable', False)
+    ignore_time = request.data.get('ignore_time', False)
+    admin_override = (is_admin and request.data.get('admin_override', False))
+
+    now_local = timezone.localtime()
+    current_time = now_local.time()
+    today_date = now_local.date()
+    today_day_actual = now_local.strftime('%A')
+
+    active_slot = None
+    expires_at_val = None
+    end_time_val = None
+
+    if not ignore_timetable and not admin_override:
+        slots_query = TimetableSlot.objects.filter(
+            subject=subject,
+            day__iexact=today_day_actual
+        )
+        if not is_admin:
+            slots_query = slots_query.filter(teacher=request.user)
+
+        if academic_class:
+            class_slots = slots_query.filter(academic_class=academic_class)
+            if class_slots.exists():
+                slots_query = class_slots
+        if section_val and section_val.upper() != 'ALL':
+            sec_slots = slots_query.filter(section__iexact=section_val)
+            if sec_slots.exists():
+                slots_query = sec_slots
+
+        # Check 1: Does the faculty have a scheduled period for this subject on today's day?
+        if not slots_query.exists():
+            teacher_slots = TimetableSlot.objects.filter(subject=subject)
+            if not is_admin:
+                teacher_slots = teacher_slots.filter(teacher=request.user)
+            other_days = list(teacher_slots.values_list('day', flat=True).distinct())
+            days_str = ", ".join(other_days) if other_days else "no scheduled days"
+            return Response(
+                {
+                    "detail": f"Attendance is disabled: You do not have a scheduled timetable period for '{subject.name} ({subject.code})' on {today_day_actual}. Scheduled days: {days_str}."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check 2: Is there an active timetable period right now?
+        if not ignore_time:
+            for s in slots_query:
+                if s.start_time <= current_time < s.end_time:
+                    active_slot = s
+                    break
+
+            if not active_slot:
+                upcoming = slots_query.filter(start_time__gt=current_time).order_by('start_time').first()
+                if upcoming:
+                    start_fmt = upcoming.start_time.strftime('%I:%M %p')
+                    end_fmt = upcoming.end_time.strftime('%I:%M %p')
+                    return Response(
+                        {
+                            "detail": f"Attendance is disabled: The scheduled timetable period for '{subject.name}' starts at {start_fmt} ({start_fmt} - {end_fmt}). Attendance will automatically unlock when the period begins."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                past = slots_query.filter(end_time__lte=current_time).order_by('-end_time').first()
+                if past:
+                    end_fmt = past.end_time.strftime('%I:%M %p')
+                    return Response(
+                        {
+                            "detail": f"Attendance is disabled: The scheduled timetable period for '{subject.name}' concluded at {end_fmt}. Attendance can only be taken during active periods."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+        else:
+            active_slot = slots_query.first()
+
+    # Synchronize session metadata and end_time with the active timetable period
+    if active_slot:
+        if not academic_class and active_slot.academic_class:
+            academic_class = active_slot.academic_class
+        if not section_val or section_val == 'A':
+            section_val = active_slot.section or section_val
+        if not ignore_time and active_slot.end_time:
+            end_time_val = active_slot.end_time
+            slot_end_dt = timezone.make_aware(datetime.combine(today_date, active_slot.end_time))
+            remaining_period_seconds = max(1, int((slot_end_dt - now_local).total_seconds()))
+            duration_seconds = min(duration_seconds, remaining_period_seconds)
+            expires_at_val = slot_end_dt
+
     # If geofence is required, classroom coordinates must be provided
     if require_geo and (latitude is None or longitude is None):
         return Response(
@@ -132,6 +223,8 @@ def create_attendance_session(request):
         duration_seconds=duration_seconds,
         academic_class=academic_class,
         section=section_val,
+        expires_at=expires_at_val,
+        end_time=end_time_val,
         latitude=latitude,
         longitude=longitude,
         radius_meters=radius_meters,
@@ -519,6 +612,9 @@ def verify_session_token(request):
         "is_active": session.is_active,
         "is_expired": session.is_expired(),
         "time_remaining": remaining_secs,
+        "period_start": session.start_time.strftime('%I:%M %p') if session.start_time else None,
+        "period_end": session.end_time.strftime('%I:%M %p') if session.end_time else None,
+        "timetable_period": f"{session.start_time.strftime('%I:%M %p')} - {session.end_time.strftime('%I:%M %p')}" if session.end_time and session.start_time else None,
         "latitude": session.latitude,
         "longitude": session.longitude,
         "radius_meters": session.radius_meters or 100.0,
@@ -640,6 +736,29 @@ def mark_qr_attendance(request):
                 },
                 status=status.HTTP_403_FORBIDDEN
             )
+
+    # 4b. Validate that the student's cohort has a scheduled timetable period for this subject today
+    if not request.data.get('ignore_timetable', False):
+        from timetable.models import TimetableSlot
+        today_day_actual = timezone.localtime().strftime('%A')
+        cohort_slots = TimetableSlot.objects.filter(
+            subject=session.subject,
+            branch__iexact=student.branch,
+            semester=str(student.semester)
+        )
+        if student.section and student.section.upper() not in ['ALL', '']:
+            cohort_slots = cohort_slots.filter(
+                Q(section__iexact=student.section) | Q(section__in=['ALL', ''])
+            )
+        if cohort_slots.exists():
+            today_slots = cohort_slots.filter(day__iexact=today_day_actual)
+            if not today_slots.exists():
+                return Response(
+                    {
+                        "detail": f"Access denied: You do not have a scheduled timetable period for '{session.subject.name}' on {today_day_actual}."
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
     # 5. Check for duplicate attendance for this session
     existing = AttendanceRecord.objects.filter(student=student, session=session).first()
@@ -874,6 +993,7 @@ def mark_qr_attendance(request):
         "subject": session.subject.name,
         "subject_code": session.subject.code,
         "date": session.date.isoformat(),
+        "timetable_period": f"{session.start_time.strftime('%I:%M %p')} - {session.end_time.strftime('%I:%M %p')}" if session.end_time and session.start_time else None,
         "marked_at": record.marked_at.isoformat(),
         "status": "Present",
         "face_verified": face_matched,
@@ -1000,6 +1120,23 @@ def bulk_save_attendance(request):
                 {"error": f"Unauthorized: You are not assigned to teach '{subject_obj.name}'. Attendance must be taken by the respective subject faculty."},
                 status=status.HTTP_403_FORBIDDEN
             )
+
+        # Timetable check for manual attendance date
+        if not request.data.get('ignore_timetable', False):
+            target_day = target_date.strftime('%A')
+            has_slot_today = TimetableSlot.objects.filter(
+                subject=subject_obj,
+                day__iexact=target_day
+            ).filter(Q(teacher=request.user) | Q(teacher__isnull=True)).exists()
+            if not has_slot_today:
+                has_any_slot = TimetableSlot.objects.filter(subject=subject_obj, day__iexact=target_day).exists()
+                if not has_any_slot:
+                    other_days = list(TimetableSlot.objects.filter(subject=subject_obj).values_list('day', flat=True).distinct())
+                    days_label = ", ".join(other_days) if other_days else "no scheduled days"
+                    return Response(
+                        {"error": f"Attendance is disabled: '{subject_obj.name}' has no scheduled timetable period on {target_day} ({target_date}). Scheduled days: {days_label}."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
     with transaction.atomic():
         saved_count = 0

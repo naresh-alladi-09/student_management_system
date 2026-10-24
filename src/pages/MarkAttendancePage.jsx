@@ -854,6 +854,15 @@ const MarkAttendancePage = () => {
                 </div>
               )}
 
+              {(resultData?.timetable_period || sessionInfo?.timetable_period) && (
+                <div style={{ marginBottom: "10px" }}>
+                  <span style={{ color: "#64748b", display: "block", fontSize: "12px" }}>Timetable Lecture Slot:</span>
+                  <span style={{ color: "#059669", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <span>🕒</span> {resultData?.timetable_period || sessionInfo?.timetable_period}
+                  </span>
+                </div>
+              )}
+
               <div style={{ borderTop: "1px dashed #cbd5e1", margin: "12px 0" }} />
 
               {/* Biometrics badge */}
@@ -1146,6 +1155,21 @@ const MarkAttendancePage = () => {
                     <div style={{ fontSize: "12px", color: "#475569" }}>
                       Instructor: {sessionInfo.faculty_name}
                     </div>
+                    {sessionInfo.timetable_period && (
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#059669",
+                          fontWeight: 600,
+                          marginTop: "3px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <span>🕒</span> Timetable Period: {sessionInfo.timetable_period}
+                      </div>
+                    )}
                   </div>
                   {timeRemaining != null && (
                     <div

@@ -92,6 +92,24 @@ def run_e2e_anti_proxy():
 
     # 3. Faculty Launches QR Session with Classroom Coordinates (17.385044, 78.486671) and 50m Geofence
     print("\n[STEP 2] Teacher starting QR attendance session with GPS Geofence (17.385044, 78.486671) and radius 50m")
+    from timetable.models import TimetableSlot
+    from django.utils import timezone
+    from datetime import timedelta
+    now_local = timezone.localtime()
+    today_day = now_local.strftime('%A')
+    TimetableSlot.objects.filter(subject=subject, teacher=teacher_user, day=today_day).delete()
+    TimetableSlot.objects.create(
+        subject=subject,
+        teacher=teacher_user,
+        day=today_day,
+        start_time=(now_local - timedelta(minutes=15)).time(),
+        end_time=(now_local + timedelta(minutes=45)).time(),
+        room="Hall 101",
+        branch=student_obj.branch,
+        semester=student_obj.semester,
+        section="A"
+    )
+
     sess_res = client.post("/api/attendance/sessions/create/", {
         "subject_id": subject.id,
         "duration_seconds": 120,

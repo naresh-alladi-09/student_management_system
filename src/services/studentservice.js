@@ -114,6 +114,8 @@ export const createAttendanceSession = (
     radius_meters: geoOptions.radius_meters ?? 100.0,
     require_face: geoOptions.require_face ?? true,
     require_geo: geoOptions.require_geo ?? true,
+    admin_override: geoOptions.admin_override ?? false,
+    ignore_timetable: geoOptions.ignore_timetable ?? false,
   });
 };
 
