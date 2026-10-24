@@ -1154,6 +1154,7 @@ const Dashboard = () => {
                         <th style={{ padding: "10px 12px", fontWeight: 600 }}>Roll No</th>
                         <th style={{ padding: "10px 12px", fontWeight: 600 }}>Name</th>
                         <th style={{ padding: "10px 12px", fontWeight: 600 }}>Status</th>
+                        <th style={{ padding: "10px 12px", fontWeight: 600 }}>Mode</th>
                         <th style={{ padding: "10px 12px", fontWeight: 600 }}>Time</th>
                       </tr>
                     </thead>
@@ -1175,6 +1176,24 @@ const Dashboard = () => {
                               }}
                             >
                               ✓ Present
+                            </span>
+                          </td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <span
+                              style={{
+                                background: "#eff6ff",
+                                color: "#1d4ed8",
+                                border: "1px solid #bfdbfe",
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px"
+                              }}
+                            >
+                              <FaQrcode style={{ fontSize: "10px" }} /> QR
                             </span>
                           </td>
                           <td style={{ padding: "10px 12px", color: "#64748b", fontSize: "12px" }}>

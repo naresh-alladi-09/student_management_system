@@ -506,6 +506,7 @@ def get_session_attendees(request, session_id):
             "face_confidence": r.face_confidence,
             "distance_meters": r.distance_meters,
             "marked_via": r.marked_via,
+            "attendance_mode": "QR" if (r.marked_via and (r.marked_via == 'QR' or r.marked_via == 'QR_FACE_GEO' or r.marked_via.startswith('QR'))) else "Manual",
         }
         for r in present_records
     ]
@@ -1044,14 +1045,36 @@ def get_daily_attendance(request):
     if section and section.upper() != 'ALL':
         students_qs = students_qs.filter(section__iexact=section)
 
-    existing_records = {
-        rec.student_id: rec.status
-        for rec in AttendanceRecord.objects.filter(date=target_date)
-    }
+    subject_id = request.query_params.get('subject_id') or request.query_params.get('subject', None)
+    records_filter = Q(date=target_date)
+    if subject_id and str(subject_id).upper() != 'ALL':
+        records_filter &= Q(subject_id=subject_id)
+
+    existing_records = {}
+    for rec in AttendanceRecord.objects.filter(records_filter).order_by('id'):
+        is_qr = bool(rec.marked_via and (rec.marked_via == 'QR' or rec.marked_via == 'QR_FACE_GEO' or rec.marked_via.startswith('QR')))
+        mode = "QR" if is_qr else ("Manual" if rec.marked_via == 'MANUAL' else (rec.marked_via or "Manual"))
+        existing_records[rec.student_id] = {
+            "status": rec.status,
+            "marked_via": rec.marked_via,
+            "attendance_mode": mode,
+            "marked_at": rec.marked_at.isoformat() if rec.marked_at else None,
+        }
 
     results = []
     for s in students_qs:
-        st = existing_records.get(s.id, "Not Marked")
+        rec_info = existing_records.get(s.id)
+        if rec_info:
+            st = rec_info["status"]
+            mv = rec_info["marked_via"]
+            mode = rec_info["attendance_mode"]
+            mat = rec_info["marked_at"]
+        else:
+            st = "Not Marked"
+            mv = None
+            mode = None
+            mat = None
+
         results.append({
             "student_id": s.id,
             "name": s.name,
@@ -1061,7 +1084,10 @@ def get_daily_attendance(request):
             "year": s.year,
             "semester": s.semester,
             "section": s.section,
-            "status": st
+            "status": st,
+            "marked_via": mv,
+            "attendance_mode": mode,
+            "marked_at": mat,
         })
 
     present_count = sum(1 for r in results if r["status"] == "Present")
@@ -1287,6 +1313,7 @@ def student_attendance_detail(request, student_id):
             "subject": r.subject.name if r.subject else "General Session",
             "subject_code": r.subject.code if r.subject else "",
             "marked_via": r.marked_via,
+            "attendance_mode": "QR" if (r.marked_via and (r.marked_via == 'QR' or r.marked_via == 'QR_FACE_GEO' or r.marked_via.startswith('QR'))) else "Manual",
             "marked_at": r.marked_at.isoformat(),
             "remarks": r.remarks
         }

@@ -116,6 +116,7 @@ def attendance_report(request):
             "subject_name": r.subject.name if r.subject else None,
             "status": r.status,
             "marked_via": r.marked_via,
+            "attendance_mode": "QR" if (r.marked_via and (r.marked_via == 'QR' or r.marked_via == 'QR_FACE_GEO' or r.marked_via.startswith('QR'))) else "Manual",
         }
         for r in records[:500]
     ]

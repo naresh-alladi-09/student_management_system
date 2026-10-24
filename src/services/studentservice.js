@@ -58,12 +58,13 @@ export const getStudentStats = () => {
 // ATTENDANCE SERVICES
 // ==========================================
 
-export const getDailyAttendance = (dateStr, branch, section = null) => {
+export const getDailyAttendance = (dateStr, branch, section = null, subjectId = null) => {
   let url = "/api/attendance/";
   const params = [];
   if (dateStr) params.push(`date=${encodeURIComponent(dateStr)}`);
   if (branch && branch !== "ALL") params.push(`branch=${encodeURIComponent(branch)}`);
   if (section && section !== "ALL") params.push(`section=${encodeURIComponent(section)}`);
+  if (subjectId && subjectId !== "ALL") params.push(`subject_id=${encodeURIComponent(subjectId)}`);
   if (params.length > 0) url += `?${params.join("&")}`;
   return apiClient.get(url);
 };

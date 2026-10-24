@@ -4020,7 +4020,38 @@ const AdminDashboard = () => {
                                   {r.status}
                                 </span>
                               </td>
-                              <td>{r.marked_via}</td>
+                              <td>
+                                {(r.marked_via && (r.marked_via === "QR" || r.marked_via === "QR_FACE_GEO" || r.marked_via.startsWith("QR"))) ? (
+                                  <span style={{
+                                    background: "#eff6ff",
+                                    color: "#1d4ed8",
+                                    border: "1px solid #bfdbfe",
+                                    padding: "3px 8px",
+                                    borderRadius: "6px",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}>
+                                    <FaQrcode style={{ fontSize: "10px" }} /> QR
+                                  </span>
+                                ) : (r.marked_via === "MANUAL" || r.marked_via === "Manual") ? (
+                                  <span style={{
+                                    background: "#f8fafc",
+                                    color: "#475569",
+                                    border: "1px solid #cbd5e1",
+                                    padding: "3px 8px",
+                                    borderRadius: "6px",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                  }}>
+                                    Manual
+                                  </span>
+                                ) : (
+                                  <span style={{ color: "#64748b", fontSize: "12px" }}>{r.marked_via || "—"}</span>
+                                )}
+                              </td>
                             </tr>
                           ))
                         ) : (

@@ -46,6 +46,7 @@ import {
   FaLock,
   FaCalendarCheck,
   FaCalendarTimes,
+  FaEdit,
 } from "react-icons/fa";
 
 function Attendance() {
@@ -77,6 +78,7 @@ function Attendance() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [attendance, setAttendance] = useState({});
+  const [attendanceModes, setAttendanceModes] = useState({});
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -547,10 +549,22 @@ function Attendance() {
           }))
         );
         const map = {};
+        const modeMap = {};
         records.forEach((r) => {
           map[r.student_id] = r.status;
+          if (r.status && r.status !== "Not Marked") {
+            const isQr =
+              r.marked_via === "QR" ||
+              r.marked_via === "QR_FACE_GEO" ||
+              (r.marked_via && r.marked_via.startsWith("QR")) ||
+              r.attendance_mode === "QR";
+            modeMap[r.student_id] = isQr ? "QR" : "Manual";
+          } else {
+            modeMap[r.student_id] = null;
+          }
         });
         setAttendance(map);
+        setAttendanceModes(modeMap);
         setError(null);
       })
       .catch((err) => {
@@ -724,15 +738,22 @@ function Attendance() {
       ...prev,
       [studentId]: status,
     }));
+    setAttendanceModes((prev) => ({
+      ...prev,
+      [studentId]: "Manual",
+    }));
     setSaveSuccess(false);
   };
 
   const handleMarkAll = (status) => {
-    const updated = {};
+    const updatedStatus = {};
+    const updatedModes = {};
     students.forEach((s) => {
-      updated[s.id] = status;
+      updatedStatus[s.id] = status;
+      updatedModes[s.id] = "Manual";
     });
-    setAttendance(updated);
+    setAttendance(updatedStatus);
+    setAttendanceModes(updatedModes);
     setSaveSuccess(false);
   };
 
@@ -741,6 +762,7 @@ function Attendance() {
       setIsSaving(true);
       await saveBulkAttendance(selectedDate, attendance);
       setSaveSuccess(true);
+      loadDailyAttendance(selectedDate, selectedBranch, selectedSection);
       setTimeout(() => setSaveSuccess(false), 3500);
     } catch (err) {
       console.error("Save attendance error:", err);
@@ -1865,19 +1887,33 @@ function Attendance() {
                             )}
                           </div>
                         </div>
-                        <span
-                          style={{
-                            background: "#ecfdf5",
-                            color: "#047857",
-                            padding: "4px 10px",
-                            borderRadius: "12px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            whiteSpace: "nowrap"
-                          }}
-                        >
-                          ✓ Present ({new Date(att.marked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span
+                            className="att-mode-badge qr"
+                            style={{
+                              fontSize: "11px",
+                              padding: "3px 8px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px"
+                            }}
+                          >
+                            <FaQrcode style={{ fontSize: "10px" }} /> QR
+                          </span>
+                          <span
+                            style={{
+                              background: "#ecfdf5",
+                              color: "#047857",
+                              padding: "4px 10px",
+                              borderRadius: "12px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap"
+                            }}
+                          >
+                            ✓ Present ({new Date(att.marked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                          </span>
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -2152,18 +2188,20 @@ function Attendance() {
                     <table className="modern-att-table">
                       <thead>
                         <tr>
-                          <th style={{ width: "16%" }}>Roll No / ID</th>
-                          <th style={{ width: "26%" }}>Student Name</th>
-                          <th style={{ width: "18%" }}>Branch & Year</th>
-                          <th style={{ width: "10%" }}>Section</th>
-                          <th style={{ width: "15%" }}>Status</th>
-                          <th style={{ width: "15%", textAlign: "center" }}>Mark Attendance</th>
+                          <th style={{ width: "15%" }}>Roll No / ID</th>
+                          <th style={{ width: "24%" }}>Student Name</th>
+                          <th style={{ width: "16%" }}>Branch & Year</th>
+                          <th style={{ width: "8%" }}>Section</th>
+                          <th style={{ width: "13%" }}>Status</th>
+                          <th style={{ width: "10%" }}>Mode</th>
+                          <th style={{ width: "14%", textAlign: "center" }}>Mark Attendance</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredStudents.length > 0 ? (
                           filteredStudents.map((student) => {
                             const currentStatus = attendance[student.id] || "Not Marked";
+                            const currentMode = attendanceModes[student.id];
                             return (
                               <tr
                                 key={student.id}
@@ -2248,6 +2286,19 @@ function Attendance() {
                                     </span>
                                   )}
                                 </td>
+                                <td>
+                                  {currentStatus === "Not Marked" || !currentMode ? (
+                                    <span className="att-mode-badge unmarked">—</span>
+                                  ) : currentMode === "QR" ? (
+                                    <span className="att-mode-badge qr" title="Marked via Dynamic QR Code">
+                                      <FaQrcode className="att-mode-icon" /> QR
+                                    </span>
+                                  ) : (
+                                    <span className="att-mode-badge manual" title="Marked Manually">
+                                      <FaEdit className="att-mode-icon" /> Manual
+                                    </span>
+                                  )}
+                                </td>
                                 <td style={{ textAlign: "center" }}>
                                   <div className="att-action-group">
                                     <button
@@ -2287,7 +2338,7 @@ function Attendance() {
                           })
                         ) : (
                           <tr>
-                            <td colSpan="6" style={{ textAlign: "center", padding: "40px", color: "#94a3b8" }}>
+                            <td colSpan="7" style={{ textAlign: "center", padding: "40px", color: "#94a3b8" }}>
                               {searchQuery ? `No students found matching "${searchQuery}".` : "No students found matching selected filters."}
                             </td>
                           </tr>

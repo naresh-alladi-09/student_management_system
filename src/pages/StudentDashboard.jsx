@@ -1141,15 +1141,25 @@ const StudentDashboard = () => {
                         <td>
                           <span
                             style={{
-                              padding: "2px 8px",
-                              borderRadius: "4px",
+                              padding: "3px 8px",
+                              borderRadius: "6px",
                               fontSize: "11px",
-                              fontWeight: 600,
-                              background: rec.marked_via === "QR" ? "#eff6ff" : "#f1f5f9",
-                              color: rec.marked_via === "QR" ? "#2563eb" : "#475569",
+                              fontWeight: 700,
+                              background: (rec.marked_via && (rec.marked_via === "QR" || rec.marked_via === "QR_FACE_GEO" || rec.marked_via.startsWith("QR"))) ? "#eff6ff" : "#f8fafc",
+                              color: (rec.marked_via && (rec.marked_via === "QR" || rec.marked_via === "QR_FACE_GEO" || rec.marked_via.startsWith("QR"))) ? "#1d4ed8" : "#475569",
+                              border: (rec.marked_via && (rec.marked_via === "QR" || rec.marked_via === "QR_FACE_GEO" || rec.marked_via.startsWith("QR"))) ? "1px solid #bfdbfe" : "1px solid #cbd5e1",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px"
                             }}
                           >
-                            {rec.marked_via === "QR" ? "QR Code" : "Teacher Manual"}
+                            {(rec.marked_via && (rec.marked_via === "QR" || rec.marked_via === "QR_FACE_GEO" || rec.marked_via.startsWith("QR"))) ? (
+                              <>
+                                <FaQrcode style={{ fontSize: "10px" }} /> QR
+                              </>
+                            ) : (
+                              "Manual"
+                            )}
                           </span>
                         </td>
                         <td>

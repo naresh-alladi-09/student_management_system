@@ -135,3 +135,64 @@ class AttendanceAnalyticsAPITests(APITestCase):
         self.assertEqual(sub['percentage'], 25.0)
         self.assertTrue(sub['is_shortage'])
         self.assertIn("below the required threshold", sub['warning'])
+
+    def test_get_daily_attendance_qr_vs_manual(self):
+        """
+        Verify get_daily_attendance returns attendance_mode as 'QR' for QR marked records
+        and 'Manual' for manual records.
+        """
+        today = date.today()
+        # Create QR record for student_good
+        AttendanceRecord.objects.create(
+            student=self.student_good,
+            subject=self.subject,
+            date=today,
+            status="Present",
+            marked_via="QR"
+        )
+        # Create Manual record for student_low
+        AttendanceRecord.objects.create(
+            student=self.student_low,
+            subject=self.subject,
+            date=today,
+            status="Absent",
+            marked_via="MANUAL"
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(f'/api/attendance/?date={today.isoformat()}')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        records = response.data['records']
+
+        good_rec = next((r for r in records if r['student_id'] == self.student_good.id), None)
+        self.assertIsNotNone(good_rec)
+        self.assertEqual(good_rec['status'], 'Present')
+        self.assertEqual(good_rec['attendance_mode'], 'QR')
+        self.assertEqual(good_rec['marked_via'], 'QR')
+
+        low_rec = next((r for r in records if r['student_id'] == self.student_low.id), None)
+        self.assertIsNotNone(low_rec)
+        self.assertEqual(low_rec['status'], 'Absent')
+        self.assertEqual(low_rec['attendance_mode'], 'Manual')
+        self.assertEqual(low_rec['marked_via'], 'MANUAL')
+
+    def test_bulk_save_attendance_sets_manual(self):
+        """
+        Verify bulk_save_attendance sets marked_via to 'MANUAL'.
+        """
+        today = date.today()
+        self.client.force_authenticate(user=self.admin_user)
+        payload = {
+            "date": today.isoformat(),
+            "attendance": {
+                str(self.student_good.id): "Present"
+            }
+        }
+        response = self.client.post('/api/attendance/bulk/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        rec = AttendanceRecord.objects.filter(student=self.student_good, date=today).first()
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec.status, "Present")
+        self.assertEqual(rec.marked_via, "MANUAL")
+
