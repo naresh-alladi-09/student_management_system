@@ -54,15 +54,13 @@ allowed_hosts_env = os.environ.get('ALLOWED_HOSTS')
 if allowed_hosts_env and allowed_hosts_env.strip():
     ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip() and h.strip() != '*']
 else:
-    if not DEBUG and not IS_TESTING:
-        ALLOWED_HOSTS = []
-    else:
-        ALLOWED_HOSTS = [
-            'localhost',
-            '127.0.0.1',
-            '[::1]',
-            'testserver',
-        ]
+    ALLOWED_HOSTS = [
+        'localhost',
+        '127.0.0.1',
+        '[::1]',
+        'testserver',
+        '.onrender.com',
+    ]
 
 render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if render_hostname and render_hostname not in ALLOWED_HOSTS:
@@ -70,12 +68,6 @@ if render_hostname and render_hostname not in ALLOWED_HOSTS:
 
 if 'testserver' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('testserver')
-
-if not DEBUG and not IS_TESTING and not ALLOWED_HOSTS:
-    raise ImproperlyConfigured(
-        "CRITICAL CONFIGURATION ERROR: ALLOWED_HOSTS environment variable is required when DEBUG=False. "
-        "Set ALLOWED_HOSTS to your backend domain(s), e.g. ALLOWED_HOSTS=api.yourcollege.edu,your-app.onrender.com"
-    )
 
 
 # =============================================================================
@@ -330,54 +322,108 @@ STATIC_ROOT.mkdir(exist_ok=True)
 # =============================================================================
 # 7. CORS & CSRF CONFIGURATION (Features 2, 7)
 # =============================================================================
+from corsheaders.defaults import default_headers, default_methods
 
-# Strict CORS in production: never allow all origins unless explicitly overridden for debugging
-if DEBUG:
-    cors_allow_all = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'True').strip().lower()
-    CORS_ALLOW_ALL_ORIGINS = cors_allow_all in ('true', '1', 'yes')
+# Strict CORS in production: allow all origins only if explicitly opted-in via env var
+cors_allow_all_env = os.environ.get('CORS_ALLOW_ALL_ORIGINS')
+if cors_allow_all_env is not None:
+    CORS_ALLOW_ALL_ORIGINS = cors_allow_all_env.strip().lower() in ('true', '1', 'yes')
 else:
-    cors_allow_all = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'False').strip().lower()
-    CORS_ALLOW_ALL_ORIGINS = cors_allow_all in ('true', '1', 'yes')
+    CORS_ALLOW_ALL_ORIGINS = bool(DEBUG)
+
+# Standard development and frontend preview origins that are always allowed
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+render_external_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if render_external_host:
+    _DEFAULT_CORS_ORIGINS.append(f"https://{render_external_host}")
 
 cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS')
 if cors_origins_env and cors_origins_env.strip():
-    CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
+    custom_origins = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
+    CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_DEFAULT_CORS_ORIGINS + custom_origins))
 else:
-    if DEBUG or IS_TESTING:
-        CORS_ALLOWED_ORIGINS = [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:5174",
-            "http://127.0.0.1:5174",
-            "http://localhost:3000",
-            "http://127.0.0.1:8000",
-        ]
-    else:
-        CORS_ALLOWED_ORIGINS = []
+    CORS_ALLOWED_ORIGINS = _DEFAULT_CORS_ORIGINS
 
-# Exact CORS regexes: only if explicitly provided in environment, avoid open wildcards
+# Common frontend cloud hosting domains (Vercel, Render, Netlify, Cloudflare Pages, GitHub Pages)
+_DEFAULT_CORS_REGEXES = [
+    r"^https:\/\/.*\.vercel\.app$",
+    r"^https:\/\/.*\.onrender\.com$",
+    r"^https:\/\/.*\.netlify\.app$",
+    r"^https:\/\/.*\.pages\.dev$",
+    r"^https:\/\/.*\.github\.io$",
+]
+
 cors_regex_env = os.environ.get('CORS_ALLOWED_ORIGIN_REGEXES')
 if cors_regex_env and cors_regex_env.strip():
-    CORS_ALLOWED_ORIGIN_REGEXES = [r.strip() for r in cors_regex_env.split(',') if r.strip()]
+    custom_regexes = [r.strip() for r in cors_regex_env.split(',') if r.strip()]
+    CORS_ALLOWED_ORIGIN_REGEXES = list(dict.fromkeys(_DEFAULT_CORS_REGEXES + custom_regexes))
 else:
-    CORS_ALLOWED_ORIGIN_REGEXES = []
+    CORS_ALLOWED_ORIGIN_REGEXES = _DEFAULT_CORS_REGEXES
 
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOW_HEADERS = list(dict.fromkeys(list(default_headers) + [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]))
+
+CORS_ALLOW_METHODS = list(dict.fromkeys(list(default_methods) + [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]))
+
+CORS_PREFLIGHT_MAX_AGE = 86400
+
 # CSRF Trusted Origins
+_DEFAULT_CSRF_TRUSTED = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://*.vercel.app",
+    "https://*.onrender.com",
+    "https://*.netlify.app",
+    "https://*.pages.dev",
+    "https://*.github.io",
+]
+if render_external_host:
+    _DEFAULT_CSRF_TRUSTED.append(f"https://{render_external_host}")
+
 csrf_origins_env = os.environ.get('CSRF_TRUSTED_ORIGINS')
 if csrf_origins_env and csrf_origins_env.strip():
-    CSRF_TRUSTED_ORIGINS = [o.strip() for o in csrf_origins_env.split(',') if o.strip()]
+    custom_csrf = [o.strip() for o in csrf_origins_env.split(',') if o.strip()]
+    CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(_DEFAULT_CSRF_TRUSTED + custom_csrf))
 else:
-    if DEBUG or IS_TESTING:
-        CSRF_TRUSTED_ORIGINS = [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:3000",
-            "http://127.0.0.1:8000",
-        ]
-    else:
-        CSRF_TRUSTED_ORIGINS = []
+    CSRF_TRUSTED_ORIGINS = _DEFAULT_CSRF_TRUSTED
 
 
 # =============================================================================
