@@ -245,6 +245,11 @@ export const deleteTimetableSlot = (slotId) => {
   return apiClient.delete(`/api/timetable/${slotId}/`);
 };
 
+export const checkTimetableConflict = (params = {}) => {
+  return apiClient.get("/api/timetable/check-conflict/", { params });
+};
+
+
 
 // ==========================================
 // ANNOUNCEMENTS SERVICES

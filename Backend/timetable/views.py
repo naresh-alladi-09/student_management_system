@@ -405,6 +405,7 @@ def start_attendance_from_slot(request, slot_id):
 def create_timetable_slot(request):
     """
     Admin or Teacher creates a timetable schedule slot.
+    Validates faculty, class, and room concurrency.
     """
     data = request.data.copy()
     if 'teacher' not in data or not data['teacher']:
@@ -421,7 +422,29 @@ def create_timetable_slot(request):
             request=request
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    errors = serializer.errors
+    detail_msg = None
+    conflict_type = None
+    if 'detail' in errors:
+        d = errors['detail']
+        detail_msg = d[0] if isinstance(d, list) else str(d)
+    else:
+        for k, v in errors.items():
+            first = v[0] if isinstance(v, list) and v else str(v)
+            detail_msg = f"{first}"
+            break
+
+    if 'conflict_type' in errors:
+        ct = errors['conflict_type']
+        conflict_type = str(ct[0]) if isinstance(ct, list) and ct else str(ct)
+
+    resp_data = dict(errors)
+    if detail_msg:
+        resp_data['detail'] = str(detail_msg)
+    if conflict_type:
+        resp_data['conflict_type'] = conflict_type
+    return Response(resp_data, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
@@ -457,7 +480,29 @@ def manage_timetable_slot(request, slot_id):
                 request=request
             )
             return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        errors = serializer.errors
+        detail_msg = None
+        conflict_type = None
+        if 'detail' in errors:
+            d = errors['detail']
+            detail_msg = d[0] if isinstance(d, list) else str(d)
+        else:
+            for k, v in errors.items():
+                first = v[0] if isinstance(v, list) and v else str(v)
+                detail_msg = f"{first}"
+                break
+
+        if 'conflict_type' in errors:
+            ct = errors['conflict_type']
+            conflict_type = str(ct[0]) if isinstance(ct, list) and ct else str(ct)
+
+        resp_data = dict(errors)
+        if detail_msg:
+            resp_data['detail'] = str(detail_msg)
+        if conflict_type:
+            resp_data['conflict_type'] = conflict_type
+        return Response(resp_data, status=status.HTTP_400_BAD_REQUEST)
 
     if request.method == 'DELETE':
         slot_desc = f"Slot #{slot.id} ({slot.day} {slot.subject.code} {slot.room})"
@@ -470,4 +515,73 @@ def manage_timetable_slot(request, slot_id):
             request=request
         )
         return Response({'detail': f"{slot_desc} deleted successfully."}, status=status.HTTP_200_OK)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def check_timetable_conflict_view(request):
+    """
+    Real-time timetable conflict / concurrency pre-check.
+    Evaluates:
+    1. Faculty Concurrency: same teacher cannot teach 2 classes at same time.
+    2. Class/Student Concurrency: students cannot be in 2 classes at same time.
+    3. Room Concurrency: room cannot host 2 classes at same time.
+    """
+    from .models import check_timetable_conflicts
+    data = request.query_params if request.method == 'GET' else request.data
+    day = data.get('day')
+    start_time = data.get('start_time')
+    end_time = data.get('end_time')
+    teacher_id = data.get('teacher') or data.get('teacher_id')
+    branch = data.get('branch', 'CSE')
+    year = data.get('year', 1)
+    semester = data.get('semester', '1')
+    section = data.get('section', 'A')
+    academic_class_id = data.get('academic_class') or data.get('academic_class_id')
+    room = data.get('room', '')
+    slot_id = data.get('slot_id')
+
+    if not day or not start_time or not end_time:
+        return Response({
+            'has_conflict': False,
+            'message': 'Provide day, start_time, and end_time to evaluate conflicts.'
+        }, status=status.HTTP_200_OK)
+
+    result = check_timetable_conflicts(
+        day=day,
+        start_time=start_time,
+        end_time=end_time,
+        teacher=teacher_id,
+        branch=branch,
+        year=year,
+        semester=semester,
+        section=section,
+        academic_class=academic_class_id,
+        room=room,
+        exclude_slot_id=slot_id
+    )
+
+    conflicting_slot_data = None
+    if result.get('conflicting_slot'):
+        cs = result['conflicting_slot']
+        conflicting_slot_data = {
+            'id': cs.id,
+            'subject_code': cs.subject.code,
+            'subject_name': cs.subject.name,
+            'teacher_name': cs.teacher.get_full_name() or cs.teacher.username,
+            'day': cs.day,
+            'start_time': cs.start_time.strftime('%H:%M:%S'),
+            'end_time': cs.end_time.strftime('%H:%M:%S'),
+            'room': cs.room,
+            'academic_class_name': str(cs.academic_class) if cs.academic_class else f"{cs.branch} Y{cs.year}S{cs.semester}-{cs.section}"
+        }
+
+    return Response({
+        'has_conflict': result['has_conflict'],
+        'conflict_type': result['conflict_type'],
+        'field': result['field'],
+        'message': result['message'],
+        'conflicting_slot': conflicting_slot_data
+    }, status=status.HTTP_200_OK)
+
 

@@ -15,7 +15,9 @@ import {
   deleteSubject,
   getTimetable,
   createTimetableSlot,
+  updateTimetableSlot,
   deleteTimetableSlot,
+  checkTimetableConflict,
   getAttendanceSummary,
   getAnnouncements,
   createAnnouncement,
@@ -279,6 +281,106 @@ const AdminDashboard = () => {
   const [timetableModalMessage, setTimetableModalMessage] = useState(null);
   const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
 
+  // Standard Period Presets
+  const standardPeriodPresets = [
+    { label: "Period 1: 09:00 AM - 10:00 AM (Morning)", value: "09:00:00|10:00:00", st: "09:00:00", et: "10:00:00" },
+    { label: "Period 2: 10:00 AM - 11:00 AM (Morning)", value: "10:00:00|11:00:00", st: "10:00:00", et: "11:00:00" },
+    { label: "Period 3: 11:15 AM - 12:15 PM (Morning)", value: "11:15:00|12:15:00", st: "11:15:00", et: "12:15:00" },
+    { label: "Period 4: 12:15 PM - 01:15 PM (Afternoon)", value: "12:15:00|13:15:00", st: "12:15:00", et: "13:15:00" },
+    { label: "Period 5: 02:00 PM - 03:00 PM (Afternoon)", value: "14:00:00|15:00:00", st: "14:00:00", et: "15:00:00" },
+    { label: "Period 6: 03:00 PM - 04:00 PM (Afternoon)", value: "15:00:00|16:00:00", st: "15:00:00", et: "16:00:00" },
+    { label: "Period 7: 04:00 PM - 05:00 PM (Evening)", value: "16:00:00|17:00:00", st: "16:00:00", et: "17:00:00" },
+  ];
+
+  // Timetable Concurrency and Conflict Evaluator
+  const evaluateTimetableConflict = (formData, slots, excludeSlotId = null) => {
+    if (!formData || !formData.day || !formData.start_time || !formData.end_time) {
+      return null;
+    }
+
+    const parseToMinutes = (timeStr) => {
+      if (!timeStr) return 0;
+      const clean = timeStr.slice(0, 5);
+      const [h, m] = clean.split(":").map((num) => parseInt(num, 10));
+      return (h || 0) * 60 + (m || 0);
+    };
+
+    const newStart = parseToMinutes(formData.start_time);
+    const newEnd = parseToMinutes(formData.end_time);
+
+    if (newStart >= newEnd) {
+      return {
+        type: "time_invalid",
+        title: "Invalid Period Duration",
+        message: "Start time must be strictly earlier than end time.",
+      };
+    }
+
+    for (const slot of slots || []) {
+      if (excludeSlotId && slot.id === excludeSlotId) continue;
+      if ((slot.day || "").toLowerCase() !== (formData.day || "").toLowerCase()) continue;
+
+      const slotStart = parseToMinutes(slot.start_time);
+      const slotEnd = parseToMinutes(slot.end_time);
+
+      // Overlap condition: newStart < slotEnd && newEnd > slotStart
+      const isOverlapping = newStart < slotEnd && newEnd > slotStart;
+      if (!isOverlapping) continue;
+
+      const slotTimeStr = `${(slot.start_time || "").slice(0, 5)} - ${(slot.end_time || "").slice(0, 5)}`;
+      const slotSub = slot.subject_details?.code || slot.subject;
+      const slotTeacherName = slot.teacher_name || "Faculty Member";
+      const slotClassLabel = slot.academic_class_name || `${slot.branch} Y${slot.year}S${slot.semester}-${slot.section}`;
+
+      // 1. Faculty Concurrency Conflict: Same faculty cannot teach multiple classes at the same time
+      if (formData.teacher && String(slot.teacher) === String(formData.teacher)) {
+        return {
+          type: "faculty_conflict",
+          title: "Faculty Concurrency Conflict",
+          message: `${slotTeacherName} is already assigned to teach ${slotSub} for ${slotClassLabel} on ${slot.day} from ${slotTimeStr}. Same faculty cannot teach multiple classes at the same time.`,
+          slot,
+        };
+      }
+
+      // 2. Class / Student Concurrency Conflict: Students of a class cannot attend multiple lectures at the same time
+      const formBranch = (formData.branch || "").trim().toUpperCase();
+      const slotBranch = (slot.branch || "").trim().toUpperCase();
+      const formSem = String(formData.semester || "").trim();
+      const slotSem = String(slot.semester || "").trim();
+      const formSec = (formData.section || "").trim().toUpperCase();
+      const slotSec = (slot.section || "").trim().toUpperCase();
+
+      const sameCohort = formBranch === slotBranch && formSem === slotSem;
+      const sameSection = formSec === "ALL" || slotSec === "ALL" || formSec === slotSec;
+
+      if (sameCohort && sameSection) {
+        return {
+          type: "class_conflict",
+          title: "Class / Student Concurrency Conflict",
+          message: `Class ${slotClassLabel} already has a slot scheduled (${slotSub} taught by ${slotTeacherName}) on ${slot.day} from ${slotTimeStr}. Students cannot attend multiple classes at the same time.`,
+          slot,
+        };
+      }
+
+      // 3. Room Concurrency Conflict: Physical room cannot host multiple classes simultaneously
+      const formRoom = (formData.room || "").trim().toLowerCase();
+      const slotRoom = (slot.room || "").trim().toLowerCase();
+      const isVirtual = ["online", "virtual", "n/a", "none", "-"].includes(formRoom);
+
+      if (formRoom && slotRoom && formRoom === slotRoom && !isVirtual) {
+        return {
+          type: "room_conflict",
+          title: "Room Concurrency Conflict",
+          message: `Room "${slot.room}" is already reserved for ${slotClassLabel} (${slotSub}) on ${slot.day} from ${slotTimeStr}.`,
+          slot,
+        };
+      }
+    }
+
+    return null;
+  };
+
+
   // College-authorized departments constant
   const COLLEGE_DEPARTMENTS = [
     "Computer Science & Engineering",
@@ -477,6 +579,17 @@ const AdminDashboard = () => {
 
   const handleCreateTimetableSlot = async (e) => {
     if (e) e.preventDefault();
+
+    // Client-side concurrency validation check
+    const conflict = evaluateTimetableConflict(timetableFormData, timetableSlots);
+    if (conflict) {
+      setTimetableModalMessage({
+        success: false,
+        text: conflict.message,
+      });
+      return;
+    }
+
     setIsSubmittingSlot(true);
     setTimetableModalMessage(null);
 
@@ -504,9 +617,16 @@ const AdminDashboard = () => {
         });
       }, 1500);
     } catch (err) {
+      const errorMsg =
+        err.response?.data?.detail ||
+        (err.response?.data?.teacher && [].concat(err.response.data.teacher).join(", ")) ||
+        (err.response?.data?.academic_class && [].concat(err.response.data.academic_class).join(", ")) ||
+        (err.response?.data?.room && [].concat(err.response.data.room).join(", ")) ||
+        (err.response?.data?.non_field_errors && [].concat(err.response.data.non_field_errors).join(", ")) ||
+        "Failed to create timetable slot.";
       setTimetableModalMessage({
         success: false,
-        text: err.response?.data?.detail || "Failed to create timetable slot.",
+        text: errorMsg,
       });
     } finally {
       setIsSubmittingSlot(false);
@@ -2899,9 +3019,28 @@ const AdminDashboard = () => {
                     <FaClock style={{ color: "#2563eb" }} />
                     Academic Timetable & Lecture Periods
                   </h3>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                    Schedule lecture periods, classrooms, and assigned faculty.
-                  </p>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginTop: "2px" }}>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+                      Schedule lecture periods, classrooms, and assigned faculty.
+                    </p>
+                    <span
+                      style={{
+                        background: "#ecfdf5",
+                        color: "#065f46",
+                        border: "1px solid #a7f3d0",
+                        padding: "2px 8px",
+                        borderRadius: "12px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                      title="Active Concurrency Protection: Prevents same faculty or same class from overlapping at the same time"
+                    >
+                      <FaCheckCircle color="#059669" /> Concurrency Guard Protected
+                    </span>
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -4082,6 +4221,53 @@ const AdminDashboard = () => {
                 </div>
               )}
 
+              {/* Real-time Concurrency Conflict Warning Banner */}
+              {(() => {
+                const activeConflict = evaluateTimetableConflict(timetableFormData, timetableSlots);
+                if (!activeConflict) return null;
+                return (
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "10px",
+                      marginBottom: "16px",
+                      background:
+                        activeConflict.type === "faculty_conflict"
+                          ? "#fff7ed"
+                          : activeConflict.type === "class_conflict"
+                          ? "#fef2f2"
+                          : "#fefce8",
+                      border: `1px solid ${
+                        activeConflict.type === "faculty_conflict"
+                          ? "#fdba74"
+                          : activeConflict.type === "class_conflict"
+                          ? "#fca5a5"
+                          : "#fde047"
+                      }`,
+                      color:
+                        activeConflict.type === "faculty_conflict"
+                          ? "#9a3412"
+                          : activeConflict.type === "class_conflict"
+                          ? "#991b1b"
+                          : "#854d0e",
+                      fontSize: "12px",
+                      lineHeight: 1.45,
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "10px",
+                    }}
+                  >
+                    <FaExclamationTriangle style={{ marginTop: "2px", flexShrink: 0, fontSize: "16px" }} />
+                    <div>
+                      <strong style={{ display: "block", marginBottom: "3px", fontSize: "13px" }}>
+                        {activeConflict.title}
+                      </strong>
+                      <span>{activeConflict.message}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <form onSubmit={handleCreateTimetableSlot}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
                   <div>
@@ -4146,13 +4332,36 @@ const AdminDashboard = () => {
                     style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", background: "#fff" }}
                   >
                     <option value="">-- Choose Standard Time Slot Preset --</option>
-                    <option value="09:00:00|10:00:00">Period 1: 09:00 AM - 10:00 AM (Morning)</option>
-                    <option value="10:00:00|11:00:00">Period 2: 10:00 AM - 11:00 AM (Morning)</option>
-                    <option value="11:15:00|12:15:00">Period 3: 11:15 AM - 12:15 PM (Morning)</option>
-                    <option value="12:15:00|13:15:00">Period 4: 12:15 PM - 01:15 PM (Afternoon)</option>
-                    <option value="14:00:00|15:00:00">Period 5: 02:00 PM - 03:00 PM (Afternoon)</option>
-                    <option value="15:00:00|16:00:00">Period 6: 03:00 PM - 04:00 PM (Afternoon)</option>
-                    <option value="16:00:00|17:00:00">Period 7: 04:00 PM - 05:00 PM (Evening)</option>
+                    {standardPeriodPresets.map((p) => {
+                      const pConflict = evaluateTimetableConflict(
+                        { ...timetableFormData, start_time: p.st, end_time: p.et },
+                        timetableSlots
+                      );
+                      const isSelected =
+                        timetableFormData.start_time.slice(0, 5) === p.st.slice(0, 5) &&
+                        timetableFormData.end_time.slice(0, 5) === p.et.slice(0, 5);
+
+                      return (
+                        <option
+                          key={p.value}
+                          value={p.value}
+                          style={pConflict ? { color: "#dc2626", fontWeight: 600 } : {}}
+                        >
+                          {p.label}{" "}
+                          {pConflict
+                            ? `⚠️ [Occupied - ${
+                                pConflict.type === "faculty_conflict"
+                                  ? "Faculty Busy"
+                                  : pConflict.type === "class_conflict"
+                                  ? "Class Occupied"
+                                  : "Room Booked"
+                              }]`
+                            : isSelected
+                            ? "✓"
+                            : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -4311,19 +4520,28 @@ const AdminDashboard = () => {
 
                   <button
                     type="submit"
-                    disabled={isSubmittingSlot}
+                    disabled={isSubmittingSlot || !!evaluateTimetableConflict(timetableFormData, timetableSlots)}
                     style={{
                       flex: 2,
                       padding: "10px",
                       borderRadius: "8px",
                       border: "none",
-                      background: "#2563eb",
+                      background: evaluateTimetableConflict(timetableFormData, timetableSlots) ? "#94a3b8" : "#2563eb",
                       color: "#fff",
                       fontWeight: 600,
-                      cursor: isSubmittingSlot ? "not-allowed" : "pointer",
+                      cursor: isSubmittingSlot || evaluateTimetableConflict(timetableFormData, timetableSlots) ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease",
                     }}
                   >
-                    {isSubmittingSlot ? "Saving Slot..." : "Save Schedule Slot"}
+                    {isSubmittingSlot
+                      ? "Saving Slot..."
+                      : evaluateTimetableConflict(timetableFormData, timetableSlots)
+                      ? "⚠️ Concurrency Conflict"
+                      : "Save Schedule Slot"}
                   </button>
                 </div>
               </form>
