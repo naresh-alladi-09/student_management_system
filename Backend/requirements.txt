@@ -1,17 +1,34 @@
+# =============================================================================
+# Academic & Student Management System - Backend Production Requirements
+# =============================================================================
+
+# Core Web Framework & REST API
 Django>=6.0.0,<7.0.0
 djangorestframework>=3.15.0
 django-cors-headers>=4.3.0
-mysqlclient>=2.2.0
-PyMySQL>=1.1.0
-python-dotenv>=1.0.0
-sqlparse>=0.5.0
 asgiref>=3.8.0
-drf-spectacular>=0.27.0
+sqlparse>=0.5.0
+
+# Database Connectors (MySQL, Aiven Cloud & Production SSL)
+PyMySQL>=1.1.0
+mysqlclient>=2.2.0
+cryptography>=41.0.0
+
+# Production WSGI Server & Static Asset Serving
 gunicorn>=21.2.0
 whitenoise>=6.6.0
+python-dotenv>=1.0.0
+
+# Biometric Verification, Face Recognition & Computer Vision
 numpy>=1.24.0
 Pillow>=10.0.0
 opencv-python-headless>=4.8.0
-cryptography>=41.0.0
 
+# OpenAPI / Swagger Interactive Documentation
+drf-spectacular>=0.27.0
+PyYAML>=6.0.0
+uritemplate>=4.1.0
+jsonschema>=4.20.0
 
+# Timezone Database
+tzdata>=2024.1
