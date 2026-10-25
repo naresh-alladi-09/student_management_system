@@ -222,6 +222,7 @@ def create_attendance_session(request):
         teacher=request.user,
         duration_seconds=duration_seconds,
         academic_class=academic_class,
+        timetable_slot=active_slot,
         section=section_val,
         expires_at=expires_at_val,
         end_time=end_time_val,
@@ -265,8 +266,8 @@ def create_attendance_session(request):
 def finalize_session_attendance(session):
     """
     Ensure all enrolled students for this session's class/cohort have an AttendanceRecord
-    in the database. Those who marked QR are already 'Present'. Remaining enrolled students
-    are saved as 'Absent'.
+    in the database. Those who marked QR or already have attendance recorded for this period
+    are already 'Present'. Remaining enrolled students are saved as 'Absent'.
     """
     if not session:
         return
@@ -291,6 +292,14 @@ def finalize_session_attendance(session):
         existing_student_ids = set(
             AttendanceRecord.objects.filter(session=session).values_list('student_id', flat=True)
         )
+        # Also check if students have already recorded attendance for this period / timetable slot today
+        if session.timetable_slot:
+            existing_student_ids.update(
+                AttendanceRecord.objects.filter(
+                    date=session.date,
+                    timetable_slot=session.timetable_slot
+                ).values_list('student_id', flat=True)
+            )
 
         absent_records = []
         for s in students:
@@ -299,6 +308,7 @@ def finalize_session_attendance(session):
                     AttendanceRecord(
                         student=s,
                         session=session,
+                        timetable_slot=session.timetable_slot,
                         subject=session.subject,
                         date=session.date,
                         status='Absent',
@@ -544,12 +554,115 @@ def get_session_attendees(request, session_id):
 # STUDENT: QR ATTENDANCE & ANTI-PROXY VERIFICATION
 # =====================================================================
 
+def check_student_period_attendance(student, session):
+    """
+    Enforces the institutional policy that attendance for a student can ONLY be marked once per period.
+
+    Checks:
+    1. Direct duplicate check: Has this student already checked into this exact AttendanceSession?
+    2. Timetable Period check: If session has a timetable_slot or matches a scheduled
+       TimetableSlot on session.date, has the student already marked attendance for that period today?
+    3. Session Period overlap check: If session has start_time and end_time, has the student
+       already marked attendance for any session overlapping that lecture period on session.date?
+
+    Returns: (is_already_marked: bool, existing_record: AttendanceRecord or None, message: str or None)
+    """
+    if not student or not session:
+        return False, None, None
+
+    # 1. Direct session check
+    direct_rec = AttendanceRecord.objects.filter(student=student, session=session).first()
+    if direct_rec:
+        time_str = direct_rec.marked_at.strftime('%I:%M %p')
+        period_lbl = session.get_period_label()
+        return (
+            True,
+            direct_rec,
+            f"You have already marked attendance for this session ({period_lbl}) at {time_str}. Attendance can only be marked once per period."
+        )
+
+    # 2. Timetable Slot period check
+    slot = session.timetable_slot
+    if not slot and session.subject:
+        from timetable.models import TimetableSlot
+        day_actual = session.date.strftime('%A')
+        slots_for_subject = TimetableSlot.objects.filter(
+            subject=session.subject,
+            day__iexact=day_actual
+        )
+        if session.academic_class:
+            slots_for_subject = slots_for_subject.filter(
+                Q(academic_class=session.academic_class) | Q(academic_class__isnull=True)
+            )
+
+        matched_slot = None
+        s_time = session.start_time
+        e_time = session.end_time
+        for s in slots_for_subject:
+            if s_time and s.start_time <= s_time < s.end_time:
+                matched_slot = s
+                break
+            elif e_time and s.end_time == e_time:
+                matched_slot = s
+                break
+
+        slot = matched_slot or (slots_for_subject.first() if slots_for_subject.count() == 1 else None)
+        if slot and not session.timetable_slot:
+            try:
+                session.timetable_slot = slot
+                session.save(update_fields=['timetable_slot'])
+            except Exception:
+                pass
+
+    if slot:
+        existing_slot_rec = AttendanceRecord.objects.filter(
+            student=student,
+            date=session.date
+        ).filter(
+            Q(timetable_slot=slot) | Q(session__timetable_slot=slot)
+        ).first()
+
+        if existing_slot_rec:
+            slot_label = f"{slot.start_time.strftime('%I:%M %p')} - {slot.end_time.strftime('%I:%M %p')}"
+            time_str = existing_slot_rec.marked_at.strftime('%I:%M %p')
+            return (
+                True,
+                existing_slot_rec,
+                f"Attendance has already been marked for this lecture period ({slot_label}) at {time_str}. Each student can only mark attendance once per period."
+            )
+
+    # 3. Session time window overlap check on session.date
+    sess_start = session.start_time
+    sess_end = session.end_time
+    if sess_start and sess_end:
+        overlapping_records = AttendanceRecord.objects.filter(
+            student=student,
+            date=session.date,
+            session__isnull=False,
+            session__start_time__lt=sess_end,
+            session__end_time__gt=sess_start
+        ).exclude(session=session).select_related('session', 'subject').first()
+
+        if overlapping_records:
+            period_label = f"{sess_start.strftime('%I:%M %p')} - {sess_end.strftime('%I:%M %p')}"
+            sub_title = overlapping_records.subject.code if overlapping_records.subject else "this course"
+            time_str = overlapping_records.marked_at.strftime('%I:%M %p')
+            return (
+                True,
+                overlapping_records,
+                f"Attendance already marked for this period ({period_label}) for {sub_title} at {time_str}. Only one attendance mark is permitted per period."
+            )
+
+    return False, None, None
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def verify_session_token(request):
     """
     Verifies QR token for an authenticated student before scanning face/location.
-    Returns session subject, classroom geocoordinates, radius, and student face status.
+    Returns session subject, classroom geocoordinates, radius, student face status,
+    and checks if attendance was already recorded for this lecture period.
     """
     token = request.query_params.get('token') or request.data.get('token') or request.data.get('qr_token') or ''
     token = str(token).strip()
@@ -566,7 +679,7 @@ def verify_session_token(request):
     if not token:
         return Response({"detail": "Token is required.", "valid": False}, status=status.HTTP_400_BAD_REQUEST)
 
-    session = AttendanceSession.objects.filter(qr_token=token).select_related('subject', 'teacher', 'academic_class').first()
+    session = AttendanceSession.objects.filter(qr_token=token).select_related('subject', 'teacher', 'academic_class', 'timetable_slot').first()
     if not session:
         return Response({"detail": "Invalid QR code or token.", "valid": False}, status=status.HTTP_404_NOT_FOUND)
 
@@ -587,8 +700,14 @@ def verify_session_token(request):
                 pass
 
     is_already_marked = False
+    already_marked_msg = None
+    already_marked_at = None
     if student:
-        is_already_marked = AttendanceRecord.objects.filter(student=student, session=session).exists()
+        already_marked, existing_rec, msg = check_student_period_attendance(student, session)
+        if already_marked:
+            is_already_marked = True
+            already_marked_msg = msg
+            already_marked_at = existing_rec.marked_at.isoformat() if existing_rec else None
 
     has_registered_face = bool(
         student and (student.face_registered or student.face_embedding or student.profile_photo)
@@ -598,6 +717,8 @@ def verify_session_token(request):
     if session.expires_at:
         diff = (session.expires_at - timezone.localtime()).total_seconds()
         remaining_secs = max(0, int(diff))
+
+    timetable_period_label = session.get_period_label()
 
     return Response({
         "valid": True,
@@ -615,7 +736,8 @@ def verify_session_token(request):
         "time_remaining": remaining_secs,
         "period_start": session.start_time.strftime('%I:%M %p') if session.start_time else None,
         "period_end": session.end_time.strftime('%I:%M %p') if session.end_time else None,
-        "timetable_period": f"{session.start_time.strftime('%I:%M %p')} - {session.end_time.strftime('%I:%M %p')}" if session.end_time and session.start_time else None,
+        "timetable_period": timetable_period_label,
+        "period_label": timetable_period_label,
         "latitude": session.latitude,
         "longitude": session.longitude,
         "radius_meters": session.radius_meters or 100.0,
@@ -626,6 +748,9 @@ def verify_session_token(request):
         "student_name": student.name if student else None,
         "student_roll": student.roll_no if student else None,
         "is_already_marked": is_already_marked,
+        "already_marked_message": already_marked_msg,
+        "already_marked_at": already_marked_at,
+        "period_attendance_marked": is_already_marked,
     }, status=status.HTTP_200_OK)
 
 
@@ -761,14 +886,17 @@ def mark_qr_attendance(request):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-    # 5. Check for duplicate attendance for this session
-    existing = AttendanceRecord.objects.filter(student=student, session=session).first()
-    if existing:
+    # 5. Check duplicate attendance: Enforce that attendance can only be marked once per period
+    already_marked, existing_rec, dup_msg = check_student_period_attendance(student, session)
+    if already_marked:
         return Response(
             {
-                "detail": f"You have already marked attendance for this session at {existing.marked_at.strftime('%I:%M %p')}.",
+                "detail": dup_msg,
                 "already_marked": True,
-                "marked_at": existing.marked_at.isoformat()
+                "period_conflict": True,
+                "marked_at": existing_rec.marked_at.isoformat() if existing_rec else None,
+                "record_id": existing_rec.id if existing_rec else None,
+                "period_label": existing_rec.get_period_label() if existing_rec else session.get_period_label(),
             },
             status=status.HTTP_409_CONFLICT
         )
@@ -953,6 +1081,7 @@ def mark_qr_attendance(request):
         record = AttendanceRecord.objects.create(
             student=student,
             session=session,
+            timetable_slot=session.timetable_slot,
             subject=session.subject,
             date=session.date,
             status='Present',
@@ -1164,6 +1293,11 @@ def bulk_save_attendance(request):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
+    slot_id = request.data.get('slot_id') or request.data.get('timetable_slot_id')
+    slot_obj = None
+    if slot_id:
+        slot_obj = TimetableSlot.objects.filter(id=slot_id).first()
+
     with transaction.atomic():
         saved_count = 0
         for student_id_raw, status_val in attendance_map.items():
@@ -1174,16 +1308,21 @@ def bulk_save_attendance(request):
                 qs = AttendanceRecord.objects.filter(student_id=sid, date=target_date)
                 if subject_obj:
                     qs = qs.filter(subject=subject_obj)
+                if slot_obj:
+                    qs = qs.filter(timetable_slot=slot_obj)
 
                 if qs.exists():
                     update_fields = {'status': status_val, 'marked_via': 'MANUAL'}
                     if subject_obj:
                         update_fields['subject'] = subject_obj
+                    if slot_obj:
+                        update_fields['timetable_slot'] = slot_obj
                     qs.update(**update_fields)
                 else:
                     AttendanceRecord.objects.create(
                         student_id=sid,
                         date=target_date,
+                        timetable_slot=slot_obj,
                         status=status_val,
                         subject=subject_obj,
                         marked_via='MANUAL'

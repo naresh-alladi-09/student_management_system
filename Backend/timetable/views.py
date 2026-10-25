@@ -329,8 +329,9 @@ def start_attendance_from_slot(request, slot_id):
             session = active_session
             session.expires_at = expires_at
             session.end_time = slot.end_time
+            session.timetable_slot = slot
             session.duration_seconds = duration_seconds
-            update_fields = ['expires_at', 'end_time', 'duration_seconds']
+            update_fields = ['expires_at', 'end_time', 'duration_seconds', 'timetable_slot']
             if latitude is not None and longitude is not None:
                 session.latitude = latitude
                 session.longitude = longitude
@@ -353,6 +354,7 @@ def start_attendance_from_slot(request, slot_id):
             teacher=conducting_teacher,
             duration_seconds=duration_seconds,
             academic_class=slot.academic_class,
+            timetable_slot=slot,
             section=slot.section or 'A',
             expires_at=expires_at,
             end_time=slot.end_time,

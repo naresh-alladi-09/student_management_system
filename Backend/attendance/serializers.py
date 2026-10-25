@@ -8,6 +8,7 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
     subject_details = SubjectSerializer(source='subject', read_only=True)
     teacher_name = serializers.CharField(source='teacher.get_full_name', read_only=True)
     class_display = serializers.CharField(source='academic_class.display_name', read_only=True)
+    period_label = serializers.CharField(source='get_period_label', read_only=True)
     is_expired = serializers.SerializerMethodField()
     attendees_count = serializers.SerializerMethodField()
 
@@ -21,6 +22,8 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
             'teacher_name',
             'academic_class',
             'class_display',
+            'timetable_slot',
+            'period_label',
             'section',
             'date',
             'start_time',
@@ -52,6 +55,7 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
     roll_no = serializers.CharField(source='student.roll_no', read_only=True)
     subject_name = serializers.CharField(source='subject.name', read_only=True)
     subject_code = serializers.CharField(source='subject.code', read_only=True)
+    period_label = serializers.CharField(source='get_period_label', read_only=True)
 
     class Meta:
         model = AttendanceRecord
@@ -61,6 +65,8 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
             'student_name',
             'roll_no',
             'session',
+            'timetable_slot',
+            'period_label',
             'subject',
             'subject_name',
             'subject_code',

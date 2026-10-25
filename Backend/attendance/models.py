@@ -24,6 +24,13 @@ class AttendanceSession(models.Model):
         blank=True,
         related_name='attendance_sessions'
     )
+    timetable_slot = models.ForeignKey(
+        'timetable.TimetableSlot',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='attendance_sessions'
+    )
     section = models.CharField(max_length=10, default='A', blank=True)
     date = models.DateField(default=date.today)
     start_time = models.TimeField(auto_now_add=True)
@@ -46,7 +53,7 @@ class AttendanceSession(models.Model):
         ordering = ['-created_at']
 
     @classmethod
-    def create_session(cls, subject, teacher, duration_seconds=60, academic_class=None, section='A', expires_at=None, end_time=None, latitude=None, longitude=None, radius_meters=100.0, require_face=True, require_geo=True):
+    def create_session(cls, subject, teacher, duration_seconds=60, academic_class=None, section='A', expires_at=None, end_time=None, latitude=None, longitude=None, radius_meters=100.0, require_face=True, require_geo=True, timetable_slot=None):
         token = secrets.token_urlsafe(32)
         now = timezone.now()
         expires = expires_at if expires_at else (now + timedelta(seconds=duration_seconds))
@@ -59,6 +66,7 @@ class AttendanceSession(models.Model):
             expires_at=expires,
             duration_seconds=duration_seconds,
             academic_class=academic_class,
+            timetable_slot=timetable_slot,
             section=section,
             end_time=end_time,
             latitude=latitude,
@@ -68,6 +76,17 @@ class AttendanceSession(models.Model):
             require_geo=require_geo,
             is_active=True
         )
+
+    def get_period_label(self):
+        if self.timetable_slot:
+            st = self.timetable_slot.start_time.strftime('%I:%M %p')
+            et = self.timetable_slot.end_time.strftime('%I:%M %p')
+            return f"{st} - {et}"
+        if self.start_time and self.end_time:
+            st = self.start_time.strftime('%I:%M %p')
+            et = self.end_time.strftime('%I:%M %p')
+            return f"{st} - {et}"
+        return f"{self.subject.code if self.subject else 'Lecture'} Period"
 
     def refresh_token(self, duration_seconds=None):
         dur = duration_seconds or self.duration_seconds or 60
@@ -117,6 +136,13 @@ class AttendanceRecord(models.Model):
         blank=True,
         related_name='records'
     )
+    timetable_slot = models.ForeignKey(
+        'timetable.TimetableSlot',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='attendance_records'
+    )
     subject = models.ForeignKey(
         'performance.Subject',
         on_delete=models.SET_NULL,
@@ -160,16 +186,30 @@ class AttendanceRecord(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        # Prevent student from marking twice for the exact same session
-        # In MySQL, UNIQUE (student, session) permits multiple NULL sessions (for manual entries)
-        # while strictly enforcing uniqueness when session is set.
+        # Prevent student from marking twice for the exact same session,
+        # or twice for the exact same timetable period on the same day.
+        # In MySQL and SQLite, UNIQUE constraints allow multiple NULL entries
+        # while strictly enforcing uniqueness when fields are set.
         constraints = [
             models.UniqueConstraint(
                 fields=['student', 'session'],
                 name='unique_student_session_attendance'
             ),
+            models.UniqueConstraint(
+                fields=['student', 'date', 'timetable_slot'],
+                name='unique_student_period_attendance'
+            ),
         ]
         ordering = ['-date', '-marked_at']
+
+    def get_period_label(self):
+        if self.timetable_slot:
+            st = self.timetable_slot.start_time.strftime('%I:%M %p')
+            et = self.timetable_slot.end_time.strftime('%I:%M %p')
+            return f"{st} - {et}"
+        if self.session:
+            return self.session.get_period_label()
+        return "Lecture Period"
 
     def __str__(self):
         sub_code = self.subject.code if self.subject else 'General'

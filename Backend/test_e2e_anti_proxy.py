@@ -138,8 +138,8 @@ def run_e2e_anti_proxy():
     assert verify_res.status_code == 200
     assert verify_res.data.get('student_face_registered') == True
 
-    # Clean previous attendance records for this student on this session to start clean
-    AttendanceRecord.objects.filter(session_id=session_id, student=student_obj).delete()
+    # Clean previous attendance records for this student on this period to start clean
+    AttendanceRecord.objects.filter(student=student_obj, date=now_local.date()).delete()
 
     # 5. TEST SCENARIO A: Proxy Geofence Attack (Student is 550m away)
     print("\n[STEP 4A] Testing Proxy Rejection: Student marks attendance from 550m away (GPS spoof / remote proxy)")

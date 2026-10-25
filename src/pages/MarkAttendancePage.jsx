@@ -161,6 +161,21 @@ const MarkAttendancePage = () => {
       setSessionInfo(res.data);
       setTimeRemaining(res.data?.time_remaining || 0);
 
+      // If student has already checked in for this period, immediately show status
+      if (res.data?.is_already_marked) {
+        setResultStatus("already");
+        setResultData({
+          detail:
+            res.data?.already_marked_message ||
+            `You have already checked in for this lecture period (${res.data?.timetable_period || res.data?.subject_name}). Attendance can only be marked once per period.`,
+          markedAt: res.data?.already_marked_at,
+          timetablePeriod: res.data?.timetable_period,
+          subject: res.data?.subject_name || res.data?.subject,
+          subjectCode: res.data?.subject_code,
+        });
+        stopCamera();
+      }
+
       // If session has coordinates and user already has coords, calculate distance
       if (
         userCoords &&
@@ -418,9 +433,13 @@ const MarkAttendancePage = () => {
         setResultData({
           detail:
             err.response.data?.detail ||
-            "You have already checked in for this session.",
+            "You have already checked in for this lecture period. Attendance can only be marked once per period.",
           markedAt: err.response.data?.marked_at,
           recordId: err.response.data?.record_id,
+          periodConflict: err.response.data?.period_conflict,
+          timetablePeriod: err.response.data?.period_label || sessionInfo?.timetable_period,
+          subject: sessionInfo?.subject_name,
+          subjectCode: sessionInfo?.subject_code,
         });
       } else {
         setResultStatus("error");
@@ -944,11 +963,49 @@ const MarkAttendancePage = () => {
             </div>
 
             <h3 style={{ margin: "0 0 8px 0", color: "#92400e", fontSize: "20px", fontWeight: 700 }}>
-              Already Checked In
+              Attendance Already Recorded
             </h3>
-            <p style={{ color: "#b45309", fontSize: "14px", margin: "0 0 20px 0" }}>
-              {resultData?.detail || "You have already marked attendance for this session."}
+
+            <div
+              style={{
+                display: "inline-block",
+                padding: "3px 12px",
+                borderRadius: "20px",
+                background: "#fef3c7",
+                color: "#b45309",
+                fontWeight: 700,
+                fontSize: "12px",
+                border: "1px solid #fde68a",
+                marginBottom: "14px",
+              }}
+            >
+              🔒 Policy: Marked Once Per Period
+            </div>
+
+            <p style={{ color: "#b45309", fontSize: "14px", margin: "0 auto 16px auto", maxWidth: "420px", lineHeight: "1.5" }}>
+              {resultData?.detail || "Attendance for this lecture period has already been marked. Each student can only mark attendance once per period."}
             </p>
+
+            {(resultData?.timetablePeriod || sessionInfo?.timetable_period) && (
+              <div
+                style={{
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  fontSize: "13px",
+                  color: "#92400e",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  maxWidth: "400px",
+                  margin: "0 auto 20px auto",
+                }}
+              >
+                <span>🕒 <strong>Lecture Period:</strong></span>
+                <span>{resultData?.timetablePeriod || sessionInfo?.timetable_period}</span>
+              </div>
+            )}
 
             <button
               type="button"
