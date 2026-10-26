@@ -2,8 +2,8 @@ name: Backend Keep-Alive (NeverSleep)
 
 'on':
   schedule:
-    # Runs every 12 minutes to keep the free-tier backend from spinning down (Render sleeps after 15m)
-    - cron: '*/12 * * * *'
+    # Runs every 9 minutes to keep the free-tier backend from spinning down (Render sleeps after 15m)
+    - cron: '*/9 * * * *'
   workflow_dispatch:
     inputs:
       custom_url:
