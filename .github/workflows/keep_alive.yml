@@ -1,0 +1,57 @@
+name: Backend Keep-Alive (NeverSleep)
+
+'on':
+  schedule:
+    # Runs every 12 minutes to keep the free-tier backend from spinning down (Render sleeps after 15m)
+    - cron: '*/12 * * * *'
+  workflow_dispatch:
+    inputs:
+      custom_url:
+        description: 'Optional: Custom backend URL to ping (overrides secret/variable)'
+        required: false
+        default: ''
+
+jobs:
+  ping:
+    name: Keep-Alive Ping
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ping Backend Health Endpoint
+        run: |
+          # Priority: Manual input > Repo Variable > Repo Secret > Fallback Placeholder
+          BASE_URL="${{ github.event.inputs.custom_url || vars.BACKEND_URL || secrets.BACKEND_URL }}"
+          
+          if [ -z "$BASE_URL" ] || [ "$BASE_URL" = "https://your-service.onrender.com" ]; then
+            echo "⚠️ [Warning] BACKEND_URL is not set yet in your repository variables or secrets!"
+            echo "To configure your URL in GitHub:"
+            echo "1. Go to your repo -> Settings -> Secrets and variables -> Actions"
+            echo "2. Add a Repository Variable or Secret named 'BACKEND_URL'"
+            echo "   Value: https://your-backend.onrender.com"
+            exit 0
+          fi
+
+          # Strip trailing slash if present
+          CLEAN_URL="${BASE_URL%/}"
+          PING_ENDPOINT="${CLEAN_URL}/api/health/live/"
+
+          echo "🚀 Sending safe GET keep-alive ping to: $PING_ENDPOINT"
+          
+          # Perform GET request, recording HTTP status code and response time
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\nTIME_TOTAL:%{time_total}s" -X GET "$PING_ENDPOINT" -H "User-Agent: GitHubActions-KeepAlive/1.0")
+          
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
+          TIME_TOTAL=$(echo "$RESPONSE" | grep "TIME_TOTAL:" | cut -d':' -f2)
+          BODY=$(echo "$RESPONSE" | sed -e '/HTTP_STATUS:/d' -e '/TIME_TOTAL:/d')
+
+          echo "Status Code: $HTTP_STATUS"
+          echo "Response Time: $TIME_TOTAL"
+          echo "Response Body: $BODY"
+
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✅ Backend is ALIVE and active! Sleep prevented."
+          else
+            echo "❌ Keep-alive request returned HTTP $HTTP_STATUS"
+            exit 1
+          fi

@@ -17,22 +17,28 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
-import logging
+from django.views.decorators.http import require_GET
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+import logging
 
 logger = logging.getLogger(__name__)
 
+@require_GET
 def liveness_check(request):
-    """Basic process liveness check for hosting platforms (Render, Railway, Kubernetes)."""
+    """
+    Lightweight process liveness check for hosting platforms & keep-alive pingers (Render, NeverSleep, UptimeRobot).
+    Bypasses the database completely — 100% safe, read-only, and zero overhead.
+    """
     return JsonResponse({
         "status": "alive",
         "service": "Academic Management System API"
     }, status=200)
 
+@require_GET
 def health_check(request):
     """
     Readiness & health check: verifies database connectivity without leaking internal
