@@ -116,7 +116,11 @@ function Attendance() {
   });
   const [sessionDuration, setSessionDuration] = useState(() => {
     const saved = localStorage.getItem("sms_attendance_duration");
-    return saved ? parseInt(saved, 10) || 60 : 60;
+    return saved ? parseInt(saved, 10) || 20 : 20;
+  });
+  const [autoRotate, setAutoRotate] = useState(() => {
+    const saved = localStorage.getItem("sms_attendance_auto_rotate");
+    return saved !== null ? saved === "true" : true;
   });
   const [activeSessionData, setActiveSessionData] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
@@ -624,14 +628,19 @@ function Attendance() {
     };
   }, [activeTab]);
 
-  // Countdown timer for QR
+  // Countdown timer for QR with automatic dynamic rotation every 20s
   useEffect(() => {
-    if (timeRemaining <= 0) return;
+    if (timeRemaining <= 0) {
+      if (autoRotate && activeSessionData?.active && activeSessionData?.session?.id && !qrLoading) {
+        handleRefreshToken();
+      }
+      return;
+    }
     const t = setInterval(() => {
       setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(t);
-  }, [timeRemaining]);
+  }, [timeRemaining, autoRotate, activeSessionData?.active, activeSessionData?.session?.id, qrLoading]);
 
   // Timetable Period Active Check: Attendance is enabled only during scheduled timetable lecture slots
   const activeTimetableSlot =
@@ -709,8 +718,17 @@ function Attendance() {
     if (!activeSessionData?.session?.id) return;
     setQrLoading(true);
     try {
-      await refreshSessionToken(activeSessionData.session.id, sessionDuration);
-      checkActiveQrSession();
+      const res = await refreshSessionToken(activeSessionData.session.id, sessionDuration);
+      if (res?.data?.session) {
+        setActiveSessionData((prev) => ({
+          ...prev,
+          session: res.data.session,
+        }));
+        const rem = res.data.session.duration_seconds || sessionDuration || 20;
+        setTimeRemaining(rem);
+      } else {
+        checkActiveQrSession();
+      }
     } catch (err) {
       setError("Failed to refresh QR token.");
     } finally {
@@ -1236,8 +1254,9 @@ function Attendance() {
                           fontSize: "14px",
                         }}
                       >
+                        <option value={20}>20 Seconds (High Anti-Proxy - Recommended)</option>
                         <option value={30}>30 Seconds</option>
-                        <option value={60}>60 Seconds (Recommended)</option>
+                        <option value={60}>60 Seconds</option>
                         <option value={120}>2 Minutes</option>
                         <option value={300}>5 Minutes</option>
                       </select>
@@ -1724,8 +1743,36 @@ function Attendance() {
                       <span>
                         {timeRemaining > 0
                           ? `QR Token Expires in: ${timeRemaining}s`
+                          : autoRotate
+                          ? "Refreshing QR Token..."
                           : "QR Token Expired! Please Refresh."}
                       </span>
+                    </div>
+
+                    {/* Auto-Rotate Toggle */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        marginBottom: "16px",
+                        fontSize: "13px",
+                        color: "#475569",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={autoRotate}
+                          onChange={(e) => {
+                            setAutoRotate(e.target.checked);
+                            localStorage.setItem("sms_attendance_auto_rotate", String(e.target.checked));
+                          }}
+                        />
+                        <span>Auto-rotate dynamic QR code every {sessionDuration}s</span>
+                      </label>
                     </div>
 
                     {/* Controls */}

@@ -100,7 +100,7 @@ export const getAttendanceAlertHistory = (params = {}) => {
 // QR Session Services
 export const createAttendanceSession = (
   subjectId,
-  durationSeconds = 60,
+  durationSeconds = 20,
   classId = null,
   section = 'A',
   geoOptions = {}
@@ -150,7 +150,7 @@ export const getActiveSession = () => {
   return apiClient.get("/api/attendance/sessions/active/");
 };
 
-export const refreshSessionToken = (sessionId, durationSeconds = 60) => {
+export const refreshSessionToken = (sessionId, durationSeconds = 20) => {
   return apiClient.post(`/api/attendance/sessions/${sessionId}/refresh/`, {
     duration_seconds: durationSeconds,
   });

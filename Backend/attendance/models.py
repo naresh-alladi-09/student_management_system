@@ -37,7 +37,7 @@ class AttendanceSession(models.Model):
     end_time = models.TimeField(null=True, blank=True)
     qr_token = models.CharField(max_length=120, unique=True, db_index=True)
     expires_at = models.DateTimeField()
-    duration_seconds = models.IntegerField(default=60)
+    duration_seconds = models.IntegerField(default=20)
     is_active = models.BooleanField(default=True)
 
     # Classroom Geofence & Anti-Proxy Security
@@ -53,11 +53,11 @@ class AttendanceSession(models.Model):
         ordering = ['-created_at']
 
     @classmethod
-    def create_session(cls, subject, teacher, duration_seconds=60, academic_class=None, section='A', expires_at=None, end_time=None, latitude=None, longitude=None, radius_meters=100.0, require_face=True, require_geo=True, timetable_slot=None):
+    def create_session(cls, subject, teacher, duration_seconds=20, academic_class=None, section='A', expires_at=None, end_time=None, latitude=None, longitude=None, radius_meters=100.0, require_face=True, require_geo=True, timetable_slot=None):
         token = secrets.token_urlsafe(32)
         now = timezone.now()
         expires = expires_at if expires_at else (now + timedelta(seconds=duration_seconds))
-        if expires_at and duration_seconds == 60:
+        if expires_at and duration_seconds == 20:
             duration_seconds = max(1, int((expires - now).total_seconds()))
         return cls.objects.create(
             subject=subject,
@@ -89,7 +89,7 @@ class AttendanceSession(models.Model):
         return f"{self.subject.code if self.subject else 'Lecture'} Period"
 
     def refresh_token(self, duration_seconds=None):
-        dur = duration_seconds or self.duration_seconds or 60
+        dur = duration_seconds or self.duration_seconds or 20
         self.qr_token = secrets.token_urlsafe(32)
         self.expires_at = timezone.now() + timedelta(seconds=dur)
         self.is_active = True

@@ -35,7 +35,7 @@ def create_attendance_session(request):
     Teacher starts an attendance session for a subject and optional section/class.
     Payload: {
         "subject_id": 1,
-        "duration_seconds": 60,
+        "duration_seconds": 20,
         "class_id": 2,
         "section": "A",
         "latitude": 17.3850,
@@ -47,7 +47,7 @@ def create_attendance_session(request):
     Returns: newly created session with temporary secure QR token.
     """
     subject_id = request.data.get('subject_id') or request.data.get('subject')
-    duration_seconds = int(request.data.get('duration_seconds', 60))
+    duration_seconds = int(request.data.get('duration_seconds', 20))
     class_id = request.data.get('class_id') or request.data.get('academic_class_id')
     section_val = request.data.get('section', 'A')
 
@@ -444,7 +444,7 @@ def refresh_session_token(request, session_id):
     if not session:
         return Response({"detail": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    duration = int(request.data.get('duration_seconds', session.duration_seconds or 60))
+    duration = int(request.data.get('duration_seconds', session.duration_seconds or 20))
     new_token = session.refresh_token(duration_seconds=duration)
 
     serializer = AttendanceSessionSerializer(session)
