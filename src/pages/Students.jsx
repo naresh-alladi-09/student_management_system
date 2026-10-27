@@ -66,6 +66,7 @@ const Students = () => {
   // Edit Modal State
   const [editingStudent, setEditingStudent] = useState(null);
   const [editFormData, setEditFormData] = useState({
+    student_id: "",
     name: "",
     year: "1",
     email: "",
@@ -264,7 +265,9 @@ const Students = () => {
   // Open Edit Modal
   const handleOpenEdit = (student) => {
     setEditingStudent(student);
+    const sid = student.student_id || student.roll_no || "";
     setEditFormData({
+      student_id: sid,
       name: student.name || "",
       year: String(student.year || "1"),
       email: student.email || "",
@@ -272,7 +275,7 @@ const Students = () => {
       branch: student.branch || "CSE",
       semester: String(student.semester || "1"),
       section: student.section || "A",
-      roll_no: student.roll_no || "",
+      roll_no: student.roll_no || sid,
     });
   };
 
@@ -284,9 +287,16 @@ const Students = () => {
     e.preventDefault();
     if (!editingStudent) return;
 
+    const trimmedStudentId = (editFormData.student_id || editFormData.roll_no || "").trim().toUpperCase();
     const trimmedName = editFormData.name.trim();
     const trimmedEmail = editFormData.email.trim().toLowerCase();
     const trimmedPhone = editFormData.phone.trim();
+
+    if (!trimmedStudentId) {
+      setErrorMessage("Student ID is required and must be set by an administrator (e.g. 24B91A6101).");
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
 
     if (!trimmedName || /\d/.test(trimmedName) || !/^[a-zA-Z\s.'-]+$/.test(trimmedName)) {
       setErrorMessage("Student name must contain only letters and cannot contain numbers.");
@@ -319,13 +329,15 @@ const Students = () => {
     try {
       setSavingEdit(true);
       const payload = {
+        student_id: trimmedStudentId,
+        roll_no: (editFormData.roll_no || trimmedStudentId).trim().toUpperCase(),
         name: trimmedName,
         year: parsedYear,
         email: trimmedEmail,
         phone: trimmedPhone,
         branch: editFormData.branch,
         semester: String(parsedSem),
-        roll_no: editFormData.roll_no.trim() || undefined,
+        section: editFormData.section,
       };
 
       await updateStudent(editingStudent.id, payload);
@@ -749,14 +761,23 @@ const Students = () => {
                     </div>
 
                     <div className="form-group">
-                      <label htmlFor="edit-roll">Roll Number</label>
+                      <label htmlFor="edit-student-id">
+                        Student ID / Roll No * <span style={{ fontSize: "11px", color: "#64748b" }}>(Set by Admin e.g. 24B91A6101)</span>
+                      </label>
                       <input
-                        id="edit-roll"
+                        id="edit-student-id"
                         type="text"
-                        value={editFormData.roll_no}
-                        onChange={(e) =>
-                          setEditFormData({ ...editFormData, roll_no: e.target.value })
-                        }
+                        value={editFormData.student_id || editFormData.roll_no || ""}
+                        required
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          setEditFormData({
+                            ...editFormData,
+                            student_id: val,
+                            roll_no: val,
+                          });
+                        }}
+                        style={{ fontFamily: "monospace", fontWeight: 700 }}
                       />
                     </div>
 

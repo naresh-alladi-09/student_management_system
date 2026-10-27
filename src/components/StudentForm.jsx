@@ -36,6 +36,7 @@ const YEAR_SEMESTERS = {
 const StudentForm = () => {
   const navigate = useNavigate();
 
+  const [studentId, setStudentId] = useState("");
   const [name, setName] = useState("");
   const [year, setYear] = useState("1");
   const [email, setEmail] = useState("");
@@ -376,9 +377,16 @@ const StudentForm = () => {
     setSuccessMessage("");
     setCreatedStudentId(null);
 
+    const trimmedStudentId = studentId.trim().toUpperCase();
     const trimmedName = name.trim();
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPhone = phone.trim();
+
+    // 0. Student ID validation (Must be set by Admin only)
+    if (!trimmedStudentId) {
+      setErrorMessage("Student ID is required and must be explicitly set by an Administrator (e.g. 24B91A6101).");
+      return;
+    }
 
     // 1. Name validation
     if (!trimmedName) {
@@ -428,6 +436,8 @@ const StudentForm = () => {
     const parsedSem = parseInt(semester, 10);
 
     const newStudent = {
+      student_id: trimmedStudentId,
+      roll_no: trimmedStudentId,
       name: trimmedName,
       year: parsedYear,
       email: trimmedEmail,
@@ -441,7 +451,7 @@ const StudentForm = () => {
     try {
       setSubmitting(true);
       const res = await addStudent(newStudent);
-      const assignedId = res.data?.student_id || res.data?.roll_no || "Generated";
+      const assignedId = res.data?.student_id || res.data?.roll_no || trimmedStudentId;
       const faceRegistered = res.data?.face_registered || Boolean(facePhoto);
       setCreatedStudentId(assignedId);
 
@@ -450,6 +460,7 @@ const StudentForm = () => {
       );
 
       // Clear form inputs
+      setStudentId("");
       setName("");
       setEmail("");
       setPhone("");
@@ -482,6 +493,7 @@ const StudentForm = () => {
   };
 
   const handleReset = () => {
+    setStudentId("");
     setName("");
     setYear("1");
     setEmail("");
@@ -744,6 +756,25 @@ const StudentForm = () => {
           {/* Student Information Fields */}
           <div className="form-row">
             <div className="form-group">
+              <label htmlFor="stu-id">
+                Student ID / Roll No <span style={{ color: "#ef4444" }}>*</span>
+                <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "6px" }}>(Set by Admin e.g. 24B91A6101)</span>
+              </label>
+              <input
+                id="stu-id"
+                type="text"
+                placeholder="e.g. 24B91A6101"
+                value={studentId}
+                required
+                onChange={(e) => {
+                  setStudentId(e.target.value.toUpperCase());
+                  if (errorMessage) setErrorMessage("");
+                }}
+                style={{ fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.5px" }}
+              />
+            </div>
+
+            <div className="form-group">
               <label htmlFor="stu-name">
                 Full Name <span style={{ color: "#ef4444" }}>*</span>
                 <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "6px" }}>(Letters only)</span>
@@ -757,7 +788,9 @@ const StudentForm = () => {
                 onChange={handleNameChange}
               />
             </div>
+          </div>
 
+          <div className="form-row">
             <div className="form-group">
               <label htmlFor="stu-year">
                 Academic Year <span style={{ color: "#ef4444" }}>*</span>

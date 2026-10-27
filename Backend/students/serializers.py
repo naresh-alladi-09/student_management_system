@@ -95,7 +95,44 @@ class StudentSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'student_id', 'face_registered', 'face_registered_at', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'face_registered', 'face_registered_at', 'created_at', 'updated_at']
+
+    def validate_student_id(self, value):
+        if value:
+            val = str(value).strip().upper()
+            request = self.context.get('request')
+            if request and request.user and request.user.is_authenticated:
+                is_admin = (
+                    request.user.is_staff or
+                    request.user.is_superuser or
+                    getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin'
+                )
+                if not is_admin and (not self.instance or self.instance.student_id != val):
+                    raise serializers.ValidationError("Student ID can only be set or modified by an Administrator.")
+
+            instance = self.instance
+            qs = Student.objects.filter(student_id__iexact=val)
+            if instance:
+                qs = qs.exclude(pk=instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(f"Student ID '{val}' is already assigned to another student.")
+            return val
+        return value
+
+    def validate(self, attrs):
+        # Student ID must be set by Admin; do not take automatically
+        sid = attrs.get('student_id') or attrs.get('roll_no')
+        if not self.instance and not sid:
+            raise serializers.ValidationError({
+                "student_id": "Student ID is required and must be set by an Administrator (e.g. 24B91A6101)."
+            })
+        if sid:
+            val = str(sid).strip().upper()
+            if not attrs.get('student_id'):
+                attrs['student_id'] = val
+            if not attrs.get('roll_no'):
+                attrs['roll_no'] = val
+        return attrs
 
     def validate_name(self, value):
         val = (value or '').strip()

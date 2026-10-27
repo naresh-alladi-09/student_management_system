@@ -422,7 +422,7 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
             subject=self.subject,
             teacher=self.teacher_user,
             qr_token='expired_token_xyz',
-            expires_at=timezone.now() - timedelta(seconds=10),
+            expires_at=timezone.now() - timedelta(seconds=30),
             duration_seconds=10,
             is_active=True
         )
@@ -454,3 +454,41 @@ class AcademicSystemSecurityAndCalculationsTestCase(TestCase):
         res_ok = self.client.post('/api/auth/users/', payload)
         self.assertEqual(res_ok.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(username='weakuser').exists())
+
+    def test_student_id_set_by_admin_only_not_automatic(self):
+        """Student ID must be explicitly provided by Admin and is not automatically generated."""
+        self.client.force_authenticate(user=self.admin_user)
+
+        # 1. Admin creates student with institutional ID (e.g. 24B91A6101)
+        payload = {
+            'student_id': '24B91A6101',
+            'name': 'Andraju Renuka',
+            'email': 'renuka@gmail.com',
+            'phone': '9876543210',
+            'branch': 'CSE',
+            'year': 2,
+            'semester': '3',
+            'section': 'A'
+        }
+        res = self.client.post('/api/students/', payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['student_id'], '24B91A6101')
+        self.assertEqual(res.data['roll_no'], '24B91A6101')
+
+        # Verify not auto-generated to STU20240001
+        student = Student.objects.get(pk=res.data['id'])
+        self.assertEqual(student.student_id, '24B91A6101')
+        self.assertEqual(student.roll_no, '24B91A6101')
+
+        # 2. Creating student without student_id or roll_no fails
+        invalid_payload = {
+            'name': 'Nameless ID Student',
+            'email': 'nameless@gmail.com',
+            'phone': '9876543211',
+            'branch': 'CSE',
+            'year': 1,
+            'semester': '1'
+        }
+        res_fail = self.client.post('/api/students/', invalid_payload, format='json')
+        self.assertEqual(res_fail.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('student_id', res_fail.data)

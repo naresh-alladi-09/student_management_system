@@ -129,14 +129,13 @@ class Student(models.Model):
         needs_update = False
         update_fields = []
 
-        if not self.roll_no:
-            self.roll_no = f"STU-2024-{self.id:03d}"
+        # Student ID & Roll Number: Set by Administrator only; do not auto-generate synthetic STU... numbers
+        if self.student_id and not self.roll_no:
+            self.roll_no = self.student_id
             needs_update = True
             update_fields.append('roll_no')
-
-        if not self.student_id:
-            adm_yr = self.admission_year or 2024
-            self.student_id = f"STU{adm_yr}{self.id:04d}"
+        elif self.roll_no and not self.student_id:
+            self.student_id = self.roll_no
             needs_update = True
             update_fields.append('student_id')
 
