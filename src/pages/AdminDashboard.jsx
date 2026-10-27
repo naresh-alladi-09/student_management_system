@@ -193,6 +193,8 @@ const AdminDashboard = () => {
     threshold: 75,
     date_from: "",
     date_to: "",
+    student_id: "",
+    view_mode: "detailed", // "detailed" | "summary"
   });
   const [reportPreviewData, setReportPreviewData] = useState(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
@@ -209,6 +211,8 @@ const AdminDashboard = () => {
       if (filters.threshold) cleanParams.threshold = filters.threshold;
       if (filters.date_from) cleanParams.date_from = filters.date_from;
       if (filters.date_to) cleanParams.date_to = filters.date_to;
+      if (filters.student_id && filters.student_id.trim()) cleanParams.student_id = filters.student_id.trim();
+      if (filters.view_mode) cleanParams.view_mode = filters.view_mode;
 
       let res;
       if (type === "attendance") {
@@ -239,8 +243,11 @@ const AdminDashboard = () => {
       if (reportFilter.threshold) cleanParams.threshold = reportFilter.threshold;
       if (reportFilter.date_from) cleanParams.date_from = reportFilter.date_from;
       if (reportFilter.date_to) cleanParams.date_to = reportFilter.date_to;
+      if (reportFilter.student_id && reportFilter.student_id.trim()) cleanParams.student_id = reportFilter.student_id.trim();
+      if (reportFilter.view_mode) cleanParams.view_mode = reportFilter.view_mode;
 
-      const filename = `${reportType}_report_${new Date().toISOString().slice(0, 10)}.csv`;
+      const modeSuffix = reportType === "attendance" ? `_period_${reportFilter.view_mode || "detailed"}` : "";
+      const filename = `${reportType}${modeSuffix}_report_${new Date().toISOString().slice(0, 10)}.csv`;
       await downloadReportCSV(reportType, cleanParams, filename);
     } catch (err) {
       alert("Failed to export report CSV.");
@@ -3943,6 +3950,33 @@ const AdminDashboard = () => {
                         style={{ padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
                       />
                     </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                        Student ID / Roll No
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. STU20240001 / 24CSE01"
+                        value={reportFilter.student_id || ""}
+                        onChange={(e) => setReportFilter({ ...reportFilter, student_id: e.target.value })}
+                        style={{ padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", width: "165px" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                        Calculation View Mode
+                      </label>
+                      <select
+                        value={reportFilter.view_mode || "detailed"}
+                        onChange={(e) => setReportFilter({ ...reportFilter, view_mode: e.target.value })}
+                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      >
+                        <option value="detailed">Period-by-Period Detail (with %)</option>
+                        <option value="summary">Student Period Summary (Per Student ID)</option>
+                      </select>
+                    </div>
                   </>
                 )}
 
@@ -3983,6 +4017,43 @@ const AdminDashboard = () => {
                 </button>
               </div>
 
+              {/* KPI Strip for Attendance Period Metrics */}
+              {reportType === "attendance" && reportPreviewData?.period_metrics && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gap: "12px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "11.5px", color: "#1e40af", fontWeight: 700, textTransform: "uppercase" }}>
+                      Total Periods Evaluated
+                    </div>
+                    <div style={{ fontSize: "20px", fontWeight: 800, color: "#1e3a8a", marginTop: "2px" }}>
+                      {reportPreviewData.period_metrics.total_period_records || reportPreviewData.count || 0}
+                    </div>
+                  </div>
+                  <div style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "8px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "11.5px", color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>
+                      Unique Students Evaluated
+                    </div>
+                    <div style={{ fontSize: "20px", fontWeight: 800, color: "#064e3b", marginTop: "2px" }}>
+                      {reportPreviewData.period_metrics.unique_students || 0}
+                    </div>
+                  </div>
+                  <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "8px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "11.5px", color: "#92400e", fontWeight: 700, textTransform: "uppercase" }}>
+                      Average Period Attendance
+                    </div>
+                    <div style={{ fontSize: "20px", fontWeight: 800, color: "#78350f", marginTop: "2px" }}>
+                      {reportPreviewData.period_metrics.average_period_percentage || 0}%
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Live Preview Table */}
               {isLoadingReport ? (
                 <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
@@ -3991,17 +4062,70 @@ const AdminDashboard = () => {
                 </div>
               ) : reportPreviewData ? (
                 <div className="table-responsive">
-                  {reportType === "attendance" && (
+                  {reportType === "attendance" && reportFilter.view_mode === "summary" && (
+                    <table className="grades-table">
+                      <thead>
+                        <tr>
+                          <th>Student ID</th>
+                          <th>Roll Number</th>
+                          <th>Student Name</th>
+                          <th>Cohort Class</th>
+                          <th>Date Window</th>
+                          <th>Total Periods Held</th>
+                          <th>Periods Attended</th>
+                          <th>Periods Absent</th>
+                          <th>Period Attendance %</th>
+                          <th>Eligibility Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportPreviewData.student_summaries && reportPreviewData.student_summaries.length > 0 ? (
+                          reportPreviewData.student_summaries.map((s) => (
+                            <tr key={s.id || s.student_id}>
+                              <td><span style={{ fontFamily: "monospace", fontWeight: 600, color: "#0284c7" }}>{s.student_id}</span></td>
+                              <td><strong>{s.roll_no || "—"}</strong></td>
+                              <td>{s.name}</td>
+                              <td>{s.branch} Y{s.year}-{s.section}</td>
+                              <td style={{ fontSize: "12px", color: "#64748b" }}>{s.date_from || "All"} &rarr; {s.date_to || "All"}</td>
+                              <td><strong>{s.total_periods}</strong></td>
+                              <td><span style={{ color: "#059669", fontWeight: 700 }}>{s.periods_attended}</span></td>
+                              <td><span style={{ color: "#dc2626", fontWeight: 600 }}>{s.periods_absent}</span></td>
+                              <td>
+                                <strong style={{ color: s.period_percentage >= 75 ? "#059669" : "#dc2626" }}>
+                                  {s.period_percentage}%
+                                </strong>
+                              </td>
+                              <td>
+                                <span className={`stat-badge-tag ${s.period_percentage >= 75 ? "tag-success" : "tag-danger"}`}>
+                                  {s.eligibility_status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr><td colSpan="10" style={{ textAlign: "center", padding: "28px", color: "#94a3b8" }}>No student period summary records found.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {reportType === "attendance" && reportFilter.view_mode !== "summary" && (
                     <table className="grades-table">
                       <thead>
                         <tr>
                           <th>Date</th>
-                          <th>Time</th>
+                          <th>Period</th>
+                          <th>Period Timings</th>
+                          <th>Student ID</th>
                           <th>Roll Number</th>
                           <th>Student Name</th>
                           <th>Class</th>
                           <th>Subject</th>
                           <th>Status</th>
+                          <th>Period Credit</th>
+                          <th>Attended / Total</th>
+                          <th>Student Period %</th>
+                          <th>Eligibility</th>
                           <th>Marked Via</th>
                         </tr>
                       </thead>
@@ -4010,15 +4134,45 @@ const AdminDashboard = () => {
                           reportPreviewData.records.map((r) => (
                             <tr key={r.id}>
                               <td>{r.date}</td>
-                              <td>{r.time || "—"}</td>
+                              <td>
+                                <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: "4px", fontWeight: 700, fontSize: "11px", color: "#334155" }}>
+                                  {r.period_number ? `Period ${r.period_number}` : "Period 1"}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: "12px", color: "#64748b" }}>{r.period_time || "—"}</td>
+                              <td><span style={{ fontFamily: "monospace", color: "#0284c7", fontWeight: 600 }}>{r.student_id || "—"}</span></td>
                               <td><strong>{r.student_roll || "—"}</strong></td>
                               <td>{r.student_name}</td>
                               <td>{r.branch} Y{r.year}-{r.section}</td>
                               <td>{r.subject_code ? `${r.subject_code}` : "—"}</td>
                               <td>
-                                <span className={`stat-badge-tag ${r.status === "Present" ? "tag-success" : "tag-danger"}`}>
+                                <span className={`stat-badge-tag ${r.status === "Present" ? "tag-success" : r.status === "On-Duty" ? "tag-warning" : "tag-danger"}`}>
                                   {r.status}
                                 </span>
+                              </td>
+                              <td style={{ textAlign: "center" }}>
+                                <span style={{ fontWeight: 800, color: r.period_credit === 1 ? "#059669" : "#dc2626" }}>
+                                  {r.period_credit !== undefined ? r.period_credit : (r.status === "Present" ? 1 : 0)}
+                                </span>
+                              </td>
+                              <td>
+                                {r.student_attended_periods !== undefined && r.student_total_periods !== undefined ? (
+                                  <span><strong>{r.student_attended_periods}</strong> / {r.student_total_periods}</span>
+                                ) : "—"}
+                              </td>
+                              <td>
+                                {r.student_period_percentage !== undefined ? (
+                                  <strong style={{ color: r.student_period_percentage >= 75 ? "#059669" : "#dc2626" }}>
+                                    {r.student_period_percentage}%
+                                  </strong>
+                                ) : "—"}
+                              </td>
+                              <td>
+                                {r.student_eligibility ? (
+                                  <span className={`stat-badge-tag ${r.student_eligibility.includes("Eligible") ? "tag-success" : "tag-danger"}`} style={{ fontSize: "10.5px" }}>
+                                    {r.student_eligibility}
+                                  </span>
+                                ) : "—"}
                               </td>
                               <td>
                                 {(r.marked_via && (r.marked_via === "QR" || r.marked_via === "QR_FACE_GEO" || r.marked_via.startsWith("QR"))) ? (
@@ -4055,7 +4209,7 @@ const AdminDashboard = () => {
                             </tr>
                           ))
                         ) : (
-                          <tr><td colSpan="8" style={{ textAlign: "center", padding: "28px", color: "#94a3b8" }}>No attendance records match the selected parameters.</td></tr>
+                          <tr><td colSpan="14" style={{ textAlign: "center", padding: "28px", color: "#94a3b8" }}>No attendance records match the selected parameters.</td></tr>
                         )}
                       </tbody>
                     </table>

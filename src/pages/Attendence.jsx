@@ -20,6 +20,7 @@ import {
   reviewLeaveRequest,
   getAllStudentsList,
   getTodayTimetable,
+  downloadReportCSV,
 } from "../services/studentservice";
 import {
   FaQrcode,
@@ -149,6 +150,43 @@ function Attendance() {
   const [todaySlots, setTodaySlots] = useState([]);
   const [timetableLoading, setTimetableLoading] = useState(false);
   const [adminBypass, setAdminBypass] = useState(false);
+
+  // Period-by-Period Attendance Export States & Handler
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportDateFrom, setExportDateFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split("T")[0];
+  });
+  const [exportDateTo, setExportDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [exportStudentId, setExportStudentId] = useState("");
+  const [exportBranch, setExportBranch] = useState("ALL");
+  const [exportSection, setExportSection] = useState("ALL");
+  const [exportYear, setExportYear] = useState("ALL");
+  const [exportViewMode, setExportViewMode] = useState("detailed"); // 'detailed' | 'summary'
+  const [isExportingPeriodCsv, setIsExportingPeriodCsv] = useState(false);
+
+  const handleExportPeriodAttendance = async () => {
+    setIsExportingPeriodCsv(true);
+    try {
+      const params = {};
+      if (exportDateFrom) params.date_from = exportDateFrom;
+      if (exportDateTo) params.date_to = exportDateTo;
+      if (exportStudentId && exportStudentId.trim()) params.student_id = exportStudentId.trim();
+      if (exportBranch && exportBranch !== "ALL") params.branch = exportBranch;
+      if (exportYear && exportYear !== "ALL") params.year = exportYear;
+      if (exportSection && exportSection !== "ALL") params.section = exportSection;
+      params.view_mode = exportViewMode;
+
+      const filename = `attendance_period_${exportViewMode}_${exportDateFrom || "start"}_to_${exportDateTo || "end"}.csv`;
+      await downloadReportCSV("attendance", params, filename);
+      setShowExportModal(false);
+    } catch (err) {
+      alert("Failed to export period attendance CSV.");
+    } finally {
+      setIsExportingPeriodCsv(false);
+    }
+  };
 
   const fetchTodayTimetableData = () => {
     setTimetableLoading(true);
@@ -966,6 +1004,27 @@ function Attendance() {
                     {facultyLeaves.filter((l) => l.status === "PENDING").length}
                   </span>
                 )}
+              </button>
+
+              <button
+                type="button"
+                className="action-btn"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "10px 18px",
+                  borderRadius: "8px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: "#0284c7",
+                  color: "#fff",
+                  border: "none",
+                  marginLeft: "auto",
+                }}
+                onClick={() => setShowExportModal(true)}
+              >
+                <FaExternalLinkAlt /> Export Period Attendance
               </button>
             </div>
           </div>
@@ -3919,6 +3978,189 @@ function Attendance() {
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* PERIOD ATTENDANCE EXPORT MODAL */}
+          {showExportModal && (
+            <div className="att-modal-overlay" onClick={() => setShowExportModal(false)}>
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: "16px",
+                  width: "90%",
+                  maxWidth: "540px",
+                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+                  overflow: "hidden",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+                    color: "#ffffff",
+                    padding: "18px 24px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      Institutional Period Reporting
+                    </div>
+                    <h3 style={{ margin: "2px 0 0 0", fontSize: "18px", color: "#ffffff" }}>
+                      Export Period Attendance
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowExportModal(false)}
+                    style={{ background: "transparent", border: "none", color: "#94a3b8", fontSize: "18px", cursor: "pointer" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ padding: "20px 24px" }}>
+                  <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#64748b" }}>
+                    Calculate and export attendance for each period from one date to another date for each student ID.
+                  </p>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "11.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                        From Date
+                      </label>
+                      <input
+                        type="date"
+                        value={exportDateFrom}
+                        onChange={(e) => setExportDateFrom(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: "11.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                        To Date
+                      </label>
+                      <input
+                        type="date"
+                        value={exportDateTo}
+                        onChange={(e) => setExportDateTo(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "14px" }}>
+                    <label style={{ display: "block", fontSize: "11.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                      Student ID / Roll No (Optional Filter)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Leave empty for all students, or enter e.g. STU20240001 / 24CSE01"
+                      value={exportStudentId}
+                      onChange={(e) => setExportStudentId(e.target.value)}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "14px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "11.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                        Branch
+                      </label>
+                      <select
+                        value={exportBranch}
+                        onChange={(e) => setExportBranch(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      >
+                        <option value="ALL">All Branches</option>
+                        <option value="CSE">CSE</option>
+                        <option value="AIML">AIML</option>
+                        <option value="IT">IT</option>
+                        <option value="ECE">ECE</option>
+                        <option value="MECH">MECH</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: "11.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                        Year
+                      </label>
+                      <select
+                        value={exportYear}
+                        onChange={(e) => setExportYear(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      >
+                        <option value="ALL">All Years</option>
+                        <option value="1">Year 1</option>
+                        <option value="2">Year 2</option>
+                        <option value="3">Year 3</option>
+                        <option value="4">Year 4</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: "11.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                        Section
+                      </label>
+                      <select
+                        value={exportSection}
+                        onChange={(e) => setExportSection(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      >
+                        <option value="ALL">All Sections</option>
+                        <option value="A">Section A</option>
+                        <option value="B">Section B</option>
+                        <option value="C">Section C</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "18px" }}>
+                    <label style={{ display: "block", fontSize: "11.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                      Period Calculation Mode
+                    </label>
+                    <select
+                      value={exportViewMode}
+                      onChange={(e) => setExportViewMode(e.target.value)}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    >
+                      <option value="detailed">Period-by-Period Detailed Calculation (Every Period & Cumulative %)</option>
+                      <option value="summary">Student Period Summary (One Row Per Student ID with Total Periods)</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowExportModal(false)}
+                      style={{ padding: "8px 16px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f8fafc", color: "#475569", fontWeight: 600, cursor: "pointer", fontSize: "13px" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportPeriodAttendance}
+                      disabled={isExportingPeriodCsv}
+                      style={{
+                        padding: "8px 18px",
+                        borderRadius: "6px",
+                        border: "none",
+                        background: "#0284c7",
+                        color: "#ffffff",
+                        fontWeight: 700,
+                        cursor: isExportingPeriodCsv ? "not-allowed" : "pointer",
+                        fontSize: "13px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      {isExportingPeriodCsv ? "Exporting CSV..." : "Download Period Attendance CSV"}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

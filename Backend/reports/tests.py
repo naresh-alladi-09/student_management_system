@@ -104,9 +104,10 @@ class ReportsAPITests(APITestCase):
         res_json = self.client.get('/api/reports/attendance/?branch=CSE&section=A')
         self.assertEqual(res_json.status_code, status.HTTP_200_OK)
         self.assertIn("records", res_json.data)
+        self.assertIn("student_summaries", res_json.data)
         self.assertTrue(res_json.data["count"] >= 8)
 
-        # CSV Export
+        # CSV Export Detailed
         res_csv = self.client.get('/api/reports/attendance/?branch=CSE&export=csv')
         self.assertEqual(res_csv.status_code, status.HTTP_200_OK)
         self.assertEqual(res_csv['Content-Type'], 'text/csv')
@@ -114,11 +115,48 @@ class ReportsAPITests(APITestCase):
         content = res_csv.content.decode('utf-8')
         self.assertIn("Grace Hopper", content)
         self.assertIn("Alan Turing", content)
-        self.assertIn("Record ID,Date,Time,Roll Number", content)
+        self.assertIn("Record ID,Date,Period Number,Period Timings,Time,Student ID,Roll Number", content)
+        self.assertIn("Period Credit (1/0)", content)
+        self.assertIn("Student Period Attendance %", content)
 
         # Verify AuditLog created
         audit = AuditLog.objects.filter(action="REPORT_GENERATE", entity="AttendanceReport").first()
         self.assertIsNotNone(audit)
+
+    def test_attendance_report_period_calculation_by_date_and_studentid(self):
+        """Attendance export calculates per period from date_from to date_to for each studentid."""
+        self.client.force_authenticate(user=self.admin_user)
+
+        today_str = date.today().isoformat()
+
+        # Detailed period export filtered by student_id and date range
+        res = self.client.get(
+            f'/api/reports/attendance/?student_id={self.student_2.roll_no}&date_from={today_str}&date_to={today_str}&view_mode=detailed&export=csv'
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        content = res.content.decode('utf-8')
+
+        # Check student identification and period metrics
+        self.assertIn("Alan Turing", content)
+        self.assertNotIn("Grace Hopper", content)
+        self.assertIn("Period 1", content)
+        self.assertIn("25.0%", content)  # Alan's period attendance percentage
+        self.assertIn("Shortage (<75%)", content)
+
+        # Summary calculation mode export
+        res_summary = self.client.get(
+            f'/api/reports/attendance/?branch=CSE&date_from={today_str}&date_to={today_str}&view_mode=summary&export=csv'
+        )
+        self.assertEqual(res_summary.status_code, status.HTTP_200_OK)
+        summary_content = res_summary.content.decode('utf-8')
+
+        self.assertIn("Student ID,Roll Number,Student Name,Branch,Year", summary_content)
+        self.assertIn("Total Periods Held,Periods Present", summary_content)
+        self.assertIn("Grace Hopper", summary_content)
+        self.assertIn("100.0%", summary_content)
+        self.assertIn("Eligible (>=75%)", summary_content)
+        self.assertIn("Alan Turing", summary_content)
+        self.assertIn("25.0%", summary_content)
 
     def test_low_attendance_report_and_csv(self):
         """Low attendance report identifies students below threshold with CSV export."""
