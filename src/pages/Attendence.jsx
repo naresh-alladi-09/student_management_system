@@ -488,7 +488,8 @@ function Attendance() {
       })
       .catch(() => {});
 
-    getAcademicClasses()
+    const classParams = !isAdmin ? { assigned_only: true } : {};
+    getAcademicClasses(classParams)
       .then((res) => {
         const cls = res.data?.results || res.data || [];
         setAcademicClasses(cls);
@@ -508,6 +509,12 @@ function Attendance() {
     getActiveSession()
       .then((res) => {
         if (res.data?.session && (res.data.active || res.data.show_present_for_10_mins)) {
+          const sessTeacher = res.data.session.teacher;
+          if (!isAdmin && sessTeacher && currentUser?.userId && String(sessTeacher) !== String(currentUser.userId)) {
+            setActiveSessionData(null);
+            setTimeRemaining(0);
+            return;
+          }
           setActiveSessionData(res.data);
           if (res.data.active) {
             const expiresAt = new Date(res.data.session.expires_at).getTime();
@@ -591,6 +598,12 @@ function Attendance() {
     getActiveSession()
       .then((res) => {
         if (res.data?.session && (res.data.active || res.data.show_present_for_10_mins)) {
+          const sessTeacher = res.data.session.teacher;
+          if (!isAdmin && sessTeacher && currentUser?.userId && String(sessTeacher) !== String(currentUser.userId)) {
+            setActiveSessionData(null);
+            setTimeRemaining(0);
+            return;
+          }
           setActiveSessionData(res.data);
           if (res.data.active) {
             const expiresAt = new Date(res.data.session.expires_at).getTime();
@@ -647,8 +660,9 @@ function Attendance() {
     todaySlots.find(
       (s) =>
         (s.status === "active" || s.can_open_qr) &&
-        (!selectedSubjectId || String(s.subject) === String(selectedSubjectId))
-    ) || todaySlots.find((s) => s.status === "active" || s.can_open_qr);
+        (!selectedSubjectId || String(s.subject) === String(selectedSubjectId)) &&
+        (!selectedClassId || String(s.academic_class) === String(selectedClassId))
+    );
 
   const upcomingTimetableSlots = todaySlots.filter((s) => s.status === "upcoming");
   const nextUpcomingSlot = upcomingTimetableSlots[0] || null;

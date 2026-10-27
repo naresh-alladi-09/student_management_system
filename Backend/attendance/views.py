@@ -97,14 +97,22 @@ def create_attendance_session(request):
             return Response({"detail": f"AcademicClass with ID {class_id} not found."}, status=status.HTTP_404_NOT_FOUND)
 
     # Enforce that attendance must be taken by the respective subject faculty (or admin)
-    is_admin = request.user.is_superuser or request.user.is_staff or (getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin')
+    profile = getattr(request.user, 'profile', None)
+    is_admin = request.user.is_superuser or (profile and str(profile.role).lower() == 'admin')
     if not is_admin:
         from timetable.models import TimetableSlot
-        is_assigned = (
-            FacultyAssignment.objects.filter(teacher=request.user, subject=subject).exists() or
-            TimetableSlot.objects.filter(teacher=request.user, subject=subject).exists()
-        )
-        if not is_assigned:
+        # Faculty must be assigned to teach this subject and this specific class (if class provided)
+        is_assigned = FacultyAssignment.objects.filter(teacher=request.user, subject=subject)
+        has_slot = TimetableSlot.objects.filter(teacher=request.user, subject=subject)
+        if academic_class:
+            class_assigned = is_assigned.filter(academic_class=academic_class).exists()
+            class_slot = has_slot.filter(academic_class=academic_class).exists()
+            if not class_assigned and not class_slot:
+                return Response(
+                    {"detail": f"Unauthorized: You are not assigned to teach '{subject.name}' for this class ({academic_class.display_name}). Attendance must be launched by the assigned faculty."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif not is_assigned.exists() and not has_slot.exists():
             return Response(
                 {"detail": f"Unauthorized: You are not assigned to teach '{subject.name} ({subject.code})'. Attendance must be taken by the respective subject faculty."},
                 status=status.HTTP_403_FORBIDDEN
@@ -136,24 +144,23 @@ def create_attendance_session(request):
             slots_query = slots_query.filter(teacher=request.user)
 
         if academic_class:
-            class_slots = slots_query.filter(academic_class=academic_class)
-            if class_slots.exists():
-                slots_query = class_slots
+            slots_query = slots_query.filter(academic_class=academic_class)
         if section_val and section_val.upper() != 'ALL':
-            sec_slots = slots_query.filter(section__iexact=section_val)
-            if sec_slots.exists():
-                slots_query = sec_slots
+            slots_query = slots_query.filter(section__iexact=section_val)
 
         # Check 1: Does the faculty have a scheduled period for this subject on today's day?
         if not slots_query.exists():
+            class_desc = f" in class '{academic_class.display_name}'" if academic_class else ""
             teacher_slots = TimetableSlot.objects.filter(subject=subject)
             if not is_admin:
                 teacher_slots = teacher_slots.filter(teacher=request.user)
+            if academic_class:
+                teacher_slots = teacher_slots.filter(academic_class=academic_class)
             other_days = list(teacher_slots.values_list('day', flat=True).distinct())
             days_str = ", ".join(other_days) if other_days else "no scheduled days"
             return Response(
                 {
-                    "detail": f"Attendance is disabled: You do not have a scheduled timetable period for '{subject.name} ({subject.code})' on {today_day_actual}. Scheduled days: {days_str}."
+                    "detail": f"Attendance is disabled: You do not have a scheduled timetable period for '{subject.name} ({subject.code})'{class_desc} on {today_day_actual}. Scheduled days: {days_str}."
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -208,14 +215,20 @@ def create_attendance_session(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Deactivate any previous active sessions for this subject/class or teacher today
+    # Deactivate previous active sessions for this teacher today
     AttendanceSession.objects.filter(
-        subject=subject,
+        teacher=request.user,
         is_active=True,
         date=date.today()
-    ).filter(
-        Q(academic_class=academic_class) | Q(teacher=request.user)
     ).update(is_active=False)
+
+    # Also if this exact timetable slot had an active session today, deactivate it
+    if active_slot:
+        AttendanceSession.objects.filter(
+            timetable_slot=active_slot,
+            is_active=True,
+            date=date.today()
+        ).update(is_active=False)
 
     session = AttendanceSession.create_session(
         subject=subject,
@@ -334,15 +347,27 @@ def get_active_session(request):
     now_local = timezone.localtime()
     today_date = now_local.date()
 
-    # 1. Check for live active session today
-    session = AttendanceSession.objects.filter(
-        teacher=request.user,
-        is_active=True,
-        date=today_date
-    ).order_by('-created_at').first()
+    profile = getattr(request.user, 'profile', None)
+    is_admin = request.user.is_superuser or (profile and str(profile.role).lower() == 'admin')
 
-    if not session:
+    # 1. Check for live active session today
+    # CRITICAL: A faculty member must ONLY see their own session!
+    if is_admin:
+        teacher_id = request.query_params.get('teacher_id')
+        if teacher_id:
+            session = AttendanceSession.objects.filter(
+                teacher_id=teacher_id,
+                is_active=True,
+                date=today_date
+            ).order_by('-created_at').first()
+        else:
+            session = AttendanceSession.objects.filter(
+                is_active=True,
+                date=today_date
+            ).order_by('-created_at').first()
+    else:
         session = AttendanceSession.objects.filter(
+            teacher=request.user,
             is_active=True,
             date=today_date
         ).order_by('-created_at').first()
@@ -366,15 +391,24 @@ def get_active_session(request):
     # 2. If no active session, look for the most recent session conducted today that completed within the last 10 minutes
     if not target_session:
         ten_mins_ago = now_local - timedelta(minutes=10)
-        recent = AttendanceSession.objects.filter(
-            teacher=request.user,
-            date=today_date,
-            expires_at__gte=ten_mins_ago,
-            expires_at__lte=now_local
-        ).order_by('-expires_at').first()
-
-        if not recent:
+        if is_admin:
+            teacher_id = request.query_params.get('teacher_id')
+            if teacher_id:
+                recent = AttendanceSession.objects.filter(
+                    teacher_id=teacher_id,
+                    date=today_date,
+                    expires_at__gte=ten_mins_ago,
+                    expires_at__lte=now_local
+                ).order_by('-expires_at').first()
+            else:
+                recent = AttendanceSession.objects.filter(
+                    date=today_date,
+                    expires_at__gte=ten_mins_ago,
+                    expires_at__lte=now_local
+                ).order_by('-expires_at').first()
+        else:
             recent = AttendanceSession.objects.filter(
+                teacher=request.user,
                 date=today_date,
                 expires_at__gte=ten_mins_ago,
                 expires_at__lte=now_local

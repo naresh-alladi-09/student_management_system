@@ -105,12 +105,13 @@ def get_today_timetable(request):
         'subject', 'teacher', 'academic_class'
     )
 
-    if profile and profile.role == 'student' and profile.student:
+    is_admin = user.is_superuser or (profile and str(profile.role).lower() == 'admin')
+    if profile and str(profile.role).lower() == 'student' and profile.student:
         stu = profile.student
         slots = slots.filter(branch__iexact=stu.branch, semester=str(stu.semester))
         if stu.section:
             slots = slots.filter(section__in=[stu.section, '', 'All'])
-    elif profile and profile.role == 'teacher':
+    elif not is_admin:
         slots = slots.filter(teacher=user)
     else:
         # Admin can view all or filter by teacher
@@ -227,19 +228,27 @@ def start_attendance_from_slot(request, slot_id):
         pk=slot_id
     )
 
-    # 1. Enforce that attendance must be taken by the respective subject faculty (or admin)
-    is_admin = request.user.is_superuser or request.user.is_staff or (getattr(getattr(request.user, 'profile', None), 'role', '') == 'admin')
+    # 1. Enforce that attendance must be taken by the assigned slot faculty (or admin)
+    profile = getattr(request.user, 'profile', None)
+    is_admin = request.user.is_superuser or (profile and str(profile.role).lower() == 'admin')
     if not is_admin:
         if slot.teacher and slot.teacher != request.user:
-            from students.models import FacultyAssignment
-            is_assigned = (
-                FacultyAssignment.objects.filter(teacher=request.user, subject=slot.subject).exists() or
-                TimetableSlot.objects.filter(teacher=request.user, subject=slot.subject).exists()
+            teacher_name = slot.teacher.get_full_name() or slot.teacher.username
+            return Response(
+                {'detail': f"Unauthorized: Attendance for this lecture slot is assigned to {teacher_name}. Only the assigned faculty can launch this QR session."},
+                status=status.HTTP_403_FORBIDDEN
             )
-            if not is_assigned:
-                teacher_name = slot.teacher.get_full_name() or slot.teacher.username
+        elif not slot.teacher:
+            from students.models import FacultyAssignment
+            is_assigned = FacultyAssignment.objects.filter(
+                teacher=request.user,
+                subject=slot.subject
+            )
+            if slot.academic_class:
+                is_assigned = is_assigned.filter(academic_class=slot.academic_class)
+            if not is_assigned.exists():
                 return Response(
-                    {'detail': f"Unauthorized: Attendance for this lecture slot must be taken by the respective subject faculty ({teacher_name})."},
+                    {'detail': f"Unauthorized: You are not assigned to teach '{slot.subject.name}'. Attendance must be taken by the assigned faculty."},
                     status=status.HTTP_403_FORBIDDEN
                 )
 

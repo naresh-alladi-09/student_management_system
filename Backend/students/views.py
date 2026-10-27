@@ -505,7 +505,22 @@ class AcademicClassViewSet(viewsets.ModelViewSet):
             qs = qs.filter(semester=semester)
         if section:
             qs = qs.filter(section__iexact=section)
+
+        assigned_only = (
+            self.request.query_params.get('assigned_only', '').lower() in ['true', '1'] or
+            self.request.query_params.get('my', '').lower() in ['true', '1']
+        )
+        if assigned_only and self.request.user.is_authenticated:
+            profile = getattr(self.request.user, 'profile', None)
+            is_admin = self.request.user.is_superuser or (profile and str(profile.role).lower() == 'admin')
+            if not is_admin:
+                from timetable.models import TimetableSlot
+                assigned_class_ids = set(FacultyAssignment.objects.filter(teacher=self.request.user).exclude(academic_class__isnull=True).values_list('academic_class_id', flat=True))
+                assigned_class_ids.update(TimetableSlot.objects.filter(teacher=self.request.user).exclude(academic_class__isnull=True).values_list('academic_class_id', flat=True))
+                qs = qs.filter(id__in=assigned_class_ids)
+
         return qs
+
 
     def perform_create(self, serializer):
         obj = serializer.save()

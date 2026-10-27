@@ -473,9 +473,8 @@ const Login = ({ initialRole }) => {
         {/* LEFT BRANDING HERO PANEL                                       */}
         {/* ============================================================== */}
         <div
-          className={`login-left ${
-            isStudentMode ? "student-mode" : isAdminMode ? "admin-mode" : "teacher-mode"
-          }`}
+          className={`login-left ${isStudentMode ? "student-mode" : isAdminMode ? "admin-mode" : "teacher-mode"
+            }`}
         >
           <div className="login-branding-content">
             <div className="login-badge-header">
@@ -509,8 +508,8 @@ const Login = ({ initialRole }) => {
                   {isAdminMode
                     ? "User privileges & access controls"
                     : isStudentMode
-                    ? "Anti-proxy QR & facial verification"
-                    : "Geofenced dynamic QR attendance"}
+                      ? "Anti-proxy QR & facial verification"
+                      : "Geofenced dynamic QR attendance"}
                 </span>
               </div>
               <div className="feature-item">
@@ -521,8 +520,8 @@ const Login = ({ initialRole }) => {
                   {isAdminMode
                     ? "Institutional security audits"
                     : isStudentMode
-                    ? "Real-time attendance tracking"
-                    : "Biometric facial recognition"}
+                      ? "Real-time attendance tracking"
+                      : "Biometric facial recognition"}
                 </span>
               </div>
               <div className="feature-item">
@@ -533,8 +532,8 @@ const Login = ({ initialRole }) => {
                   {isAdminMode
                     ? "Cohort scheduling & branch settings"
                     : isStudentMode
-                    ? "Digital hall tickets & grade reports"
-                    : "Automated shortage alert notifications"}
+                      ? "Digital hall tickets & grade reports"
+                      : "Automated shortage alert notifications"}
                 </span>
               </div>
             </div>
@@ -581,18 +580,18 @@ const Login = ({ initialRole }) => {
                   ? "Set Faculty Account Password"
                   : "Set Student Account Password"
                 : mode === "forgot_password"
-                ? forgotStep === 1
-                  ? "Forgot Your Password?"
-                  : "Verify OTP & Reset Password"
-                : mode === "token_activate"
-                ? "Activate with Token"
-                : mode === "request_token"
-                ? "Request Activation Token"
-                : isAdminMode
-                ? "Administrator Sign In"
-                : isStudentMode
-                ? "Student Portal Sign In"
-                : "Faculty Portal Sign In"}
+                  ? forgotStep === 1
+                    ? "Forgot Your Password?"
+                    : "Verify OTP & Reset Password"
+                  : mode === "token_activate"
+                    ? "Activate with Token"
+                    : mode === "request_token"
+                      ? "Request Activation Token"
+                      : isAdminMode
+                        ? "Administrator Sign In"
+                        : isStudentMode
+                          ? "Student Portal Sign In"
+                          : "Faculty Portal Sign In"}
             </h3>
             <p className="login-form-subtitle">
               {mode === "set_password"
@@ -600,16 +599,16 @@ const Login = ({ initialRole }) => {
                   ? "Enter your Teacher ID sent to your email to set your password and activate your faculty account."
                   : "Enter your Student ID sent by the administrator to set your password and activate your account."
                 : mode === "forgot_password"
-                ? forgotStep === 1
-                  ? "Enter your Teacher/Student ID or registered email. We will send a 6-digit password reset code to your email."
-                  : `Enter the 6-digit verification code sent to ${maskedEmail} and choose your new password.`
-                : mode === "token_activate"
-                ? "Activate account with administrative security token."
-                : mode === "request_token"
-                ? "Generate or request a token from the department."
-                : isStudentMode
-                ? "Sign in with your Student ID and password to access your academic dashboard."
-                : "Sign in with your verified institutional account to continue."}
+                  ? forgotStep === 1
+                    ? "Enter your Teacher/Student ID or registered email. We will send a 6-digit password reset code to your email."
+                    : `Enter the 6-digit verification code sent to ${maskedEmail} and choose your new password.`
+                  : mode === "token_activate"
+                    ? "Activate account with administrative security token."
+                    : mode === "request_token"
+                      ? "Generate or request a token from the department."
+                      : isStudentMode
+                        ? "Sign in with your Student ID and password to access your academic dashboard."
+                        : "Sign in with your verified institutional account to continue."}
             </p>
           </div>
 
@@ -623,13 +622,12 @@ const Login = ({ initialRole }) => {
 
           {setPasswordMsg.text && mode === "set_password" && (
             <div
-              className={`login-alert-box ${
-                setPasswordMsg.type === "success"
+              className={`login-alert-box ${setPasswordMsg.type === "success"
                   ? "alert-success"
                   : setPasswordMsg.type === "info"
-                  ? "alert-info"
-                  : "alert-error"
-              }`}
+                    ? "alert-info"
+                    : "alert-error"
+                }`}
             >
               {setPasswordMsg.type === "success" ? (
                 <FaCheckCircle className="alert-icon" />
@@ -642,9 +640,8 @@ const Login = ({ initialRole }) => {
 
           {forgotMsg.text && mode === "forgot_password" && (
             <div
-              className={`login-alert-box ${
-                forgotMsg.type === "success" ? "alert-success" : "alert-error"
-              }`}
+              className={`login-alert-box ${forgotMsg.type === "success" ? "alert-success" : "alert-error"
+                }`}
             >
               {forgotMsg.type === "success" ? (
                 <FaCheckCircle className="alert-icon" />
@@ -657,9 +654,8 @@ const Login = ({ initialRole }) => {
 
           {legacyMsg.text && (mode === "token_activate" || mode === "request_token") && (
             <div
-              className={`login-alert-box ${
-                legacyMsg.type === "success" ? "alert-success" : "alert-error"
-              }`}
+              className={`login-alert-box ${legacyMsg.type === "success" ? "alert-success" : "alert-error"
+                }`}
             >
               {legacyMsg.type === "success" ? (
                 <FaCheckCircle className="alert-icon" />
@@ -741,9 +737,8 @@ const Login = ({ initialRole }) => {
 
               <button
                 type="submit"
-                className={`btn-submit-login ${
-                  activeRole === "teacher" ? "teacher-theme-btn" : "student-theme-btn"
-                }`}
+                className={`btn-submit-login ${activeRole === "teacher" ? "teacher-theme-btn" : "student-theme-btn"
+                  }`}
                 disabled={isSettingPassword}
               >
                 {isSettingPassword ? (
@@ -796,9 +791,8 @@ const Login = ({ initialRole }) => {
                     {isStudentMode ? "Student ID or Registered Email" : "Username or Registered Email"}
                   </label>
                   <div
-                    className={`input-control-wrap ${
-                      isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
-                    }`}
+                    className={`input-control-wrap ${isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
+                      }`}
                   >
                     <FaEnvelope className="field-adornment-icon" />
                     <input
@@ -816,9 +810,8 @@ const Login = ({ initialRole }) => {
 
                 <button
                   type="submit"
-                  className={`btn-submit-login ${
-                    isStudentMode ? "student-theme-btn" : isAdminMode ? "admin-theme-btn" : "teacher-theme-btn"
-                  }`}
+                  className={`btn-submit-login ${isStudentMode ? "student-theme-btn" : isAdminMode ? "admin-theme-btn" : "teacher-theme-btn"
+                    }`}
                   disabled={isForgotLoading}
                 >
                   {isForgotLoading ? (
@@ -860,9 +853,8 @@ const Login = ({ initialRole }) => {
                 <div className="form-group">
                   <label className="input-field-label">6-Digit Verification Code</label>
                   <div
-                    className={`input-control-wrap ${
-                      isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
-                    }`}
+                    className={`input-control-wrap ${isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
+                      }`}
                   >
                     <FaKey className="field-adornment-icon" />
                     <input
@@ -880,9 +872,8 @@ const Login = ({ initialRole }) => {
                 <div className="form-group">
                   <label className="input-field-label">New Password</label>
                   <div
-                    className={`input-control-wrap ${
-                      isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
-                    }`}
+                    className={`input-control-wrap ${isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
+                      }`}
                   >
                     <FaLock className="field-adornment-icon" />
                     <input
@@ -907,9 +898,8 @@ const Login = ({ initialRole }) => {
                 <div className="form-group">
                   <label className="input-field-label">Confirm New Password</label>
                   <div
-                    className={`input-control-wrap ${
-                      isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
-                    }`}
+                    className={`input-control-wrap ${isStudentMode ? "student-theme" : isAdminMode ? "admin-theme" : "teacher-theme"
+                      }`}
                   >
                     <FaLock className="field-adornment-icon" />
                     <input
@@ -925,9 +915,8 @@ const Login = ({ initialRole }) => {
 
                 <button
                   type="submit"
-                  className={`btn-submit-login ${
-                    isStudentMode ? "student-theme-btn" : isAdminMode ? "admin-theme-btn" : "teacher-theme-btn"
-                  }`}
+                  className={`btn-submit-login ${isStudentMode ? "student-theme-btn" : isAdminMode ? "admin-theme-btn" : "teacher-theme-btn"
+                    }`}
                   disabled={isForgotLoading}
                 >
                   {isForgotLoading ? (
@@ -1069,17 +1058,16 @@ const Login = ({ initialRole }) => {
                   {isAdminMode
                     ? "Administrator Username"
                     : isStudentMode
-                    ? "Student ID or Roll Number"
-                    : "Faculty Username or Email"}
+                      ? "Student ID or Roll Number"
+                      : "Faculty Username or Email"}
                 </label>
                 <div
-                  className={`input-control-wrap ${
-                    isAdminMode
+                  className={`input-control-wrap ${isAdminMode
                       ? "admin-theme"
                       : isStudentMode
-                      ? "student-theme"
-                      : "teacher-theme"
-                  }`}
+                        ? "student-theme"
+                        : "teacher-theme"
+                    }`}
                 >
                   {isAdminMode ? (
                     <FaUserShield className="field-adornment-icon" />
@@ -1094,8 +1082,8 @@ const Login = ({ initialRole }) => {
                       isAdminMode
                         ? "Enter admin username"
                         : isStudentMode
-                        ? "e.g. STU20240001 or roll number"
-                        : "e.g. FAC001 or faculty email"
+                          ? "e.g. STU20240001 or roll number"
+                          : "e.g. FAC001 or faculty email"
                     }
                     value={username}
                     required
@@ -1125,13 +1113,12 @@ const Login = ({ initialRole }) => {
                   </button>
                 </div>
                 <div
-                  className={`input-control-wrap ${
-                    isAdminMode
+                  className={`input-control-wrap ${isAdminMode
                       ? "admin-theme"
                       : isStudentMode
-                      ? "student-theme"
-                      : "teacher-theme"
-                  }`}
+                        ? "student-theme"
+                        : "teacher-theme"
+                    }`}
                 >
                   <FaLock className="field-adornment-icon" />
                   <input
@@ -1202,13 +1189,12 @@ const Login = ({ initialRole }) => {
 
               <button
                 type="submit"
-                className={`btn-submit-login ${
-                  isAdminMode
+                className={`btn-submit-login ${isAdminMode
                     ? "admin-theme-btn"
                     : isStudentMode
-                    ? "student-theme-btn"
-                    : "teacher-theme-btn"
-                }`}
+                      ? "student-theme-btn"
+                      : "teacher-theme-btn"
+                  }`}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (

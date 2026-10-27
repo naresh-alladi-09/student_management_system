@@ -24,125 +24,125 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-          {/* Public Authentication & Scan Routes */}
-          <Route path="/" element={<Login />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/login/admin" element={<Login initialRole="admin" />} />
-          <Route path="/login/teacher" element={<Login initialRole="teacher" />} />
-          <Route path="/login/student" element={<Login initialRole="student" />} />
-          <Route path="/mark-attendance" element={<MarkAttendancePage />} />
-          <Route path="/verify-hallticket" element={<VerifyHallTicket />} />
+            {/* Public Authentication & Scan Routes */}
+            <Route path="/" element={<Login />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/login/admin" element={<Login initialRole="admin" />} />
+            <Route path="/login/teacher" element={<Login initialRole="teacher" />} />
+            <Route path="/login/student" element={<Login initialRole="student" />} />
+            <Route path="/mark-attendance" element={<MarkAttendancePage />} />
+            <Route path="/verify-hallticket" element={<VerifyHallTicket />} />
 
-          {/* Admin Dedicated Console */}
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['admin']}>
-                  <AdminDashboard />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
+            {/* Admin Dedicated Console */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['admin']}>
+                    <AdminDashboard />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Faculty / Teacher / Admin Shared Operations */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher', 'admin']}>
-                  <Dashboard />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/students"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher', 'admin']}>
-                  <Students />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/addstudents"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher', 'admin']}>
-                  <Addstudent />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/addfaculty"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['admin']}>
-                  <AddFaculty />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/attendance"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher', 'admin']}>
-                  <Attendence />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/attendence"
-            element={<Navigate to="/attendance" replace />}
-          />
-          <Route
-            path="/performance"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher', 'admin']}>
-                  <Performance />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/exam-scanner"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['teacher']} excludeAdmin={true}>
-                  <ExamHallScanner />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
+            {/* Faculty / Teacher / Admin Shared Operations */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['teacher', 'admin']}>
+                    <Dashboard />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/students"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['teacher', 'admin']}>
+                    <Students />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/addstudents"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['teacher', 'admin']}>
+                    <Addstudent />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/addfaculty"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['admin']}>
+                    <AddFaculty />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/attendance"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['teacher', 'admin']}>
+                    <Attendence />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/attendence"
+              element={<Navigate to="/attendance" replace />}
+            />
+            <Route
+              path="/performance"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['teacher', 'admin']}>
+                    <Performance />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/exam-scanner"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['teacher']} excludeAdmin={true}>
+                    <ExamHallScanner />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Student Dedicated Portal Routes */}
-          <Route path="/student" element={<Navigate to="/student/dashboard" replace />} />
-          <Route
-            path="/student/dashboard"
-            element={
-              <ProtectedRoute>
-                <RoleRoute allowedRoles={['student']}>
-                  <StudentDashboard />
-                </RoleRoute>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/student-dashboard"
-            element={<Navigate to="/student/dashboard" replace />}
-          />
+            {/* Student Dedicated Portal Routes */}
+            <Route path="/student" element={<Navigate to="/student/dashboard" replace />} />
+            <Route
+              path="/student/dashboard"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allowedRoles={['student']}>
+                    <StudentDashboard />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/student-dashboard"
+              element={<Navigate to="/student/dashboard" replace />}
+            />
 
-          {/* Catch-all route */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            {/* Catch-all route */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
