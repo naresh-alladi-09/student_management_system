@@ -122,7 +122,7 @@ def attendance_report(request):
     date_from = request.query_params.get('date_from')
     date_to = request.query_params.get('date_to')
     export_format = request.query_params.get('export', 'json').lower()
-    view_mode = request.query_params.get('view_mode', 'detailed').lower()
+    view_mode = request.query_params.get('view_mode', 'summary').lower()
 
     records = AttendanceRecord.objects.select_related(
         'student', 'subject', 'timetable_slot', 'session', 'session__timetable_slot'
@@ -161,17 +161,21 @@ def attendance_report(request):
     # Build period lookup map
     slot_order_map = build_timetable_slot_order_map()
 
-    # Pre-calculate period metrics per student ID across the date range
+    # Pre-calculate period metrics per student ID across the date range (1 row per student ID)
     student_period_stats = {}
     for r in records:
         stu = r.student
         s_pk = stu.id
         if s_pk not in student_period_stats:
+            # Custom Student ID: Prefer official college registration/roll number (e.g. 24B91A6101)
+            custom_id = stu.roll_no or stu.student_id or f"STU{stu.id:04d}"
             student_period_stats[s_pk] = {
                 'id': stu.id,
+                'student_name': stu.name,
+                'name': stu.name,
+                'custom_student_id': custom_id,
                 'student_id': stu.student_id or f"STU{stu.id:04d}",
                 'roll_no': stu.roll_no or '',
-                'name': stu.name,
                 'branch': stu.branch,
                 'year': stu.year,
                 'semester': stu.semester,
@@ -210,9 +214,18 @@ def attendance_report(request):
         tot = s_data['total_periods']
         att = s_data['periods_attended']
         pct = round((att / tot * 100), 2) if tot > 0 else 0.0
+        s_data['classes_attended'] = att
+        s_data['total_classes'] = tot
         s_data['period_percentage'] = pct
+        s_data['attendance_percentage'] = pct
         s_data['eligibility_status'] = 'Eligible (>=75%)' if pct >= 75.0 else 'Shortage (<75%)'
         s_data['shortage_percentage'] = round(max(0.0, 75.0 - pct), 1)
+
+    # Sort students alphabetically by name or roll number as in university reports
+    student_rows = sorted(
+        student_period_stats.values(),
+        key=lambda s: (s['custom_student_id'], s['student_name'].upper())
+    )
 
     # Audit logging
     AuditLog.log(
@@ -225,93 +238,67 @@ def attendance_report(request):
 
     if export_format == 'csv':
         response = HttpResponse(content_type='text/csv')
-        filename_prefix = "period_summary" if view_mode == 'summary' else "period_detailed"
-        response['Content-Disposition'] = f'attachment; filename="attendance_report_{filename_prefix}_{date.today().isoformat()}.csv"'
-
+        response['Content-Disposition'] = f'attachment; filename="attendance_report_{date.today().isoformat()}.csv"'
         writer = csv.writer(response)
 
-        if view_mode == 'summary':
-            # Export one row per student ID calculating total period attendance in date range
+        if view_mode == 'detailed_records':
+            # Raw transaction log of each individual session/marked entry
             writer.writerow([
+                'Record ID', 'Date', 'Period Number', 'Period Timings', 'Time',
                 'Student ID', 'Roll Number', 'Student Name', 'Branch', 'Year',
-                'Semester', 'Section', 'Date From', 'Date To', 'Total Periods Held',
-                'Periods Present', 'Periods On-Duty', 'Periods Medical', 'Periods Late',
-                'Periods Absent', 'Total Periods Attended', 'Period Attendance %',
-                'Eligibility Status', 'Shortage %'
+                'Semester', 'Section', 'Subject Code', 'Subject Title', 'Status',
+                'Period Credit (1/0)', 'Marked Via'
             ])
-            for s_pk, s_data in student_period_stats.items():
+            for r in records:
+                p_num, p_time, p_label = resolve_period_metadata(r, slot_order_map)
+                is_attended = r.status in ['Present', 'On-Duty', 'Medical', 'Late']
+                credit = 1 if is_attended else 0
                 writer.writerow([
-                    s_data['student_id'],
-                    s_data['roll_no'],
-                    s_data['name'],
-                    s_data['branch'],
-                    s_data['year'],
-                    s_data['semester'],
-                    s_data['section'],
-                    date_from or s_data.get('date_from') or 'All Available',
-                    date_to or s_data.get('date_to') or 'All Available',
-                    s_data['total_periods'],
-                    s_data['periods_present'],
-                    s_data['periods_od'],
-                    s_data['periods_medical'],
-                    s_data['periods_late'],
-                    s_data['periods_absent'],
-                    s_data['periods_attended'],
-                    f"{s_data['period_percentage']}%",
-                    s_data['eligibility_status'],
-                    f"{s_data['shortage_percentage']}%"
+                    r.id,
+                    r.date.isoformat(),
+                    f"Period {p_num}",
+                    p_time,
+                    r.marked_at.strftime('%H:%M:%S') if r.marked_at else '',
+                    r.student.student_id or f"STU{r.student.id:04d}",
+                    r.student.roll_no or '',
+                    r.student.name,
+                    r.student.branch,
+                    r.student.year,
+                    r.student.semester,
+                    r.student.section,
+                    r.subject.code if r.subject else '',
+                    r.subject.name if r.subject else '',
+                    r.status,
+                    credit,
+                    r.marked_via
                 ])
             return response
 
-        # Default Detailed Mode: Period-by-period calculation entry per student ID
+        # DEFAULT & UNIVERSITY FORMAT (Strictly 1 Row per Student ID matching screenshot):
+        # Student Name, Custom Student ID, Classes Attended, Total Classes, Attendance %
         writer.writerow([
-            'Record ID', 'Date', 'Period Number', 'Period Timings', 'Time',
-            'Student ID', 'Roll Number', 'Student Name', 'Branch', 'Year',
-            'Semester', 'Section', 'Subject Code', 'Subject Title', 'Status',
-            'Period Credit (1/0)', 'Student Total Periods In Range',
-            'Student Attended In Range', 'Student Absent In Range',
-            'Student Period Attendance %', 'Eligibility Status', 'Marked Via'
+            'Student Name',
+            'Custom Student ID',
+            'Classes Attended',
+            'Total Classes',
+            'Attendance %'
         ])
 
-        for r in records:
-            p_num, p_time, p_label = resolve_period_metadata(r, slot_order_map)
-            is_attended = r.status in ['Present', 'On-Duty', 'Medical', 'Late']
-            credit = 1 if is_attended else 0
-            stu_stats = student_period_stats.get(r.student_id, {})
-
+        for s_data in student_rows:
             writer.writerow([
-                r.id,
-                r.date.isoformat(),
-                f"Period {p_num}",
-                p_time,
-                r.marked_at.strftime('%H:%M:%S') if r.marked_at else '',
-                r.student.student_id or f"STU{r.student.id:04d}",
-                r.student.roll_no or '',
-                r.student.name,
-                r.student.branch,
-                r.student.year,
-                r.student.semester,
-                r.student.section,
-                r.subject.code if r.subject else '',
-                r.subject.name if r.subject else '',
-                r.status,
-                credit,
-                stu_stats.get('total_periods', 0),
-                stu_stats.get('periods_attended', 0),
-                stu_stats.get('periods_absent', 0),
-                f"{stu_stats.get('period_percentage', 0.0)}%",
-                stu_stats.get('eligibility_status', 'N/A'),
-                r.marked_via
+                s_data['student_name'],
+                s_data['custom_student_id'],
+                s_data['classes_attended'],
+                s_data['total_classes'],
+                s_data['attendance_percentage']
             ])
         return response
 
-    # JSON response for preview
+    # JSON response for preview (1 row per student ID)
     results = []
     for r in records[:500]:
         p_num, p_time, p_label = resolve_period_metadata(r, slot_order_map)
         is_attended = r.status in ['Present', 'On-Duty', 'Medical', 'Late']
-        stu_stats = student_period_stats.get(r.student_id, {})
-
         results.append({
             "id": r.id,
             "date": r.date.isoformat(),
@@ -330,30 +317,27 @@ def attendance_report(request):
             "subject_name": r.subject.name if r.subject else None,
             "status": r.status,
             "period_credit": 1 if is_attended else 0,
-            "student_total_periods": stu_stats.get('total_periods', 0),
-            "student_attended_periods": stu_stats.get('periods_attended', 0),
-            "student_absent_periods": stu_stats.get('periods_absent', 0),
-            "student_period_percentage": stu_stats.get('period_percentage', 0.0),
-            "student_eligibility": stu_stats.get('eligibility_status', 'N/A'),
             "marked_via": r.marked_via,
             "attendance_mode": "QR" if (r.marked_via and (r.marked_via == 'QR' or r.marked_via == 'QR_FACE_GEO' or r.marked_via.startswith('QR'))) else "Manual",
         })
 
     return Response({
-        "count": records.count(),
+        "count": len(student_rows),
+        "total_records": records.count(),
         "view_mode": view_mode,
         "date_from": date_from,
         "date_to": date_to,
         "period_metrics": {
             "total_period_records": records.count(),
-            "unique_students": len(student_period_stats),
+            "unique_students": len(student_rows),
             "average_period_percentage": round(
-                sum(s['period_percentage'] for s in student_period_stats.values()) / max(1, len(student_period_stats)),
-                1
-            ) if student_period_stats else 0.0
+                sum(s['attendance_percentage'] for s in student_rows) / max(1, len(student_rows)),
+                2
+            ) if student_rows else 0.0
         },
-        "records": results,
-        "student_summaries": list(student_period_stats.values())
+        "students": student_rows,
+        "student_summaries": student_rows,
+        "records": results
     }, status=status.HTTP_200_OK)
 
 

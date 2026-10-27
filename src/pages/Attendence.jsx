@@ -161,9 +161,9 @@ function Attendance() {
   const [exportDateTo, setExportDateTo] = useState(() => new Date().toISOString().split("T")[0]);
   const [exportStudentId, setExportStudentId] = useState("");
   const [exportBranch, setExportBranch] = useState("ALL");
-  const [exportSection, setExportSection] = useState("ALL");
   const [exportYear, setExportYear] = useState("ALL");
-  const [exportViewMode, setExportViewMode] = useState("detailed"); // 'detailed' | 'summary'
+  const [exportSection, setExportSection] = useState("ALL");
+  const [exportViewMode, setExportViewMode] = useState("summary"); // Default is 1 row per student ID
   const [isExportingPeriodCsv, setIsExportingPeriodCsv] = useState(false);
 
   const handleExportPeriodAttendance = async () => {
@@ -4126,8 +4126,8 @@ function Attendance() {
                       onChange={(e) => setExportViewMode(e.target.value)}
                       style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
                     >
-                      <option value="detailed">Period-by-Period Detailed Calculation (Every Period & Cumulative %)</option>
-                      <option value="summary">Student Period Summary (One Row Per Student ID with Total Periods)</option>
+                      <option value="summary">1 Row per Student ID (Student Name, Custom Student ID, Classes Attended, Total Classes, Attendance %)</option>
+                      <option value="detailed_records">Detailed Audit Log (Every Period Entry)</option>
                     </select>
                   </div>
 
