@@ -321,8 +321,9 @@ def start_attendance_from_slot(request, slot_id):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    duration_seconds = max(1, remaining_seconds) if not ignore_time else int(request.data.get('duration_seconds', 120))
-    expires_at = slot_end_dt if not ignore_time else (now_local + timezone.timedelta(seconds=duration_seconds))
+    rotation_dur = int(request.data.get('duration_seconds', 20))
+    duration_seconds = min(rotation_dur, remaining_seconds) if not ignore_time else rotation_dur
+    expires_at = now_local + timedelta(seconds=duration_seconds)
 
     # Check for active existing session for this slot today to prevent duplicates
     conducting_teacher = slot.teacher or request.user

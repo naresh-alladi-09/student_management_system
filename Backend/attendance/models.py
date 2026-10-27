@@ -56,15 +56,14 @@ class AttendanceSession(models.Model):
     def create_session(cls, subject, teacher, duration_seconds=20, academic_class=None, section='A', expires_at=None, end_time=None, latitude=None, longitude=None, radius_meters=100.0, require_face=True, require_geo=True, timetable_slot=None):
         token = secrets.token_urlsafe(32)
         now = timezone.now()
-        expires = expires_at if expires_at else (now + timedelta(seconds=duration_seconds))
-        if expires_at and duration_seconds == 20:
-            duration_seconds = max(1, int((expires - now).total_seconds()))
+        dur = duration_seconds or 20
+        expires = expires_at if expires_at else (now + timedelta(seconds=dur))
         return cls.objects.create(
             subject=subject,
             teacher=teacher,
             qr_token=token,
             expires_at=expires,
-            duration_seconds=duration_seconds,
+            duration_seconds=dur,
             academic_class=academic_class,
             timetable_slot=timetable_slot,
             section=section,
@@ -96,14 +95,27 @@ class AttendanceSession(models.Model):
         self.save(update_fields=['qr_token', 'expires_at', 'is_active'])
         return self.qr_token
 
-    def is_expired(self):
+    def is_token_expired(self, grace_seconds=15):
+        """Check if the dynamic rolling QR token has expired for student scanning."""
         now = timezone.now()
-        if now > self.expires_at:
+        return now > (self.expires_at + timedelta(seconds=grace_seconds))
+
+    def is_session_concluded(self):
+        """Check if the overall lecture period attendance session has ended."""
+        if not self.is_active:
             return True
-        if self.end_time and self.date == timezone.localdate():
-            if timezone.localtime().time() >= self.end_time:
+        now_local = timezone.localtime()
+        if self.date == now_local.date():
+            if self.end_time and now_local.time() >= self.end_time:
                 return True
+            if self.timetable_slot and self.timetable_slot.end_time and now_local.time() >= self.timetable_slot.end_time:
+                return True
+        if timezone.now() > (self.expires_at + timedelta(minutes=15)):
+            return True
         return False
+
+    def is_expired(self):
+        return self.is_session_concluded()
 
     def close(self):
         self.is_active = False

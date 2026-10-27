@@ -716,6 +716,9 @@ function Attendance() {
           absent_count: 0,
           attendance_rate: 0,
           attendees: [],
+          require_geo: geoEnabled,
+          require_face: faceRequired,
+          radius_meters: geofenceRadius,
         });
         setTimeRemaining(rem > 0 ? rem : sessionDuration);
       }
@@ -744,7 +747,9 @@ function Attendance() {
         checkActiveQrSession();
       }
     } catch (err) {
-      setError("Failed to refresh QR token.");
+      console.warn("Failed to refresh QR token:", err);
+      // Back off for 3 seconds before next auto-rotation retry
+      setTimeRemaining(3);
     } finally {
       setQrLoading(false);
     }
@@ -1740,27 +1745,90 @@ function Attendance() {
                       </button>
                     </div>
 
-                    {/* Countdown Timer */}
+                    {/* Dynamic QR Rotation Banner & Progress Bar */}
                     <div
                       style={{
-                        fontSize: "16px",
-                        fontWeight: 700,
-                        color: timeRemaining > 10 ? "#2563eb" : "#ef4444",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
-                        marginBottom: "20px",
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "12px",
+                        padding: "14px 16px",
+                        marginBottom: "18px",
                       }}
                     >
-                      <FaClock />
-                      <span>
-                        {timeRemaining > 0
-                          ? `QR Token Expires in: ${timeRemaining}s`
-                          : autoRotate
-                          ? "Refreshing QR Token..."
-                          : "QR Token Expired! Please Refresh."}
-                      </span>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: timeRemaining <= 5 ? "#ef4444" : "#2563eb",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: "8px",
+                              height: "8px",
+                              borderRadius: "50%",
+                              background: timeRemaining <= 5 ? "#ef4444" : "#10b981",
+                              display: "inline-block",
+                              boxShadow: timeRemaining <= 5 ? "0 0 8px #ef4444" : "0 0 6px #10b981",
+                            }}
+                          ></span>
+                          {autoRotate ? `Dynamic QR Auto-Rotation (${sessionDuration}s)` : "Static QR Mode"}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: "monospace",
+                            fontSize: "14px",
+                            fontWeight: 800,
+                            color: timeRemaining <= 5 ? "#ef4444" : "#0f172a",
+                          }}
+                        >
+                          {qrLoading ? (
+                            <span style={{ color: "#2563eb", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              <FaSync className="fa-spin" style={{ fontSize: "11px" }} /> Rotating...
+                            </span>
+                          ) : (
+                            `${timeRemaining}s remaining`
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Smooth Visual Progress Bar */}
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "6px",
+                          background: "#e2e8f0",
+                          borderRadius: "4px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${Math.min(100, Math.max(0, (timeRemaining / (sessionDuration || 20)) * 100))}%`,
+                            background:
+                              timeRemaining <= 5
+                                ? "linear-gradient(90deg, #f97316 0%, #ef4444 100%)"
+                                : "linear-gradient(90deg, #10b981 0%, #2563eb 100%)",
+                            transition: "width 1s linear, background 0.3s ease",
+                            borderRadius: "4px",
+                          }}
+                        ></div>
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "6px", textAlign: "left" }}>
+                        Anti-proxy dynamic QR refreshes every {sessionDuration}s. Screenshots taken by absent students will expire automatically.
+                      </div>
                     </div>
 
                     {/* Auto-Rotate Toggle */}
@@ -1860,29 +1928,29 @@ function Attendance() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "5px",
-                    background: activeSessionData?.require_geo ? "#ecfdf5" : "#f1f5f9",
-                    color: activeSessionData?.require_geo ? "#047857" : "#64748b",
+                    background: (activeSessionData?.session?.require_geo ?? activeSessionData?.require_geo) ? "#ecfdf5" : "#f1f5f9",
+                    color: (activeSessionData?.session?.require_geo ?? activeSessionData?.require_geo) ? "#047857" : "#64748b",
                     padding: "4px 10px",
                     borderRadius: "20px",
                     fontSize: "11px",
                     fontWeight: 600,
-                    border: `1px solid ${activeSessionData?.require_geo ? "#a7f3d0" : "#cbd5e1"}`
+                    border: `1px solid ${(activeSessionData?.session?.require_geo ?? activeSessionData?.require_geo) ? "#a7f3d0" : "#cbd5e1"}`
                   }}>
-                    📍 Geofence Anti-Proxy: {activeSessionData?.require_geo ? `Active (${activeSessionData?.radius_meters || 50}m)` : "Disabled"}
+                    📍 Geofence Anti-Proxy: {(activeSessionData?.session?.require_geo ?? activeSessionData?.require_geo) ? `Active (${activeSessionData?.session?.radius_meters || activeSessionData?.radius_meters || 100}m)` : "Disabled"}
                   </span>
                   <span style={{
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "5px",
-                    background: activeSessionData?.require_face ? "#eef2ff" : "#f1f5f9",
-                    color: activeSessionData?.require_face ? "#4338ca" : "#64748b",
+                    background: (activeSessionData?.session?.require_face ?? activeSessionData?.require_face) ? "#eef2ff" : "#f1f5f9",
+                    color: (activeSessionData?.session?.require_face ?? activeSessionData?.require_face) ? "#4338ca" : "#64748b",
                     padding: "4px 10px",
                     borderRadius: "20px",
                     fontSize: "11px",
                     fontWeight: 600,
-                    border: `1px solid ${activeSessionData?.require_face ? "#c7d2fe" : "#cbd5e1"}`
+                    border: `1px solid ${(activeSessionData?.session?.require_face ?? activeSessionData?.require_face) ? "#c7d2fe" : "#cbd5e1"}`
                   }}>
-                    👤 Biometric Face Scan: {activeSessionData?.require_face ? "Enforced" : "Optional"}
+                    👤 Biometric Face Scan: {(activeSessionData?.session?.require_face ?? activeSessionData?.require_face) ? "Enforced" : "Optional"}
                   </span>
                 </div>
 

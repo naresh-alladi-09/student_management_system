@@ -6,15 +6,12 @@ import "../styles/dashboard.css";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ExamScannerModal from "../components/ExamScannerModal";
-import { getStudents, getTodayTimetable, startAttendanceFromSlot, getSessionAttendees } from "../services/studentservice";
-import { QRCodeSVG } from "qrcode.react";
+import { getStudents, getTodayTimetable, getSessionAttendees } from "../services/studentservice";
 import {
   FaClock,
   FaQrcode,
-  FaPlayCircle,
   FaCheckCircle,
   FaTimes,
-  FaCopy,
   FaExternalLinkAlt,
   FaCalendarAlt,
   FaUsers,
@@ -34,12 +31,6 @@ const Dashboard = () => {
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [selectedDayOverride, setSelectedDayOverride] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
-  const [startingSlotId, setStartingSlotId] = useState(null);
-
-  // Active QR Session Modal State
-  const [activeSessionModal, setActiveSessionModal] = useState(null);
-  const [timeRemaining, setTimeRemaining] = useState(120);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   // 10-Minute Present Review Modal State
   const [reviewSessionModal, setReviewSessionModal] = useState(null);
@@ -99,37 +90,7 @@ const Dashboard = () => {
     return () => clearInterval(ticker);
   }, [selectedDayOverride, showCompleted]);
 
-  // Timer countdown for active QR session modal
-  useEffect(() => {
-    if (!activeSessionModal) return;
 
-    const interval = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          const sessId = activeSessionModal.session_id || activeSessionModal.id;
-          if (sessId) {
-            getSessionAttendees(sessId)
-              .then((res) => {
-                setActiveSessionModal(null);
-                setReviewSessionModal(res.data);
-                setReviewTimeRemaining(res.data.review_remaining_seconds || 600);
-              })
-              .catch(() => {
-                setActiveSessionModal(null);
-              });
-          } else {
-            setActiveSessionModal(null);
-          }
-          fetchSchedule(selectedDayOverride, showCompleted);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [activeSessionModal, selectedDayOverride, showCompleted]);
 
   // Timer countdown for 10-minute review modal
   useEffect(() => {
@@ -164,47 +125,7 @@ const Dashboard = () => {
     }
   };
 
-  const handleStartAttendance = async (slot) => {
-    setStartingSlotId(slot.id);
-    try {
-      let geoOptions = { duration_seconds: 120 };
-      if (navigator.geolocation) {
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: false,
-              timeout: 2500,
-              maximumAge: 60000,
-            });
-          });
-          if (pos?.coords) {
-            geoOptions = {
-              duration_seconds: 120,
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
-              require_geo: true,
-              radius_meters: 60,
-            };
-          }
-        } catch {
-          // Proceed with default duration if GPS timed out or was denied
-        }
-      }
 
-      const res = await startAttendanceFromSlot(slot.id, geoOptions);
-      const data = res.data;
-      if (!data.qr_value && (data.token || data.qr_token)) {
-        data.qr_value = `${window.location.origin}/mark-attendance?token=${data.token || data.qr_token}`;
-      }
-      setActiveSessionModal(data);
-      setTimeRemaining(data.duration_seconds || 120);
-      fetchSchedule(selectedDayOverride, showCompleted);
-    } catch (err) {
-      alert(err.response?.data?.detail || "Failed to start attendance session for this class.");
-    } finally {
-      setStartingSlotId(null);
-    }
-  };
 
   const recentStudents = Array.isArray(students) ? students.slice(0, 5) : [];
 
@@ -396,8 +317,7 @@ const Dashboard = () => {
                   gap: "16px",
                 }}
               >
-                {todaySchedule.slots.map((slot) => {
-                  const isCurrentStarting = startingSlotId === slot.id;
+                {todaySchedule.slots.map((slot, idx) => {
                   const hasActive = slot.has_active_session;
                   const isReview = slot.status === "review" || slot.has_review_session;
                   const isCompleted = slot.status === "completed" && !isReview;
@@ -480,7 +400,7 @@ const Dashboard = () => {
                                 }}
                               ></span>
                             )}
-                            {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
+                            Period {idx + 1} • {slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}
                           </span>
 
                           <span
@@ -519,31 +439,7 @@ const Dashboard = () => {
                       </div>
 
                       <div>
-                        {hasActive ? (
-                          <div style={{ display: "flex", gap: "8px" }}>
-                            <button
-                              type="button"
-                              onClick={() => handleStartAttendance(slot)}
-                              style={{
-                                flex: 1,
-                                padding: "10px 14px",
-                                background: "#10b981",
-                                color: "#fff",
-                                borderRadius: "8px",
-                                fontSize: "13px",
-                                fontWeight: 600,
-                                border: "none",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: "6px",
-                              }}
-                            >
-                              <FaCheckCircle /> Session Active (View QR)
-                            </button>
-                          </div>
-                        ) : isReview ? (
+                        {isReview ? (
                           <button
                             type="button"
                             disabled={loadingReview}
@@ -568,31 +464,26 @@ const Dashboard = () => {
                             <FaUsers /> View Present Students ({slot.present_count || 0})
                           </button>
                         ) : isCompleted ? (
-                          <button
-                            type="button"
-                            disabled
+                          <div
                             style={{
                               width: "100%",
                               padding: "10px 14px",
                               background: "#e2e8f0",
                               color: "#64748b",
-                              border: "none",
                               borderRadius: "8px",
                               fontSize: "13px",
                               fontWeight: 600,
-                              cursor: "not-allowed",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               gap: "8px",
+                              boxSizing: "border-box",
                             }}
                           >
                             Period Concluded
-                          </button>
+                          </div>
                         ) : isUpcoming ? (
-                          <button
-                            type="button"
-                            disabled
+                          <div
                             style={{
                               width: "100%",
                               padding: "10px 14px",
@@ -602,15 +493,15 @@ const Dashboard = () => {
                               borderRadius: "8px",
                               fontSize: "13px",
                               fontWeight: 600,
-                              cursor: "not-allowed",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               gap: "8px",
+                              boxSizing: "border-box",
                             }}
                           >
                             <FaClock /> Opens at {slot.start_time.slice(0, 5)}
-                          </button>
+                          </div>
                         ) : isAdmin ? (
                           <div
                             style={{
@@ -627,34 +518,54 @@ const Dashboard = () => {
                               alignItems: "center",
                               justifyContent: "center",
                               gap: "6px",
+                              boxSizing: "border-box",
                             }}
                           >
                             <FaCalendarCheck style={{ color: "#10b981" }} /> Faculty: {slot.teacher_name || "Assigned"}
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            disabled={isCurrentStarting}
-                            onClick={() => handleStartAttendance(slot)}
-                            style={{
-                              width: "100%",
-                              padding: "10px 14px",
-                              background: "#2563eb",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "8px",
-                              fontSize: "13px",
-                              fontWeight: 600,
-                              cursor: isCurrentStarting ? "not-allowed" : "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: "8px",
-                            }}
-                          >
-                            <FaPlayCircle />
-                            {isCurrentStarting ? "Spawning QR Session..." : "Start QR Attendance"}
-                          </button>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "6px",
+                                padding: "8px 12px",
+                                background: "#ecfdf5",
+                                color: "#059669",
+                                borderRadius: "8px",
+                                fontSize: "12.5px",
+                                fontWeight: 700,
+                                border: "1px solid #a7f3d0",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981", display: "inline-block" }}></span>
+                              Lecture Period Active
+                            </div>
+                            <Link
+                              to="/attendance?tab=qr"
+                              style={{
+                                width: "100%",
+                                padding: "10px 14px",
+                                background: "#2563eb",
+                                color: "#fff",
+                                borderRadius: "8px",
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                textDecoration: "none",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "8px",
+                                boxShadow: "0 2px 8px rgba(37, 99, 235, 0.2)",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <FaExternalLinkAlt style={{ fontSize: "12px" }} /> Open Attendance Console
+                            </Link>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -814,188 +725,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Live QR Attendance Modal */}
-      {activeSessionModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(15, 23, 42, 0.75)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "20px",
-          }}
-        >
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "20px",
-              padding: "32px",
-              maxWidth: "460px",
-              width: "100%",
-              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
-              textAlign: "center",
-              position: "relative",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveSessionModal(null)}
-              style={{
-                position: "absolute",
-                top: "20px",
-                right: "20px",
-                background: "none",
-                border: "none",
-                fontSize: "20px",
-                color: "#64748b",
-                cursor: "pointer",
-              }}
-            >
-              <FaTimes />
-            </button>
 
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "4px 14px",
-                borderRadius: "20px",
-                background: "#ecfdf5",
-                color: "#059669",
-                fontSize: "12px",
-                fontWeight: 700,
-                marginBottom: "12px",
-              }}
-            >
-              ● LIVE SESSION ACTIVATED
-            </div>
-
-            <h3 style={{ margin: "0 0 6px 0", fontSize: "20px", color: "#0f172a" }}>
-              {activeSessionModal.subject_name}
-            </h3>
-            <p style={{ margin: "0 0 18px 0", fontSize: "14px", color: "#64748b" }}>
-              {activeSessionModal.subject_code} • {activeSessionModal.room} • {activeSessionModal.academic_class_name}
-            </p>
-
-            {/* QR Code Container */}
-            <div
-              style={{
-                background: "#ffffff",
-                padding: "16px",
-                borderRadius: "16px",
-                display: "inline-block",
-                border: "2px dashed #2563eb",
-                boxShadow: "0 8px 24px rgba(37, 99, 235, 0.12)",
-                marginBottom: "18px",
-              }}
-            >
-              <QRCodeSVG
-                value={activeSessionModal.qr_value}
-                size={220}
-                level="M"
-                includeMargin={true}
-              />
-            </div>
-
-            {/* Countdown Timer */}
-            <div
-              style={{
-                fontSize: "14px",
-                fontWeight: 600,
-                color: timeRemaining <= 0 ? "#ef4444" : timeRemaining < 60 ? "#f97316" : "#2563eb",
-                marginBottom: "16px",
-              }}
-            >
-              {timeRemaining <= 0 ? (
-                <div style={{ color: "#ef4444", fontWeight: 700 }}>
-                  ● Period Concluded • QR Session Closed & Vanished
-                </div>
-              ) : (
-                <>
-                  Closes at {activeSessionModal.end_time || "Period End"} (
-                  <strong>
-                    {Math.floor(timeRemaining / 60)}m {timeRemaining % 60}s remaining
-                  </strong>
-                  )
-                </>
-              )}
-            </div>
-
-            {/* Action buttons */}
-            <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginBottom: "16px" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard?.writeText(activeSessionModal.qr_value);
-                  setCopiedLink(true);
-                  setTimeout(() => setCopiedLink(false), 2500);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  background: copiedLink ? "#ecfdf5" : "#f8fafc",
-                  color: copiedLink ? "#059669" : "#334155",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <FaCopy /> {copiedLink ? "Copied!" : "Copy Link"}
-              </button>
-
-              <a
-                href={activeSessionModal.qr_value}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  background: "#f8fafc",
-                  color: "#334155",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  textDecoration: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <FaExternalLinkAlt /> Open Scanner
-              </a>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setActiveSessionModal(null)}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: "10px",
-                background: "#0f172a",
-                color: "#fff",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              Done / Close Window
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* 10-Minute Present Students Review Modal */}
       {reviewSessionModal && (

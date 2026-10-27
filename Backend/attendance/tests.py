@@ -196,3 +196,109 @@ class AttendanceAnalyticsAPITests(APITestCase):
         self.assertEqual(rec.status, "Present")
         self.assertEqual(rec.marked_via, "MANUAL")
 
+
+class DynamicQRAttendanceTests(APITestCase):
+    def setUp(self):
+        self.dept, _ = Department.objects.get_or_create(name="Computer Science", code="CS")
+        self.branch, _ = Branch.objects.get_or_create(name="Computer Science & Engineering", code="CSE", department=self.dept)
+        self.academic_class, _ = AcademicClass.objects.get_or_create(
+            branch=self.branch, year=3, semester=5, section="A"
+        )
+        self.subject, _ = Subject.objects.get_or_create(
+            code="CS502", defaults={"name": "Operating Systems", "branch": "CSE", "semester": "5", "credits": 4}
+        )
+        self.teacher, _ = User.objects.get_or_create(username="teacher_os")
+        self.teacher.set_password("pass123")
+        self.teacher.save()
+        UserProfile.objects.update_or_create(user=self.teacher, defaults={"role": "teacher"})
+
+        self.student = Student.objects.create(
+            roll_no="STU-OS-01",
+            name="OS Student",
+            email="os_student@test.com",
+            branch="CSE",
+            year=3,
+            semester="5",
+            section="A",
+            academic_class=self.academic_class,
+        )
+        if hasattr(self.student, 'user_profile') and self.student.user_profile:
+            self.student_user = self.student.user_profile.user
+        else:
+            self.student_user = User.objects.create_user(username="student_os", password="studpass")
+            UserProfile.objects.filter(student=self.student).delete()
+            UserProfile.objects.update_or_create(user=self.student_user, defaults={"role": "student", "student": self.student})
+
+    def test_dynamic_qr_session_20s_duration_and_refresh(self):
+        """
+        Verify that creating a session defaults to a 20-second dynamic rolling token,
+        and refreshing rotates the token while keeping the session live.
+        """
+        from datetime import time
+        from django.utils import timezone
+        from attendance.models import AttendanceSession
+
+        # Create session with 20-second duration and lecture end_time in future
+        now_time = timezone.localtime().time()
+        end_time = time((now_time.hour + 1) % 24, now_time.minute)
+
+        session = AttendanceSession.create_session(
+            subject=self.subject,
+            teacher=self.teacher,
+            duration_seconds=20,
+            academic_class=self.academic_class,
+            end_time=end_time,
+            require_geo=False,
+            require_face=False
+        )
+
+        self.assertEqual(session.duration_seconds, 20)
+        self.assertTrue(session.is_active)
+        self.assertFalse(session.is_token_expired())
+        self.assertFalse(session.is_session_concluded())
+        initial_token = session.qr_token
+
+        # Test refresh token
+        self.client.force_authenticate(user=self.teacher)
+        refresh_resp = self.client.post(f'/api/attendance/sessions/{session.id}/refresh/', {'duration_seconds': 20})
+        self.assertEqual(refresh_resp.status_code, status.HTTP_200_OK)
+        session.refresh_from_db()
+        self.assertNotEqual(session.qr_token, initial_token)
+        self.assertEqual(session.duration_seconds, 20)
+
+    def test_dynamic_qr_token_expired_rejection(self):
+        """
+        Verify that an expired rolling token is rejected with QR_EXPIRED code,
+        while the overall session remains open.
+        """
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from attendance.models import AttendanceSession
+
+        now_time = timezone.localtime().time()
+        end_time = time((now_time.hour + 1) % 24, now_time.minute)
+
+        session = AttendanceSession.create_session(
+            subject=self.subject,
+            teacher=self.teacher,
+            duration_seconds=20,
+            academic_class=self.academic_class,
+            end_time=end_time,
+            require_geo=False,
+            require_face=False
+        )
+
+        # Manually backdate expires_at beyond the 15s grace period
+        session.expires_at = timezone.now() - timedelta(seconds=25)
+        session.save(update_fields=['expires_at'])
+
+        self.assertTrue(session.is_token_expired(grace_seconds=15))
+        self.assertFalse(session.is_session_concluded())
+
+        # Student attempts to mark attendance with expired token
+        self.client.force_authenticate(user=self.student_user)
+        resp = self.client.post('/api/attendance/mark-qr/', {'qr_token': session.qr_token})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.data.get('code'), 'QR_EXPIRED')
+
+

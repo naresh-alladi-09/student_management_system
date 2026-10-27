@@ -206,7 +206,7 @@ def create_attendance_session(request):
             slot_end_dt = timezone.make_aware(datetime.combine(today_date, active_slot.end_time))
             remaining_period_seconds = max(1, int((slot_end_dt - now_local).total_seconds()))
             duration_seconds = min(duration_seconds, remaining_period_seconds)
-            expires_at_val = slot_end_dt
+            expires_at_val = now_local + timedelta(seconds=duration_seconds)
 
     # If geofence is required, classroom coordinates must be provided
     if require_geo and (latitude is None or longitude is None):
@@ -376,7 +376,7 @@ def get_active_session(request):
     target_session = None
 
     if session:
-        if not session.is_expired():
+        if not session.is_session_concluded():
             is_live = True
             target_session = session
         else:
@@ -438,6 +438,10 @@ def get_active_session(request):
             "branch": r.student.branch,
             "status": r.status,
             "marked_at": r.marked_at.isoformat(),
+            "face_matched": r.face_matched,
+            "face_confidence": r.face_confidence,
+            "distance_meters": r.distance_meters,
+            "marked_via": r.marked_via,
         }
         for r in present_records
     ]
@@ -460,6 +464,9 @@ def get_active_session(request):
         "review_remaining_seconds": review_remaining_seconds if not is_live else None,
         "review_expires_at": review_expires_at.isoformat() if not is_live else None,
         "session": serializer.data,
+        "require_geo": target_session.require_geo,
+        "require_face": target_session.require_face,
+        "radius_meters": target_session.radius_meters,
         "total_enrolled": total_enrolled,
         "present_count": present_count,
         "absent_count": absent_count,
@@ -717,6 +724,20 @@ def verify_session_token(request):
     if not session:
         return Response({"detail": "Invalid QR code or token.", "valid": False}, status=status.HTTP_404_NOT_FOUND)
 
+    if session.is_session_concluded():
+        return Response({
+            "detail": "This lecture period attendance session has ended.",
+            "valid": False,
+            "session_ended": True,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if session.is_token_expired(grace_seconds=15):
+        return Response({
+            "detail": "This dynamic QR code has expired (refreshes every 20 seconds). Please scan the live QR code currently displayed on the classroom screen.",
+            "valid": False,
+            "token_expired": True,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
     user = request.user
     student = getattr(getattr(user, 'profile', None), 'student', None)
     if not student:
@@ -854,11 +875,23 @@ def mark_qr_attendance(request):
         )
 
     # 3. Check expiration
-    if session.is_expired():
-        session.is_active = False
-        session.save(update_fields=['is_active'])
+    if session.is_session_concluded():
+        if session.is_active:
+            session.is_active = False
+            session.save(update_fields=['is_active'])
+            finalize_session_attendance(session)
         return Response(
             {"detail": "This lecture period has ended. QR attendance is closed."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Check dynamic rolling QR token expiration (20s rotation)
+    if session.is_token_expired(grace_seconds=15):
+        return Response(
+            {
+                "detail": "This dynamic QR code has expired (refreshes every 20 seconds). Please scan the live QR code currently displayed on the classroom screen.",
+                "code": "QR_EXPIRED"
+            },
             status=status.HTTP_400_BAD_REQUEST
         )
 
